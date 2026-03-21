@@ -8,6 +8,10 @@ private final class TitleNSTextField: NSTextField {
         let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
             .subtracting([.numericPad, .function, .help])
         if mods == .command && event.keyCode == 0 { // keyCode 0 = "a"
+            // Only claim ⌘A if this field is actively being edited.
+            // NSWindow.performKeyEquivalent walks ALL subviews, so without this guard
+            // the title field would consume ⌘A even when the editor is focused.
+            guard currentEditor() != nil else { return false }
             currentEditor()?.selectAll(nil)
             return true
         }
@@ -29,7 +33,7 @@ private struct TitleTextField: NSViewRepresentable {
         field.isEditable = true
         field.isSelectable = true
         field.placeholderString = placeholder
-        field.font = NSFont.systemFont(ofSize: 19, weight: .semibold)
+        field.font = NSFont.systemFont(ofSize: 19, weight: .semibold, width: .expanded)
         field.textColor = NSColor.controlAccentColor
         field.alignment = .center
         field.focusRingType = .none

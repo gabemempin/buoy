@@ -172,7 +172,7 @@ struct ContentView: View {
                         onQuit: { NSApp.terminate(nil) },
                         onShortcutChanged: { s in HotkeyService.shared.register(shortcut: s) }
                     )
-                    .padding(.bottom, 52)
+                    .padding(.bottom, 45)
                     .padding(.leading, 8)
                     .onDisappear { focusEditor() }
                 }
@@ -181,7 +181,7 @@ struct ContentView: View {
                         isShowing: $showShortcuts,
                         globalShortcut: electronToSymbols(settings.globalShortcut)
                     )
-                    .padding(.bottom, 52)
+                    .padding(.bottom, 45)
                     .padding(.leading, 8)
                     .onDisappear { focusEditor() }
                 }
@@ -329,8 +329,8 @@ struct ContentView: View {
     }
 
     private func transferToAppleNotes() {
-        let text = tvRef.value?.plainTextContent() ?? ""
-        AppleNotesService.transfer(plainText: text) { error in
+        let html = tvRef.value?.htmlContent() ?? ""
+        AppleNotesService.transfer(html: html) { error in
             if let error {
                 toastState.show("Error: \(error)", isError: true)
             } else {

@@ -26,5 +26,10 @@ DerivedData/
 # CocoaPods
 Pods/
 
+# Claude Code / internal dev docs
+CLAUDE.md
+SWIFTUI_REWRITE.md
+XCODE_SETUP.md
+
 # Secrets / local config
 *.env
