@@ -15,17 +15,13 @@
 
 /* Begin PBXFileReference section */
 		1A1C3B552F6B962700F7F7E8 /* FloatNotes.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FloatNotes.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		1A3E6A9C2F6EC59B00AF7FA0 /* FloatNotes.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = FloatNotes.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		1A1C3B572F6B962700F7F7E8 /* FloatNotes */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = FloatNotes;
-			sourceTree = "<group>";
-		};
-		1AA855942F6DB41800B86461 /* New Folder */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = "New Folder";
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -50,7 +46,7 @@
 			children = (
 				1A1C3B572F6B962700F7F7E8 /* FloatNotes */,
 				1A1C3B562F6B962700F7F7E8 /* Products */,
-				1AA855942F6DB41800B86461 /* New Folder */,
+				1A3E6A9C2F6EC59B00AF7FA0 /* FloatNotes.entitlements */,
 			);
 			sourceTree = "<group>";
 		};
@@ -79,7 +75,6 @@
 			);
 			fileSystemSynchronizedGroups = (
 				1A1C3B572F6B962700F7F7E8 /* FloatNotes */,
-				1AA855942F6DB41800B86461 /* New Folder */,
 			);
 			name = FloatNotes;
 			packageProductDependencies = (
@@ -279,6 +274,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = "FloatNotes Icon";
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
+				CODE_SIGN_ENTITLEMENTS = FloatNotes.entitlements;
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
@@ -290,6 +286,7 @@
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_LSUIElement = YES;
+				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Float​Notes needs permission to create notes in ​Apple ​Notes.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_SUEnableAutomaticChecks = NO;
 				INFOPLIST_KEY_SUFeedURL = "https://raw.githubusercontent.com/kristofbernal/floatnotes-swift/main/appcast.xml";
@@ -317,6 +314,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = "FloatNotes Icon";
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
+				CODE_SIGN_ENTITLEMENTS = FloatNotes.entitlements;
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
@@ -328,6 +326,7 @@
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_LSUIElement = YES;
+				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Float​Notes needs permission to create notes in ​Apple ​Notes.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_SUEnableAutomaticChecks = NO;
 				INFOPLIST_KEY_SUFeedURL = "https://raw.githubusercontent.com/kristofbernal/floatnotes-swift/main/appcast.xml";
