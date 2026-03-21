@@ -1,0 +1,65 @@
+import AppKit
+
+/// NSTextAttachment subclass that renders as a checkbox.
+/// Used inline in NSTextView to represent to-do items.
+final class TodoAttachment: NSTextAttachment {
+    var isChecked: Bool {
+        didSet { updateImage() }
+    }
+
+    init(isChecked: Bool = false) {
+        self.isChecked = isChecked
+        super.init(data: nil, ofType: nil)
+        updateImage()
+    }
+
+    required init?(coder: NSCoder) {
+        self.isChecked = false
+        super.init(coder: coder)
+        updateImage()
+    }
+
+    private func updateImage() {
+        let size = CGSize(width: 14, height: 14)
+        let image = NSImage(size: size, flipped: false) { rect in
+            let circle = rect.insetBy(dx: 1, dy: 1)
+            if self.isChecked {
+                NSColor.controlAccentColor.setFill()
+                NSBezierPath(ovalIn: circle).fill()
+                // Checkmark
+                NSColor.white.setStroke()
+                let check = NSBezierPath()
+                check.lineWidth = 1.5
+                check.lineCapStyle = .round
+                check.lineJoinStyle = .round
+                check.move(to: CGPoint(x: circle.minX + 3, y: circle.midY))
+                check.line(to: CGPoint(x: circle.minX + 5, y: circle.minY + 3.5))
+                check.line(to: CGPoint(x: circle.maxX - 2.5, y: circle.maxY - 2.5))
+                check.stroke()
+            } else {
+                let path = NSBezierPath(ovalIn: circle)
+                NSColor.tertiaryLabelColor.setStroke()
+                path.lineWidth = 1.5
+                path.stroke()
+            }
+            return true
+        }
+        self.image = image
+        self.bounds = CGRect(origin: CGPoint(x: 0, y: -2), size: size)
+    }
+
+    // MARK: - Archiving support
+
+    func encode() -> Data? {
+        let archiver = NSKeyedArchiver(requiringSecureCoding: true)
+        archiver.encode(isChecked, forKey: "isChecked")
+        archiver.finishEncoding()
+        return archiver.encodedData
+    }
+
+    static func decode(from data: Data) -> TodoAttachment? {
+        guard let unarchiver = try? NSKeyedUnarchiver(forReadingFrom: data) else { return nil }
+        let checked = unarchiver.decodeBool(forKey: "isChecked")
+        return TodoAttachment(isChecked: checked)
+    }
+}

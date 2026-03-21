@@ -1,0 +1,123 @@
+import SwiftUI
+
+struct FooterView: View {
+    var createdAt: Int64
+    var updatedAt: Int64
+    var onShortcuts: () -> Void
+    var onSettings: () -> Void
+    var onTransferToAppleNotes: () -> Void
+    var onCopy: () -> Void
+
+    @State private var showTransfer = false
+    @State private var showCreated = true
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Timestamps — tap to toggle between Created and Last Edited
+            HStack {
+                Spacer()
+                Button {
+                    withAnimation(.easeInOut(duration: 0.12)) { showCreated.toggle() }
+                } label: {
+                    Text(showCreated
+                         ? "Created: \(TimestampFormatter.format(createdAt))"
+                         : "Last edited: \(TimestampFormatter.format(updatedAt))")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
+                .help(showCreated ? "Tap to see last edited time" : "Tap to see creation time")
+            }
+            .padding(.horizontal, 8)
+            .padding(.bottom, 4)
+            .onChange(of: createdAt) { _, _ in showCreated = true }
+
+            // Transfer to Apple Notes (revealed by chevron)
+            if showTransfer {
+                HStack {
+                    Spacer()
+                    Button(action: onTransferToAppleNotes) {
+                        Text("Transfer to Apple Notes")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.primary)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 5)
+                            .overlay(Capsule().stroke(Color.primary.opacity(0.25), lineWidth: 0.8))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Send to Apple Notes")
+                }
+                .padding(.horizontal, 8)
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
+            }
+
+            // Footer buttons — background enables window drag from empty areas of this row
+            HStack(spacing: 6) {
+                Button(action: onShortcuts) {
+                    Image(systemName: "keyboard")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.white.opacity(0.85))
+                        .frame(width: 28, height: 28)
+                        .contentShape(Circle())
+                        .floatNotesAccentCircle()
+                }
+                .buttonStyle(.plain)
+                .help("Keyboard Shortcuts")
+
+                Button(action: onSettings) {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.white.opacity(0.85))
+                        .frame(width: 28, height: 28)
+                        .contentShape(Circle())
+                        .floatNotesAccentCircle()
+                }
+                .buttonStyle(.plain)
+                .help("Settings")
+
+                Spacer()
+
+                // Unified [chevron | divider | Copy] pill — all one blue pill
+                HStack(spacing: 0) {
+                    Button {
+                        DispatchQueue.main.async {
+                            withAnimation(.easeOut(duration: 0.16)) { showTransfer.toggle() }
+                        }
+                    } label: {
+                        Image(systemName: showTransfer ? "chevron.up" : "chevron.down")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.75))
+                            .frame(width: 28, height: 28)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help("More actions")
+
+                    Rectangle()
+                        .fill(Color.white.opacity(0.3))
+                        .frame(width: 1, height: 16)
+
+                    Button(action: onCopy) {
+                        HStack(spacing: 3) {
+                            Text("Copy")
+                                .font(.system(size: 11, weight: .medium))
+                            Text("⌘⏎")
+                                .font(.system(size: 10))
+                                .opacity(0.8)
+                        }
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help("Copy to clipboard (⌘Return)")
+                }
+                .floatNotesAccentCapsule()
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .background(WindowDragHandle())
+        }
+    }
+}
