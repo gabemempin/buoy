@@ -69,14 +69,11 @@ private struct NoteRow: View {
 
     var body: some View {
         HStack {
-            Button(action: onSelect) {
-                Text(note.title.isEmpty ? "Untitled" : note.title)
-                    .font(.system(size: 12, weight: isActive ? .semibold : .regular))
-                    .foregroundStyle(isActive ? Color.primary : Color.secondary)
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .buttonStyle(.plain)
+            Text(note.title.isEmpty ? "Untitled" : note.title)
+                .font(.system(size: 12, weight: isActive ? .semibold : .regular))
+                .foregroundStyle(isActive ? Color.primary : Color.secondary)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
             if isHovering {
                 Button(action: onDelete) {
@@ -91,6 +88,8 @@ private struct NoteRow: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
         .background(isActive ? Color.primary.opacity(0.08) : Color.clear)
+        .contentShape(Rectangle())
+        .onTapGesture { onSelect() }
         .onHover { h in
             withAnimation(.easeInOut(duration: 0.1)) { isHovering = h }
         }

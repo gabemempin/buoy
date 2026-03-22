@@ -107,7 +107,7 @@ struct SettingsPanel: View {
                         .font(.system(size: 12))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6)
-                        .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+                        .glassEffect(.regular.tint(.primary.opacity(0.08)).interactive(), in: RoundedRectangle(cornerRadius: 10))
                         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.primary.opacity(0.15), lineWidth: 0.5))
                     }
                     .buttonStyle(.plain)
@@ -116,7 +116,7 @@ struct SettingsPanel: View {
                         .font(.system(size: 12))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6)
-                        .background(Color.red.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+                        .glassEffect(.regular.tint(.red.opacity(0.08)).interactive(), in: RoundedRectangle(cornerRadius: 10))
                         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.red.opacity(0.3), lineWidth: 0.5))
                         .foregroundStyle(.red)
                         .buttonStyle(.plain)

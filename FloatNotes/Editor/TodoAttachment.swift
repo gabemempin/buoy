@@ -20,7 +20,7 @@ final class TodoAttachment: NSTextAttachment {
     }
 
     private func updateImage() {
-        let size = CGSize(width: 14, height: 14)
+        let size = CGSize(width: 16, height: 16)
         let image = NSImage(size: size, flipped: false) { rect in
             let circle = rect.insetBy(dx: 1, dy: 1)
             if self.isChecked {
@@ -32,9 +32,9 @@ final class TodoAttachment: NSTextAttachment {
                 check.lineWidth = 1.5
                 check.lineCapStyle = .round
                 check.lineJoinStyle = .round
-                check.move(to: CGPoint(x: circle.minX + 3, y: circle.midY))
-                check.line(to: CGPoint(x: circle.minX + 5, y: circle.minY + 3.5))
-                check.line(to: CGPoint(x: circle.maxX - 2.5, y: circle.maxY - 2.5))
+                check.move(to: CGPoint(x: circle.minX + 3.5, y: circle.midY))
+                check.line(to: CGPoint(x: circle.minX + 6, y: circle.minY + 4))
+                check.line(to: CGPoint(x: circle.maxX - 3, y: circle.maxY - 3))
                 check.stroke()
             } else {
                 let path = NSBezierPath(ovalIn: circle)
@@ -45,7 +45,7 @@ final class TodoAttachment: NSTextAttachment {
             return true
         }
         self.image = image
-        self.bounds = CGRect(origin: CGPoint(x: 0, y: -2), size: size)
+        self.bounds = CGRect(origin: CGPoint(x: 0, y: -3), size: size)
     }
 
     // MARK: - Archiving support
