@@ -24,6 +24,12 @@ protocol FloatNotesTextViewDelegate: AnyObject {
 
 final class FloatNotesTextView: NSTextView {
     weak var floatDelegate: FloatNotesTextViewDelegate?
+
+    /// Dedicated undo manager — bypasses the responder chain so undo always works
+    /// regardless of whether NSHostingView breaks the chain to the panel-level manager.
+    private let _localUndoManager = UndoManager()
+    override var undoManager: UndoManager? { _localUndoManager }
+
     var fontSize: CGFloat = 13 {
         didSet {
             guard fontSize != oldValue else { return }
@@ -93,7 +99,7 @@ final class FloatNotesTextView: NSTextView {
         style.lineSpacing = 3
         typingAttributes = [
             .font: NSFont.systemFont(ofSize: fontSize),
-            .foregroundColor: NSColor.labelColor,
+            .foregroundColor: NSColor.textColor,
             .paragraphStyle: style
         ]
     }
@@ -173,10 +179,10 @@ final class FloatNotesTextView: NSTextView {
     // MARK: - Key Equivalents (command keys — intercepted before NSTextView default handling)
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        // Strip numericPad/function flags — arrow keys carry .numericPad which breaks == .command
+        // Strip noise flags — numericPad/function/help on arrow keys, capsLock always
         let mods = event.modifierFlags
             .intersection(.deviceIndependentFlagsMask)
-            .subtracting([.numericPad, .function, .help])
+            .subtracting([.numericPad, .function, .help, .capsLock])
 
         // ⌘⇧Z — redo (must check before the .command-only guard below)
         if mods == [.command, .shift] && event.keyCode == 6 {
@@ -185,23 +191,32 @@ final class FloatNotesTextView: NSTextView {
         }
 
         guard mods == .command else { return super.performKeyEquivalent(with: event) }
-        switch event.keyCode {
-        case 0:  // ⌘A — select all (only when this view is first responder; don't steal from title field)
-            guard window?.firstResponder === self else { return super.performKeyEquivalent(with: event) }
+
+        // Use charactersIgnoringModifiers for locale-independent key matching
+        let ch = event.charactersIgnoringModifiers ?? ""
+
+        switch ch {
+        case "a":  // ⌘A — select all
             selectAll(nil)
             return true
-        case 6:  // ⌘Z — undo
+        case "z":  // ⌘Z — undo
             undoManager?.undo()
             return true
-        case 11: // ⌘B — bold
+        case "b":  // ⌘B — bold
             applyBold()
             return true
-        case 34: // ⌘I — italic
+        case "i":  // ⌘I — italic
             applyItalic()
             return true
-        case 32: // ⌘U — underline
+        case "u":  // ⌘U — underline
             applyUnderline()
             return true
+        default:
+            break
+        }
+
+        // Arrow key navigation (keyCodes are hardware-position-based, reliable for arrows)
+        switch event.keyCode {
         case 123: // ⌘← — previous note
             NotificationCenter.default.post(name: .flotePreviousNote, object: nil)
             return true
@@ -296,7 +311,7 @@ final class FloatNotesTextView: NSTextView {
             style.lineSpacing = 3
             atStr.append(NSAttributedString(string: " ", attributes: [
                 .font: NSFont.systemFont(ofSize: fontSize),
-                .foregroundColor: NSColor.labelColor,
+                .foregroundColor: NSColor.textColor,
                 .paragraphStyle: style
             ]))
             storage.replaceCharacters(in: NSRange(location: lineStart, length: 2), with: atStr)
@@ -483,7 +498,7 @@ final class FloatNotesTextView: NSTextView {
             let newFont = NSFont(descriptor: desc, size: fontSize) ?? NSFont.systemFont(ofSize: fontSize)
             storage.addAttribute(.font, value: newFont, range: attrRange)
         }
-        storage.addAttribute(.foregroundColor, value: NSColor.labelColor, range: range)
+        storage.addAttribute(.foregroundColor, value: NSColor.textColor, range: range)
         storage.removeAttribute(.backgroundColor, range: range)
         storage.endEditing()
         notifyChange()
@@ -535,7 +550,7 @@ final class FloatNotesTextView: NSTextView {
         var offset = 0
         for lr in lineRanges {
             // Skip lines that are empty (only a newline character or nothing)
-            let origLineText = nsString.substring(with: lr).trimmingCharacters(in: .newlines)
+            let origLineText = nsString.substring(with: lr).trimmingCharacters(in: .whitespacesAndNewlines)
             if origLineText.isEmpty { continue }
 
             let adjStart = lr.location + offset
@@ -583,7 +598,7 @@ final class FloatNotesTextView: NSTextView {
         var offset = 0
         for lr in lineRanges {
             // Skip lines that are empty (only a newline character or nothing)
-            let origLineText = nsString.substring(with: lr).trimmingCharacters(in: .newlines)
+            let origLineText = nsString.substring(with: lr).trimmingCharacters(in: .whitespacesAndNewlines)
             if origLineText.isEmpty { continue }
 
             let adjStart = lr.location + offset
@@ -607,7 +622,7 @@ final class FloatNotesTextView: NSTextView {
                 style.lineSpacing = 3
                 aStr.append(NSAttributedString(string: " ", attributes: [
                     .font: NSFont.systemFont(ofSize: fontSize),
-                    .foregroundColor: NSColor.labelColor,
+                    .foregroundColor: NSColor.textColor,
                     .paragraphStyle: style
                 ]))
                 if lineText.hasPrefix("• ") {
@@ -779,7 +794,7 @@ final class FloatNotesTextView: NSTextView {
             let symbol = isChecked ? "☑" : "☐"
             let replacement = NSAttributedString(string: symbol, attributes: [
                 .font: NSFont.systemFont(ofSize: fontSize),
-                .foregroundColor: NSColor.labelColor
+                .foregroundColor: NSColor.textColor
             ])
             mutable.replaceCharacters(in: range, with: replacement)
         }
@@ -822,7 +837,7 @@ final class FloatNotesTextView: NSTextView {
             style.lineSpacing = 3
             let replacement = NSAttributedString(string: marker, attributes: [
                 .font: NSFont.systemFont(ofSize: fontSize),
-                .foregroundColor: NSColor.labelColor,
+                .foregroundColor: NSColor.textColor,
                 .paragraphStyle: style
             ])
             mutable.replaceCharacters(in: range, with: replacement)
@@ -862,7 +877,7 @@ final class FloatNotesTextView: NSTextView {
         // Re-apply link color to link ranges so hyperlinks remain styled.
         let fullRange = NSRange(location: 0, length: mutable.length)
         mutable.removeAttribute(.foregroundColor, range: fullRange)
-        mutable.addAttribute(.foregroundColor, value: NSColor.labelColor, range: fullRange)
+        mutable.addAttribute(.foregroundColor, value: NSColor.textColor, range: fullRange)
         mutable.enumerateAttribute(.link, in: fullRange) { val, range, _ in
             if val != nil {
                 mutable.addAttribute(.foregroundColor, value: NSColor.linkColor, range: range)
@@ -909,31 +924,37 @@ final class FloatNotesTextView: NSTextView {
     override func menu(for event: NSEvent) -> NSMenu? {
         guard let menu = super.menu(for: event) else { return nil }
 
-        // Remove "Layout Orientation" item from the default menu
-        for item in menu.items where item.title == "Layout Orientation" {
+        // Remove writing direction / layout orientation item using action selectors
+        // (locale-independent — title strings differ across macOS versions and languages).
+        // The standard actions are makeBaseWritingDirectionNatural: / changeLayoutOrientation:
+        for item in menu.items where itemIsWritingDirectionOrLayoutOrientation(item) {
             menu.removeItem(item)
         }
 
-        // Find the existing "Transformations" submenu added by NSTextView
-        var transformationsMenu: NSMenu?
-        for item in menu.items where item.title == "Transformations" {
-            transformationsMenu = item.submenu
-            break
+        // Find the existing Transformations submenu by checking for the standard
+        // uppercaseWord: action inside it (also locale-independent).
+        var transformationsItem: NSMenuItem?
+        for item in menu.items {
+            if let sub = item.submenu,
+               sub.items.contains(where: { $0.action == #selector(NSResponder.uppercaseWord(_:)) }) {
+                transformationsItem = item
+                break
+            }
         }
 
-        // If not found, create a new one
-        if transformationsMenu == nil {
+        // If not found, create a new Transformations submenu
+        if transformationsItem == nil {
             let sub = NSMenu(title: "Transformations")
             let parent = NSMenuItem(title: "Transformations", action: nil, keyEquivalent: "")
             parent.submenu = sub
             menu.addItem(.separator())
             menu.addItem(parent)
-            transformationsMenu = sub
+            transformationsItem = parent
         }
 
-        guard let sub = transformationsMenu else { return menu }
+        guard let sub = transformationsItem?.submenu else { return menu }
 
-        // Append our formatting items to the existing Transformations submenu
+        // Append our formatting items to the Transformations submenu
         sub.addItem(.separator())
         let boldItem      = sub.addItem(withTitle: "Bold",      action: #selector(boldAction(_:)),      keyEquivalent: "")
         let italicItem    = sub.addItem(withTitle: "Italic",    action: #selector(italicAction(_:)),    keyEquivalent: "")
@@ -947,6 +968,19 @@ final class FloatNotesTextView: NSTextView {
         linkItem.target      = self
 
         return menu
+    }
+
+    /// Returns true if the menu item represents the writing direction or layout orientation
+    /// submenu — identified by the standard NSResponder action selectors it contains.
+    private func itemIsWritingDirectionOrLayoutOrientation(_ item: NSMenuItem) -> Bool {
+        guard let sub = item.submenu else { return false }
+        let writingDirectionActions: [Selector] = [
+            #selector(NSResponder.makeBaseWritingDirectionNatural(_:)),
+            #selector(NSResponder.makeBaseWritingDirectionLeftToRight(_:)),
+            #selector(NSResponder.makeBaseWritingDirectionRightToLeft(_:))
+        ]
+        return sub.items.contains { writingDirectionActions.contains($0.action ?? Selector("")) }
+            || sub.items.contains { $0.action == Selector(("changeLayoutOrientation:")) }
     }
 
     override func validateMenuItem(_ item: NSMenuItem) -> Bool {

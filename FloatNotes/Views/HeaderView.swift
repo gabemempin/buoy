@@ -6,9 +6,12 @@ import AppKit
 private final class TitleNSTextField: NSTextField {
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-            .subtracting([.numericPad, .function, .help])
+            .subtracting([.numericPad, .function, .help, .capsLock])
         if mods == .command && event.keyCode == 0 { // keyCode 0 = "a"
-            currentEditor()?.selectAll(nil)
+            guard let editor = currentEditor() else {
+                return super.performKeyEquivalent(with: event)
+            }
+            editor.selectAll(nil)
             return true
         }
         return super.performKeyEquivalent(with: event)
