@@ -91,7 +91,7 @@ final class FloatNotesTextView: NSTextView {
     private func updateDefaultTypingAttributes() {
         typingAttributes = [
             .font: NSFont.systemFont(ofSize: fontSize),
-            .foregroundColor: NSColor.textColor
+            .foregroundColor: NSColor.labelColor
         ]
     }
 
@@ -174,35 +174,11 @@ final class FloatNotesTextView: NSTextView {
         let mods = event.modifierFlags
             .intersection(.deviceIndependentFlagsMask)
             .subtracting([.numericPad, .function, .help])
-
-        // ⌘Z / ⌘⇧Z — undo/redo. Must be checked before the pure-command guard so that
-        // ⌘⇧Z (which has .shift in mods) is also caught here instead of falling to super.
-        if event.keyCode == 6 && mods.contains(.command) {
-            if mods.contains(.shift) {
-                undoManager?.redo()
-            } else {
-                undoManager?.undo()
-            }
-            return true
-        }
-
         guard mods == .command else { return super.performKeyEquivalent(with: event) }
-
         switch event.keyCode {
-        case 0:  // ⌘A — select all
-            // selectAll(nil) can silently fail in a non-activating panel; directly set the range instead.
-            if let len = textStorage?.length {
-                setSelectedRange(NSRange(location: 0, length: len))
-            }
-            return true
-        case 7:  // ⌘X — cut
-            cut(nil)
-            return true
-        case 8:  // ⌘C — copy
-            copy(nil)
-            return true
-        case 9:  // ⌘V — paste
-            paste(nil)
+        case 0:  // ⌘A — select all (only when this view is first responder; don't steal from title field)
+            guard window?.firstResponder === self else { return super.performKeyEquivalent(with: event) }
+            selectAll(nil)
             return true
         case 11: // ⌘B — bold
             applyBold()
@@ -305,11 +281,11 @@ final class FloatNotesTextView: NSTextView {
             // stale typingAttributes (e.g. a non-system font from a previous RTF round-trip)
             atStr.append(NSAttributedString(string: " ", attributes: [
                 .font: NSFont.systemFont(ofSize: fontSize),
-                .foregroundColor: NSColor.textColor
+                .foregroundColor: NSColor.labelColor
             ]))
             storage.replaceCharacters(in: NSRange(location: lineStart, length: 2), with: atStr)
             setSelectedRange(NSRange(location: lineStart + atStr.length, length: 0))
-            typingAttributes = [.font: NSFont.systemFont(ofSize: fontSize), .foregroundColor: NSColor.textColor]
+            typingAttributes = [.font: NSFont.systemFont(ofSize: fontSize), .foregroundColor: NSColor.labelColor]
             notifyChange()
             return true
         }
@@ -441,12 +417,7 @@ final class FloatNotesTextView: NSTextView {
     override func paste(_ sender: Any?) {
         guard let storage = textStorage else { super.paste(sender); return }
         guard let pasted = NSPasteboard.general.string(forType: .string) else {
-            // Clipboard has no plain-string type (e.g. HTML-only from Safari).
-            // Still normalize after super.paste so foreign colors/fonts are stripped.
-            let beforeLoc = selectedRange().location
             super.paste(sender)
-            let afterLoc = selectedRange().location
-            normalizeFontInRange(NSRange(location: beforeLoc, length: afterLoc - beforeLoc))
             return
         }
 
@@ -483,29 +454,21 @@ final class FloatNotesTextView: NSTextView {
         }
     }
 
-    /// Normalizes pasted text: system font (preserving bold/italic), default foreground color
-    /// for non-link runs, no background color. Link runs keep their blue/underlined styling.
+    /// Normalizes fonts in the given range to system font (preserving bold/italic traits)
+    /// and strips foreign colors/backgrounds.
     private func normalizeFontInRange(_ range: NSRange) {
         guard let storage = textStorage, range.length > 0,
               NSMaxRange(range) <= storage.length else { return }
         storage.beginEditing()
-        storage.enumerateAttributes(in: range) { attrs, attrRange, _ in
-            // Normalize font — preserve bold/italic symbolic traits
-            let base = (attrs[.font] as? NSFont) ?? NSFont.systemFont(ofSize: fontSize)
-            let traits = base.fontDescriptor.symbolicTraits
+        storage.enumerateAttribute(.font, in: range) { val, attrRange, _ in
+            guard let font = val as? NSFont else { return }
+            let traits = font.fontDescriptor.symbolicTraits
             let desc = NSFont.systemFont(ofSize: fontSize).fontDescriptor.withSymbolicTraits(traits)
             let newFont = NSFont(descriptor: desc, size: fontSize) ?? NSFont.systemFont(ofSize: fontSize)
             storage.addAttribute(.font, value: newFont, range: attrRange)
-
-            // Force foreground to default only for non-link text.
-            // Link runs keep their blue color so actual hyperlinks stay visible.
-            if attrs[.link] == nil {
-                storage.addAttribute(.foregroundColor, value: NSColor.textColor, range: attrRange)
-            }
-
-            // Strip any background color that came from the source app
-            storage.removeAttribute(.backgroundColor, range: attrRange)
         }
+        storage.addAttribute(.foregroundColor, value: NSColor.labelColor, range: range)
+        storage.removeAttribute(.backgroundColor, range: range)
         storage.endEditing()
         notifyChange()
     }
@@ -618,7 +581,7 @@ final class FloatNotesTextView: NSTextView {
                                   range: NSRange(location: 0, length: aStr.length))
                 aStr.append(NSAttributedString(string: " ", attributes: [
                     .font: NSFont.systemFont(ofSize: fontSize),
-                    .foregroundColor: NSColor.textColor
+                    .foregroundColor: NSColor.labelColor
                 ]))
                 if lineText.hasPrefix("• ") {
                     storage.replaceCharacters(in: NSRange(location: adjStart, length: 2), with: aStr)
@@ -650,12 +613,6 @@ final class FloatNotesTextView: NSTextView {
         window?.makeFirstResponder(self)
         storage.replaceCharacters(in: sel, with: atStr)
         setSelectedRange(NSRange(location: sel.location + atStr.length, length: 0))
-        // Explicitly reset typing attrs so text typed right after the link
-        // doesn't inherit blue/underlined/linked formatting.
-        typingAttributes = [
-            .font: NSFont.systemFont(ofSize: fontSize),
-            .foregroundColor: NSColor.textColor
-        ]
         notifyChange()
     }
 
@@ -714,51 +671,6 @@ final class FloatNotesTextView: NSTextView {
         }
     }
 
-    /// Strips link-style typing attributes (blue color, underline, .link URL, pointer cursor)
-    /// when the cursor moves to a position that is NOT inside a link.
-    ///
-    /// The check is based on the character AFTER the cursor: if it exists and is a link we're
-    /// still inside one; otherwise we've exited the link and should type in plain style.
-    /// (Checking "char after" avoids false-positives when the cursor sits right at the end
-    /// of a link — the char *before* the cursor is the link itself, but new text goes after.)
-    private func fixTypingAttributesIfOffLink() {
-        var attrs = typingAttributes
-        // Fast exit — nothing to fix if typing attrs don't have link styling
-        let hasLinkColor = (attrs[.foregroundColor] as? NSColor) == NSColor.linkColor
-        guard attrs[.link] != nil || hasLinkColor else { return }
-
-        guard let storage = textStorage, storage.length > 0 else {
-            // Empty document — strip whatever link attrs are there
-            attrs.removeValue(forKey: .link)
-            attrs.removeValue(forKey: .cursor)
-            attrs.removeValue(forKey: .underlineStyle)
-            if hasLinkColor { attrs[.foregroundColor] = NSColor.textColor }
-            typingAttributes = attrs
-            return
-        }
-
-        // Is the character immediately AFTER the cursor part of a link?
-        let pos = selectedRange().location
-        let charAfterIsLink: Bool
-        if pos < storage.length {
-            charAfterIsLink = storage.attributes(at: pos, effectiveRange: nil)[.link] != nil
-        } else {
-            charAfterIsLink = false  // cursor is at end of document
-        }
-
-        // Still inside a link — leave typing attrs as-is
-        guard !charAfterIsLink else { return }
-
-        // Cursor has exited the link — restore plain typing attributes
-        attrs.removeValue(forKey: .link)
-        attrs.removeValue(forKey: .cursor)
-        attrs.removeValue(forKey: .underlineStyle)
-        if (attrs[.foregroundColor] as? NSColor) == NSColor.linkColor {
-            attrs[.foregroundColor] = NSColor.textColor
-        }
-        typingAttributes = attrs
-    }
-
     private func notifyChange() {
         floatDelegate?.textViewDidChange(self)
         let h = measureContentHeight()
@@ -774,7 +686,6 @@ final class FloatNotesTextView: NSTextView {
         }
         super.setSelectedRange(charRange, affinity: affinity, stillSelecting: stillSelecting)
         if !stillSelecting {
-            fixTypingAttributesIfOffLink()
             floatDelegate?.textViewSelectionDidChange(self)
         }
     }
@@ -790,7 +701,6 @@ final class FloatNotesTextView: NSTextView {
             lastKnownSelection = first
         }
         if !stillSelecting {
-            fixTypingAttributesIfOffLink()
             floatDelegate?.textViewSelectionDidChange(self)
         }
     }
@@ -810,193 +720,12 @@ final class FloatNotesTextView: NSTextView {
         return result
     }
 
-    // MARK: - HTML export (for Apple Notes transfer)
-
-    func htmlContent() -> String {
-        guard let storage = textStorage else { return "" }
-        let fullRange = NSRange(location: 0, length: storage.length)
-        let rawString = storage.string as NSString
-        var html = ""
-        var inList = false
-
-        // Process line by line to handle bullets and todos as list items
-        let lines = rawString.components(separatedBy: "\n")
-        var charIndex = 0
-
-        for (lineIndex, line) in lines.enumerated() {
-            let lineRange = NSRange(location: charIndex, length: line.utf16.count)
-            // Determine if this line starts with a bullet or todo
-            var isBullet = false
-            var isTodo = false
-            var todoChecked = false
-            var contentStart = lineRange.location
-
-            // Check for todo attachment at start of line
-            if lineRange.length > 0 {
-                let firstCharRange = NSRange(location: lineRange.location, length: 1)
-                let firstChar = rawString.substring(with: firstCharRange)
-                if firstChar == "\u{FFFC}" {
-                    // Text attachment — check if it's a todo
-                    let attrs = storage.attributes(at: lineRange.location, effectiveRange: nil)
-                    if let todo = attrs[.attachment] as? TodoAttachment {
-                        isTodo = true
-                        todoChecked = todo.isChecked
-                        contentStart = lineRange.location + 1
-                        // Skip trailing space after checkbox
-                        if contentStart < lineRange.location + lineRange.length {
-                            let nextChar = rawString.substring(with: NSRange(location: contentStart, length: 1))
-                            if nextChar == " " {
-                                contentStart += 1
-                            }
-                        }
-                    }
-                }
-                // Check for bullet character
-                if line.hasPrefix("•") || line.hasPrefix("・") {
-                    isBullet = true
-                    contentStart = lineRange.location + 1
-                    // Skip trailing space after bullet
-                    if contentStart < lineRange.location + lineRange.length {
-                        let nextChar = rawString.substring(with: NSRange(location: contentStart, length: 1))
-                        if nextChar == " " {
-                            contentStart += 1
-                        }
-                    }
-                }
-            }
-
-            let isListItem = isBullet || isTodo
-            if isListItem && !inList {
-                html += "<ul>"
-                inList = true
-            } else if !isListItem && inList {
-                html += "</ul>"
-                inList = false
-            }
-
-            let contentLength = lineRange.location + lineRange.length - contentStart
-            let contentRange = NSRange(location: contentStart, length: max(0, contentLength))
-
-            if isTodo {
-                let checkStr = todoChecked ? "☑ " : "☐ "
-                html += "<li>\(checkStr)"
-                html += attributedSubstringToHTML(storage: storage, range: contentRange)
-                html += "</li>"
-            } else if isBullet {
-                html += "<li>"
-                html += attributedSubstringToHTML(storage: storage, range: contentRange)
-                html += "</li>"
-            } else {
-                html += attributedSubstringToHTML(storage: storage, range: contentRange)
-                // Add line break between lines (not after last line)
-                if lineIndex < lines.count - 1 {
-                    html += "<br>"
-                }
-            }
-
-            // Advance past the line content + the newline separator
-            charIndex += line.utf16.count + 1 // +1 for \n
-        }
-
-        if inList {
-            html += "</ul>"
-        }
-
-        return html
-    }
-
-    /// Convert a range of attributed text to HTML, preserving bold/italic/underline/links.
-    private func attributedSubstringToHTML(storage: NSTextStorage, range: NSRange) -> String {
-        guard range.length > 0 else { return "" }
-        var html = ""
-        let rawString = storage.string as NSString
-
-        storage.enumerateAttributes(in: range) { attrs, attrRange, _ in
-            var text = rawString.substring(with: attrRange)
-            // Escape HTML entities
-            text = text
-                .replacingOccurrences(of: "&", with: "&amp;")
-                .replacingOccurrences(of: "<", with: "&lt;")
-                .replacingOccurrences(of: ">", with: "&gt;")
-
-            // Skip attachment characters (already handled)
-            if text == "\u{FFFC}" { return }
-
-            var prefix = ""
-            var suffix = ""
-
-            // Check font traits for bold/italic
-            if let font = attrs[.font] as? NSFont {
-                let traits = font.fontDescriptor.symbolicTraits
-                if traits.contains(.bold) {
-                    prefix += "<b>"
-                    suffix = "</b>" + suffix
-                }
-                if traits.contains(.italic) {
-                    prefix += "<i>"
-                    suffix = "</i>" + suffix
-                }
-            }
-
-            // Underline
-            if let underline = attrs[.underlineStyle] as? Int, underline != 0 {
-                prefix += "<u>"
-                suffix = "</u>" + suffix
-            }
-
-            // Strikethrough
-            if let strike = attrs[.strikethroughStyle] as? Int, strike != 0 {
-                prefix += "<s>"
-                suffix = "</s>" + suffix
-            }
-
-            // Link
-            if let link = attrs[.link] {
-                let urlString: String
-                if let url = link as? URL {
-                    urlString = url.absoluteString
-                } else {
-                    urlString = "\(link)"
-                }
-                let escapedURL = urlString
-                    .replacingOccurrences(of: "&", with: "&amp;")
-                    .replacingOccurrences(of: "\"", with: "&quot;")
-                prefix += "<a href=\"\(escapedURL)\">"
-                suffix = "</a>" + suffix
-            }
-
-            html += prefix + text + suffix
-        }
-
-        return html
-    }
-
     // MARK: - RTF data
-
-    /// Sentinel strings embedded in RTF to represent TodoAttachment checkboxes.
-    /// These are converted back to real TodoAttachment objects on load.
-    private static let todoUncheckedMarker = "\u{FFFE}TODO_UNCHECKED\u{FFFE}"
-    private static let todoCheckedMarker   = "\u{FFFE}TODO_CHECKED\u{FFFE}"
 
     func rtfContent() -> Data? {
         guard let storage = textStorage else { return nil }
-        // Replace TodoAttachment characters with marker strings before RTF serialization,
-        // because standard RTF cannot persist custom NSTextAttachment subclasses.
-        let copy = NSMutableAttributedString(attributedString: storage)
-        var offset = 0
-        storage.enumerateAttribute(.attachment, in: NSRange(location: 0, length: storage.length)) { val, range, _ in
-            guard let todo = val as? TodoAttachment else { return }
-            let marker = todo.isChecked ? Self.todoCheckedMarker : Self.todoUncheckedMarker
-            let markerAttr = NSAttributedString(string: marker, attributes: [
-                .font: NSFont.systemFont(ofSize: fontSize),
-                .foregroundColor: NSColor.textColor
-            ])
-            let adjustedRange = NSRange(location: range.location + offset, length: range.length)
-            copy.replaceCharacters(in: adjustedRange, with: markerAttr)
-            offset += marker.utf16.count - range.length
-        }
-        return try? copy.data(
-            from: NSRange(location: 0, length: copy.length),
+        return try? storage.data(
+            from: NSRange(location: 0, length: storage.length),
             documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]
         )
     }
@@ -1016,49 +745,22 @@ final class FloatNotesTextView: NSTextView {
             needsDisplay = true
             return
         }
-        // Normalize fonts AND colors on load so that text stored with foreign colors
-        // (e.g. grey from a previous paste before normalization was added) is corrected
-        // every time the note is displayed, without needing a re-paste.
+        // Normalize all fonts to system font, preserving bold/italic traits
         let mutable = NSMutableAttributedString(attributedString: atStr)
-        let fullRange = NSRange(location: 0, length: mutable.length)
-
-        mutable.enumerateAttributes(in: fullRange) { attrs, range, _ in
-            // Font: normalize to system font, preserving bold/italic symbolic traits
-            let base = (attrs[.font] as? NSFont) ?? NSFont.systemFont(ofSize: fontSize)
-            let traits = base.fontDescriptor.symbolicTraits
+        mutable.enumerateAttribute(.font, in: NSRange(location: 0, length: mutable.length)) { val, range, _ in
+            guard let font = val as? NSFont else { return }
+            let traits = font.fontDescriptor.symbolicTraits
             let desc = NSFont.systemFont(ofSize: fontSize).fontDescriptor.withSymbolicTraits(traits)
-            mutable.addAttribute(.font,
-                                 value: NSFont(descriptor: desc, size: fontSize) ?? NSFont.systemFont(ofSize: fontSize),
-                                 range: range)
-
-            // Color: force labelColor for non-link text; links keep their blue.
-            if attrs[.link] == nil {
-                mutable.addAttribute(.foregroundColor, value: NSColor.textColor, range: range)
-            }
+            let newFont = NSFont(descriptor: desc, size: fontSize)
+            mutable.addAttribute(.font, value: newFont ?? NSFont.systemFont(ofSize: fontSize), range: range)
         }
-
         // RTF round-trip often loses the font attribute on attachment characters (NSTextAttachment
         // uses U+FFFC). Explicitly set system font on all attachment characters so that deleting
         // them doesn't corrupt the typing attributes with Helvetica/Arial fallback.
-        mutable.enumerateAttribute(.attachment, in: fullRange) { val, range, _ in
+        mutable.enumerateAttribute(.attachment, in: NSRange(location: 0, length: mutable.length)) { val, range, _ in
             guard val != nil else { return }
             mutable.addAttribute(.font, value: NSFont.systemFont(ofSize: fontSize), range: range)
         }
-
-        // Restore TodoAttachment markers back to real attachments
-        for (marker, checked) in [(Self.todoUncheckedMarker, false), (Self.todoCheckedMarker, true)] {
-            while true {
-                let searchRange = NSRange(location: 0, length: mutable.length)
-                let found = (mutable.string as NSString).range(of: marker, range: searchRange)
-                guard found.location != NSNotFound else { break }
-                let attachment = TodoAttachment(isChecked: checked)
-                let atStr = NSMutableAttributedString(attachment: attachment)
-                atStr.addAttribute(.font, value: NSFont.systemFont(ofSize: fontSize),
-                                   range: NSRange(location: 0, length: atStr.length))
-                mutable.replaceCharacters(in: found, with: atStr)
-            }
-        }
-
         textStorage?.setAttributedString(mutable)
         needsDisplay = true
     }
@@ -1068,31 +770,22 @@ final class FloatNotesTextView: NSTextView {
     override func menu(for event: NSEvent) -> NSMenu? {
         guard let menu = super.menu(for: event) else { return nil }
 
-        // Remove the system "Layout Orientation" item — not relevant for single-direction notes.
-        if let idx = menu.items.firstIndex(where: { $0.title == "Layout Orientation" }) {
-            // Remove the separator immediately before it if present
-            if idx > 0, menu.items[idx - 1].isSeparatorItem {
-                menu.removeItem(at: idx - 1)
-            }
-            menu.items.removeAll { $0.title == "Layout Orientation" }
-        }
+        let sub = NSMenu(title: "Transformations")
+        let boldItem      = sub.addItem(withTitle: "Bold",      action: #selector(boldAction(_:)),      keyEquivalent: "")
+        let italicItem    = sub.addItem(withTitle: "Italic",    action: #selector(italicAction(_:)),    keyEquivalent: "")
+        let underlineItem = sub.addItem(withTitle: "Underline", action: #selector(underlineAction(_:)), keyEquivalent: "")
+        sub.addItem(.separator())
+        sub.addItem(withTitle: "Link…", action: #selector(linkAction(_:)), keyEquivalent: "")
 
-        // Inject our formatting options into the system's existing "Transformations" submenu
-        // so there is only one submenu, not two.
-        if let existingItem = menu.items.first(where: { $0.title == "Transformations" }),
-           let sub = existingItem.submenu {
-            sub.addItem(.separator())
-            let boldItem      = sub.addItem(withTitle: "Bold",      action: #selector(boldAction(_:)),      keyEquivalent: "")
-            let italicItem    = sub.addItem(withTitle: "Italic",    action: #selector(italicAction(_:)),    keyEquivalent: "")
-            let underlineItem = sub.addItem(withTitle: "Underline", action: #selector(underlineAction(_:)), keyEquivalent: "")
-            sub.addItem(.separator())
-            let linkItem      = sub.addItem(withTitle: "Link…",     action: #selector(linkAction(_:)),      keyEquivalent: "")
-            boldItem.target      = self
-            italicItem.target    = self
-            underlineItem.target = self
-            linkItem.target      = self
-        }
+        boldItem.target      = self
+        italicItem.target    = self
+        underlineItem.target = self
+        sub.items.last?.target = self
 
+        let parent = NSMenuItem(title: "Transformations", action: nil, keyEquivalent: "")
+        parent.submenu = sub
+        menu.addItem(.separator())
+        menu.addItem(parent)
         return menu
     }
 
@@ -1100,9 +793,7 @@ final class FloatNotesTextView: NSTextView {
         if item.action == #selector(boldAction(_:)) ||
            item.action == #selector(italicAction(_:)) ||
            item.action == #selector(underlineAction(_:)) {
-            // Use lastKnownSelection — right-clicking may clear the live selectedRange()
-            // but the selection the user made before right-clicking is still in lastKnownSelection.
-            return lastKnownSelection.length > 0
+            return selectedRange().length > 0
         }
         return super.validateMenuItem(item)
     }
