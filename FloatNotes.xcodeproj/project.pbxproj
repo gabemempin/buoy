@@ -23,11 +23,6 @@
 			path = FloatNotes;
 			sourceTree = "<group>";
 		};
-		1AA855942F6DB41800B86461 /* New Folder */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = "New Folder";
-			sourceTree = "<group>";
-		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -50,7 +45,6 @@
 			children = (
 				1A1C3B572F6B962700F7F7E8 /* FloatNotes */,
 				1A1C3B562F6B962700F7F7E8 /* Products */,
-				1AA855942F6DB41800B86461 /* New Folder */,
 			);
 			sourceTree = "<group>";
 		};
@@ -79,7 +73,6 @@
 			);
 			fileSystemSynchronizedGroups = (
 				1A1C3B572F6B962700F7F7E8 /* FloatNotes */,
-				1AA855942F6DB41800B86461 /* New Folder */,
 			);
 			name = FloatNotes;
 			packageProductDependencies = (
