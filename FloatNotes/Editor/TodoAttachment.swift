@@ -20,7 +20,7 @@ final class TodoAttachment: NSTextAttachment {
     }
 
     private func updateImage() {
-        let size = CGSize(width: 17, height: 17)
+        let size = CGSize(width: 14, height: 14)
         let image = NSImage(size: size, flipped: false) { rect in
             let circle = rect.insetBy(dx: 1, dy: 1)
             if self.isChecked {
@@ -32,16 +32,14 @@ final class TodoAttachment: NSTextAttachment {
                 check.lineWidth = 1.5
                 check.lineCapStyle = .round
                 check.lineJoinStyle = .round
-                let inset: CGFloat = 3.5
-                let checkRect = circle.insetBy(dx: inset, dy: inset)
-                check.move(to: CGPoint(x: checkRect.minX, y: checkRect.midY))
-                check.line(to: CGPoint(x: checkRect.minX + checkRect.width * 0.35, y: checkRect.minY))
-                check.line(to: CGPoint(x: checkRect.maxX, y: checkRect.maxY))
+                check.move(to: CGPoint(x: circle.minX + 3, y: circle.midY))
+                check.line(to: CGPoint(x: circle.minX + 5, y: circle.minY + 3.5))
+                check.line(to: CGPoint(x: circle.maxX - 2.5, y: circle.maxY - 2.5))
                 check.stroke()
             } else {
                 let path = NSBezierPath(ovalIn: circle)
                 NSColor.tertiaryLabelColor.setStroke()
-                path.lineWidth = 1.0
+                path.lineWidth = 1.5
                 path.stroke()
             }
             return true
