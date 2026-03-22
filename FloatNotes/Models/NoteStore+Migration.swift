@@ -79,60 +79,7 @@ enum NoteStore_Migration {
     }
 
     private static func parseInlineHTML(_ html: String) -> NSAttributedString {
-        let result = NSMutableAttributedString()
-        var remaining = html
-
-        // Very basic inline HTML parser
-        let tags: [(open: String, close: String, attr: NSAttributedString.Key, value: Any)] = [
-            ("<b>", "</b>", .font, NSFont.boldSystemFont(ofSize: 13)),
-            ("<strong>", "</strong>", .font, NSFont.boldSystemFont(ofSize: 13)),
-            ("<i>", "</i>", .font, NSFont.systemFont(ofSize: 13)),
-            ("<em>", "</em>", .font, NSFont.systemFont(ofSize: 13)),
-            ("<u>", "</u>", .underlineStyle, NSUnderlineStyle.single.rawValue),
-        ]
-
-        // Strip all tags for now with a simple regex-like approach
-        // and handle <a href> links
-        let stripped = handleLinks(in: remaining)
-        var cleaned = stripped.string
-        // Strip remaining tags
-        cleaned = stripHTML(cleaned)
-        result.append(NSAttributedString(string: cleaned))
-        // Merge link attributes
-        result.addAttributes(stripped.attributes(at: 0, effectiveRange: nil), range: NSRange(location: 0, length: 0))
-
-        // A simpler approach: just strip all HTML and return plain text
-        // The full inline parser would be complex; for migration we prioritize content fidelity
-        let plainResult = NSMutableAttributedString(string: stripHTML(html))
-        return plainResult
-    }
-
-    private static func handleLinks(in html: String) -> NSAttributedString {
-        // Handle <a href="...">text</a>
-        let result = NSMutableAttributedString(string: html)
-        let pattern = #"<a href="([^"]+)">([^<]+)</a>"#
-        guard let regex = try? NSRegularExpression(pattern: pattern) else {
-            return NSAttributedString(string: stripHTML(html))
-        }
-        let nsString = html as NSString
-        let matches = regex.matches(in: html, range: NSRange(location: 0, length: nsString.length))
-        var output = NSMutableAttributedString()
-        var cursor = 0
-        for match in matches {
-            let preRange = NSRange(location: cursor, length: match.range.location - cursor)
-            let pre = stripHTML(nsString.substring(with: preRange))
-            output.append(NSAttributedString(string: pre))
-            let url = nsString.substring(with: match.range(at: 1))
-            let text = nsString.substring(with: match.range(at: 2))
-            let linked = NSAttributedString(string: text, attributes: [
-                .link: URL(string: url) as Any
-            ])
-            output.append(linked)
-            cursor = match.range.upperBound
-        }
-        let tail = stripHTML(nsString.substring(from: cursor))
-        output.append(NSAttributedString(string: tail))
-        return output
+        return NSMutableAttributedString(string: stripHTML(html))
     }
 
     private static func stripHTML(_ html: String) -> String {

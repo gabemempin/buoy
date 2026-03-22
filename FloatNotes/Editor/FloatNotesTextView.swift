@@ -95,13 +95,59 @@ final class FloatNotesTextView: NSTextView {
     }
 
     private func updateDefaultTypingAttributes() {
-        let style = NSMutableParagraphStyle()
+        typingAttributes = normalizedTypingAttributes()
+    }
+
+    /// Returns a safe attribute set for inserted plain text.
+    /// This keeps checklist pastes on the app's system font, adaptive color, and line spacing
+    /// while preserving paragraph-level settings from the surrounding text when available.
+    private func normalizedTypingAttributes(
+        basedOn source: [NSAttributedString.Key: Any]? = nil
+    ) -> [NSAttributedString.Key: Any] {
+        let sysFont = NSFont.systemFont(ofSize: fontSize)
+        let style = ((source?[.paragraphStyle] as? NSParagraphStyle)?.mutableCopy() as? NSMutableParagraphStyle)
+            ?? NSMutableParagraphStyle()
         style.lineSpacing = 3
-        typingAttributes = [
-            .font: NSFont.systemFont(ofSize: fontSize),
-            .foregroundColor: NSColor.textColor,
-            .paragraphStyle: style
-        ]
+
+        let traits = (source?[.font] as? NSFont)?.fontDescriptor.symbolicTraits ?? []
+        let desc = sysFont.fontDescriptor.withSymbolicTraits(traits)
+        let font = NSFont(descriptor: desc, size: fontSize) ?? sysFont
+
+        var attrs = source ?? [:]
+        attrs[.font] = font
+        attrs[.foregroundColor] = NSColor.textColor
+        attrs[.paragraphStyle] = style
+        attrs.removeValue(forKey: .backgroundColor)
+        return attrs
+    }
+
+    private func normalizedPlainTextAttributes(at location: Int) -> [NSAttributedString.Key: Any] {
+        guard let storage = textStorage, storage.length > 0 else {
+            return normalizedTypingAttributes()
+        }
+
+        let clampedLocation = min(max(location, 0), storage.length)
+        if clampedLocation < storage.length {
+            return normalizedTypingAttributes(basedOn: storage.attributes(at: clampedLocation, effectiveRange: nil))
+        }
+        if clampedLocation > 0 {
+            return normalizedTypingAttributes(basedOn: storage.attributes(at: clampedLocation - 1, effectiveRange: nil))
+        }
+        return normalizedTypingAttributes()
+    }
+
+    @discardableResult
+    private func replaceText(in range: NSRange, with replacement: NSAttributedString) -> Bool {
+        guard let storage = textStorage else { return false }
+        guard shouldChangeText(in: range, replacementString: replacement.string) else { return false }
+        storage.replaceCharacters(in: range, with: replacement)
+        didChangeText()
+        return true
+    }
+
+    @discardableResult
+    private func replaceText(in range: NSRange, with replacement: String) -> Bool {
+        replaceText(in: range, with: NSAttributedString(string: replacement, attributes: typingAttributes))
     }
 
     /// Re-applies the current fontSize to all existing text, preserving bold/italic traits.
@@ -202,6 +248,15 @@ final class FloatNotesTextView: NSTextView {
         case "z":  // ⌘Z — undo
             undoManager?.undo()
             return true
+        case "c":  // ⌘C — copy (handle directly so it works in non-activating panel)
+            copy(nil)
+            return true
+        case "v":  // ⌘V — paste
+            paste(nil)
+            return true
+        case "x":  // ⌘X — cut
+            cut(nil)
+            return true
         case "b":  // ⌘B — bold
             applyBold()
             return true
@@ -293,7 +348,7 @@ final class FloatNotesTextView: NSTextView {
 
         // `- ` → bullet
         if textOnLine == "-" {
-            storage.replaceCharacters(in: NSRange(location: lineStart, length: 1), with: "• ")
+            guard replaceText(in: NSRange(location: lineStart, length: 1), with: "• ") else { return false }
             setSelectedRange(NSRange(location: lineStart + 2, length: 0))
             notifyChange()
             return true
@@ -314,7 +369,7 @@ final class FloatNotesTextView: NSTextView {
                 .foregroundColor: NSColor.textColor,
                 .paragraphStyle: style
             ]))
-            storage.replaceCharacters(in: NSRange(location: lineStart, length: 2), with: atStr)
+            guard replaceText(in: NSRange(location: lineStart, length: 2), with: atStr) else { return false }
             setSelectedRange(NSRange(location: lineStart + atStr.length, length: 0))
             updateDefaultTypingAttributes()
             notifyChange()
@@ -339,11 +394,11 @@ final class FloatNotesTextView: NSTextView {
         if lineText.hasPrefix("• ") {
             let content = String(lineText.dropFirst(2))
             if content.trimmingCharacters(in: .whitespaces).isEmpty {
-                storage.replaceCharacters(in: NSRange(location: lineStart, length: 2), with: "")
+                guard replaceText(in: NSRange(location: lineStart, length: 2), with: "") else { return false }
                 setSelectedRange(NSRange(location: lineStart, length: 0))
             } else {
                 let newLine = NSAttributedString(string: "\n• ", attributes: typingAttributes)
-                storage.replaceCharacters(in: sel, with: newLine)
+                guard replaceText(in: sel, with: newLine) else { return false }
                 setSelectedRange(NSRange(location: pos + 3, length: 0))
             }
             notifyChange()
@@ -360,7 +415,7 @@ final class FloatNotesTextView: NSTextView {
 
                 if lineContent.trimmingCharacters(in: .whitespaces).isEmpty {
                     let removeLen = min(2, storage.length - lineStart)
-                    storage.replaceCharacters(in: NSRange(location: lineStart, length: removeLen), with: "")
+                    guard replaceText(in: NSRange(location: lineStart, length: removeLen), with: "") else { return false }
                     setSelectedRange(NSRange(location: lineStart, length: 0))
                 } else {
                     let newAttachment = TodoAttachment(isChecked: false)
@@ -370,7 +425,7 @@ final class FloatNotesTextView: NSTextView {
                     let newLine = NSMutableAttributedString(string: "\n")
                     newLine.append(newAtStr)
                     newLine.append(NSAttributedString(string: " "))
-                    storage.replaceCharacters(in: sel, with: newLine)
+                    guard replaceText(in: sel, with: newLine) else { return false }
                     setSelectedRange(NSRange(location: pos + newLine.length, length: 0))
                 }
                 notifyChange()
@@ -397,7 +452,7 @@ final class FloatNotesTextView: NSTextView {
 
         // Bullet: cursor immediately after "• "
         if lineText == "• " {
-            storage.replaceCharacters(in: NSRange(location: lineStart, length: 2), with: "")
+            guard replaceText(in: NSRange(location: lineStart, length: 2), with: "") else { return false }
             setSelectedRange(NSRange(location: lineStart, length: 0))
             notifyChange()
             return true
@@ -408,7 +463,7 @@ final class FloatNotesTextView: NSTextView {
             let attr = storage.attributes(at: lineStart, effectiveRange: nil)
             if attr[.attachment] is TodoAttachment, pos == lineStart + 2 {
                 let removeLen = min(2, storage.length - lineStart)
-                storage.replaceCharacters(in: NSRange(location: lineStart, length: removeLen), with: "")
+                guard replaceText(in: NSRange(location: lineStart, length: removeLen), with: "") else { return false }
                 setSelectedRange(NSRange(location: lineStart, length: 0))
                 notifyChange()
                 return true
@@ -471,9 +526,11 @@ final class FloatNotesTextView: NSTextView {
                 cleaned = regex.stringByReplacingMatches(
                     in: cleaned, range: NSRange(cleaned.startIndex..., in: cleaned), withTemplate: "")
             }
-            let insertion = NSAttributedString(string: cleaned, attributes: typingAttributes)
-            storage.replaceCharacters(in: sel, with: insertion)
+            let insertionAttributes = normalizedPlainTextAttributes(at: sel.location)
+            let insertion = NSAttributedString(string: cleaned, attributes: insertionAttributes)
+            guard replaceText(in: sel, with: insertion) else { return }
             setSelectedRange(NSRange(location: sel.location + insertion.length, length: 0))
+            typingAttributes = insertionAttributes
             notifyChange()
         } else {
             // Standard paste, then normalize fonts/colors on the pasted region
@@ -518,6 +575,7 @@ final class FloatNotesTextView: NSTextView {
         storage.enumerateAttribute(.underlineStyle, in: sel) { val, _, _ in
             if val == nil { allUnderlined = false }
         }
+        guard shouldChangeText(in: sel, replacementString: nil) else { return }
         storage.beginEditing()
         if allUnderlined {
             storage.removeAttribute(.underlineStyle, range: sel)
@@ -525,9 +583,9 @@ final class FloatNotesTextView: NSTextView {
             storage.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: sel)
         }
         storage.endEditing()
+        didChangeText()
         window?.makeFirstResponder(self)
         super.setSelectedRange(sel)
-        notifyChange()
     }
 
     func applyBullet(_ cursorRange: NSRange? = nil) {
@@ -653,9 +711,10 @@ final class FloatNotesTextView: NSTextView {
         // Use caller-captured position (avoids stale lastKnownSelection overwriting cursor)
         let sel = position ?? (lastKnownSelection.length > 0 ? lastKnownSelection : lastKnownCursorPosition)
         window?.makeFirstResponder(self)
+        guard shouldChangeText(in: sel, replacementString: atStr.string) else { return }
         storage.replaceCharacters(in: sel, with: atStr)
         setSelectedRange(NSRange(location: sel.location + atStr.length, length: 0))
-        notifyChange()
+        didChangeText()
     }
 
     // MARK: - Height Measurement
@@ -692,6 +751,7 @@ final class FloatNotesTextView: NSTextView {
             guard let f = val as? NSFont else { allHave = false; return }
             if !f.fontDescriptor.symbolicTraits.contains(trait) { allHave = false }
         }
+        guard shouldChangeText(in: sel, replacementString: nil) else { return }
         storage.beginEditing()
         storage.enumerateAttribute(.font, in: sel) { val, range, _ in
             let base = (val as? NSFont) ?? NSFont.systemFont(ofSize: self.fontSize)
@@ -702,9 +762,9 @@ final class FloatNotesTextView: NSTextView {
             storage.addAttribute(.font, value: newFont, range: range)
         }
         storage.endEditing()
+        didChangeText()
         window?.makeFirstResponder(self)
         super.setSelectedRange(sel)
-        notifyChange()
     }
 
     /// After any text edit, normalize typing attributes back to system font.
@@ -712,18 +772,7 @@ final class FloatNotesTextView: NSTextView {
     /// (RTF round-trip replaces NSFont.systemFont with a named font like Helvetica).
     override func didChangeText() {
         super.didChangeText()
-        var attrs = typingAttributes
-        if let font = attrs[.font] as? NSFont {
-            let sysFont = NSFont.systemFont(ofSize: fontSize)
-            let isSystemFont = font.familyName == sysFont.familyName
-                || font.familyName?.hasPrefix(".") == true
-            if !isSystemFont {
-                let traits = font.fontDescriptor.symbolicTraits
-                let desc = sysFont.fontDescriptor.withSymbolicTraits(traits)
-                attrs[.font] = NSFont(descriptor: desc, size: fontSize) ?? sysFont
-                typingAttributes = attrs
-            }
-        }
+        typingAttributes = normalizedTypingAttributes(basedOn: typingAttributes)
     }
 
     private func notifyChange() {
@@ -916,6 +965,7 @@ final class FloatNotesTextView: NSTextView {
             }
         }
         textStorage?.setAttributedString(mutable)
+        updateDefaultTypingAttributes()
         needsDisplay = true
     }
 
