@@ -6,9 +6,9 @@ enum FontSize: String, Codable, CaseIterable {
 
     var pointSize: CGFloat {
         switch self {
-        case .small: return 12
-        case .medium: return 15
-        case .large: return 18
+        case .small: return 13
+        case .medium: return 14
+        case .large: return 16
         }
     }
 }

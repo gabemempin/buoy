@@ -329,8 +329,8 @@ struct ContentView: View {
     }
 
     private func transferToAppleNotes() {
-        let text = tvRef.value?.plainTextContent() ?? ""
-        AppleNotesService.transfer(plainText: text) { error in
+        let html = tvRef.value?.htmlContent() ?? ""
+        AppleNotesService.transfer(htmlContent: html) { error in
             if let error {
                 toastState.show("Error: \(error)", isError: true)
             } else {

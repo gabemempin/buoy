@@ -89,9 +89,12 @@ final class FloatNotesTextView: NSTextView {
     }
 
     private func updateDefaultTypingAttributes() {
+        let style = NSMutableParagraphStyle()
+        style.lineSpacing = 3
         typingAttributes = [
             .font: NSFont.systemFont(ofSize: fontSize),
-            .foregroundColor: NSColor.labelColor
+            .foregroundColor: NSColor.labelColor,
+            .paragraphStyle: style
         ]
     }
 
@@ -174,11 +177,21 @@ final class FloatNotesTextView: NSTextView {
         let mods = event.modifierFlags
             .intersection(.deviceIndependentFlagsMask)
             .subtracting([.numericPad, .function, .help])
+
+        // ⌘⇧Z — redo (must check before the .command-only guard below)
+        if mods == [.command, .shift] && event.keyCode == 6 {
+            undoManager?.redo()
+            return true
+        }
+
         guard mods == .command else { return super.performKeyEquivalent(with: event) }
         switch event.keyCode {
         case 0:  // ⌘A — select all (only when this view is first responder; don't steal from title field)
             guard window?.firstResponder === self else { return super.performKeyEquivalent(with: event) }
             selectAll(nil)
+            return true
+        case 6:  // ⌘Z — undo
+            undoManager?.undo()
             return true
         case 11: // ⌘B — bold
             applyBold()
@@ -279,13 +292,16 @@ final class FloatNotesTextView: NSTextView {
                                range: NSRange(location: 0, length: atStr.length))
             // Explicit font on the space — prevents the first typed character from inheriting
             // stale typingAttributes (e.g. a non-system font from a previous RTF round-trip)
+            let style = NSMutableParagraphStyle()
+            style.lineSpacing = 3
             atStr.append(NSAttributedString(string: " ", attributes: [
                 .font: NSFont.systemFont(ofSize: fontSize),
-                .foregroundColor: NSColor.labelColor
+                .foregroundColor: NSColor.labelColor,
+                .paragraphStyle: style
             ]))
             storage.replaceCharacters(in: NSRange(location: lineStart, length: 2), with: atStr)
             setSelectedRange(NSRange(location: lineStart + atStr.length, length: 0))
-            typingAttributes = [.font: NSFont.systemFont(ofSize: fontSize), .foregroundColor: NSColor.labelColor]
+            updateDefaultTypingAttributes()
             notifyChange()
             return true
         }
@@ -518,6 +534,10 @@ final class FloatNotesTextView: NSTextView {
         storage.beginEditing()
         var offset = 0
         for lr in lineRanges {
+            // Skip lines that are empty (only a newline character or nothing)
+            let origLineText = nsString.substring(with: lr).trimmingCharacters(in: .newlines)
+            if origLineText.isEmpty { continue }
+
             let adjStart = lr.location + offset
             guard adjStart <= storage.length else { continue }
             let previewLen = min(2, storage.length - adjStart)
@@ -562,6 +582,10 @@ final class FloatNotesTextView: NSTextView {
         storage.beginEditing()
         var offset = 0
         for lr in lineRanges {
+            // Skip lines that are empty (only a newline character or nothing)
+            let origLineText = nsString.substring(with: lr).trimmingCharacters(in: .newlines)
+            if origLineText.isEmpty { continue }
+
             let adjStart = lr.location + offset
             guard adjStart <= storage.length else { continue }
             if adjStart < storage.length,
@@ -579,9 +603,12 @@ final class FloatNotesTextView: NSTextView {
                 let aStr = NSMutableAttributedString(attachment: a)
                 aStr.addAttribute(.font, value: NSFont.systemFont(ofSize: fontSize),
                                   range: NSRange(location: 0, length: aStr.length))
+                let style = NSMutableParagraphStyle()
+                style.lineSpacing = 3
                 aStr.append(NSAttributedString(string: " ", attributes: [
                     .font: NSFont.systemFont(ofSize: fontSize),
-                    .foregroundColor: NSColor.labelColor
+                    .foregroundColor: NSColor.labelColor,
+                    .paragraphStyle: style
                 ]))
                 if lineText.hasPrefix("• ") {
                     storage.replaceCharacters(in: NSRange(location: adjStart, length: 2), with: aStr)
@@ -628,10 +655,23 @@ final class FloatNotesTextView: NSTextView {
 
     // MARK: - Helpers
 
+    /// Toggles a font trait (bold/italic) on the current selection.
+    /// If there is no selection, toggles the trait for future typing via typingAttributes only —
+    /// this prevents accidentally bolding text on a different line.
     private func toggleFontTrait(_ trait: NSFontDescriptor.SymbolicTraits) {
-        var sel = selectedRange()
-        if sel.length == 0 { sel = lastKnownSelection }
-        guard sel.length > 0, let storage = textStorage else { return }
+        let sel = selectedRange()
+        guard sel.length > 0, let storage = textStorage else {
+            // No selection — toggle for future typing only (don't touch existing text)
+            var attrs = typingAttributes
+            if let font = attrs[.font] as? NSFont {
+                let traits = font.fontDescriptor.symbolicTraits
+                let newTraits = traits.contains(trait) ? traits.subtracting(trait) : traits.union(trait)
+                let desc = NSFont.systemFont(ofSize: fontSize).fontDescriptor.withSymbolicTraits(newTraits)
+                attrs[.font] = NSFont(descriptor: desc, size: fontSize) ?? font
+                typingAttributes = attrs
+            }
+            return
+        }
         var allHave = true
         storage.enumerateAttribute(.font, in: sel) { val, _, _ in
             guard let f = val as? NSFont else { allHave = false; return }
@@ -720,12 +760,76 @@ final class FloatNotesTextView: NSTextView {
         return result
     }
 
+    // MARK: - HTML export (for Apple Notes transfer)
+
+    func htmlContent() -> String {
+        guard let storage = textStorage else { return plainTextContent() }
+
+        // Build a copy with TodoAttachments replaced by ☐/☑ Unicode chars for HTML export
+        let mutable = NSMutableAttributedString(attributedString:
+            storage.attributedSubstring(from: NSRange(location: 0, length: storage.length)))
+
+        var attachments: [(NSRange, Bool)] = []
+        storage.enumerateAttribute(.attachment, in: NSRange(location: 0, length: storage.length)) { val, range, _ in
+            if let todo = val as? TodoAttachment {
+                attachments.append((range, todo.isChecked))
+            }
+        }
+        for (range, isChecked) in attachments.reversed() {
+            let symbol = isChecked ? "☑" : "☐"
+            let replacement = NSAttributedString(string: symbol, attributes: [
+                .font: NSFont.systemFont(ofSize: fontSize),
+                .foregroundColor: NSColor.labelColor
+            ])
+            mutable.replaceCharacters(in: range, with: replacement)
+        }
+
+        let documentAttributes: [NSAttributedString.DocumentAttributeKey: Any] = [
+            .documentType: NSAttributedString.DocumentType.html,
+            .characterEncoding: String.Encoding.utf8.rawValue
+        ]
+        if let data = try? mutable.data(
+            from: NSRange(location: 0, length: mutable.length),
+            documentAttributes: documentAttributes
+        ), let html = String(data: data, encoding: .utf8) {
+            return html
+        }
+        return plainTextContent()
+    }
+
     // MARK: - RTF data
+    // TodoAttachments are serialized as ☐ (U+2610) / ☑ (U+2611) Unicode characters so that
+    // the checked state survives the RTF round-trip. On load, these markers are restored back
+    // to TodoAttachment instances.
 
     func rtfContent() -> Data? {
         guard let storage = textStorage else { return nil }
-        return try? storage.data(
-            from: NSRange(location: 0, length: storage.length),
+
+        // Build a copy with TodoAttachments replaced by ☐/☑ so the state persists in RTF
+        let mutable = NSMutableAttributedString(attributedString:
+            storage.attributedSubstring(from: NSRange(location: 0, length: storage.length)))
+
+        var attachments: [(NSRange, Bool)] = []
+        storage.enumerateAttribute(.attachment, in: NSRange(location: 0, length: storage.length)) { val, range, _ in
+            if let todo = val as? TodoAttachment {
+                attachments.append((range, todo.isChecked))
+            }
+        }
+        // Replace backward to avoid index shifting
+        for (range, isChecked) in attachments.reversed() {
+            let marker = isChecked ? "\u{2611}" : "\u{2610}" // ☑ or ☐
+            let style = NSMutableParagraphStyle()
+            style.lineSpacing = 3
+            let replacement = NSAttributedString(string: marker, attributes: [
+                .font: NSFont.systemFont(ofSize: fontSize),
+                .foregroundColor: NSColor.labelColor,
+                .paragraphStyle: style
+            ])
+            mutable.replaceCharacters(in: range, with: replacement)
+        }
+
+        return try? mutable.data(
+            from: NSRange(location: 0, length: mutable.length),
             documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]
         )
     }
@@ -754,12 +858,47 @@ final class FloatNotesTextView: NSTextView {
             let newFont = NSFont(descriptor: desc, size: fontSize)
             mutable.addAttribute(.font, value: newFont ?? NSFont.systemFont(ofSize: fontSize), range: range)
         }
+        // Normalize all foreground colors to adaptive labelColor (RTF stores fixed colors).
+        // Re-apply link color to link ranges so hyperlinks remain styled.
+        let fullRange = NSRange(location: 0, length: mutable.length)
+        mutable.removeAttribute(.foregroundColor, range: fullRange)
+        mutable.addAttribute(.foregroundColor, value: NSColor.labelColor, range: fullRange)
+        mutable.enumerateAttribute(.link, in: fullRange) { val, range, _ in
+            if val != nil {
+                mutable.addAttribute(.foregroundColor, value: NSColor.linkColor, range: range)
+            }
+        }
+        // Apply consistent line spacing while preserving other paragraph attributes
+        var styleUpdates: [(NSRange, NSMutableParagraphStyle)] = []
+        mutable.enumerateAttribute(.paragraphStyle, in: fullRange) { val, range, _ in
+            let style = ((val as? NSParagraphStyle)?.mutableCopy() as? NSMutableParagraphStyle)
+                ?? NSMutableParagraphStyle()
+            style.lineSpacing = 3
+            styleUpdates.append((range, style))
+        }
+        for (range, style) in styleUpdates {
+            mutable.addAttribute(.paragraphStyle, value: style, range: range)
+        }
         // RTF round-trip often loses the font attribute on attachment characters (NSTextAttachment
-        // uses U+FFFC). Explicitly set system font on all attachment characters so that deleting
-        // them doesn't corrupt the typing attributes with Helvetica/Arial fallback.
-        mutable.enumerateAttribute(.attachment, in: NSRange(location: 0, length: mutable.length)) { val, range, _ in
+        // uses U+FFFC). Explicitly set system font on all attachment characters.
+        mutable.enumerateAttribute(.attachment, in: fullRange) { val, range, _ in
             guard val != nil else { return }
             mutable.addAttribute(.font, value: NSFont.systemFont(ofSize: fontSize), range: range)
+        }
+        // Restore TodoAttachments from ☐/☑ markers written by rtfContent()
+        for (marker, isChecked) in [("\u{2611}", true), ("\u{2610}", false)] as [(String, Bool)] {
+            var searchRange = NSRange(location: 0, length: mutable.length)
+            while searchRange.location < mutable.length {
+                let found = (mutable.string as NSString).range(of: marker, options: [], range: searchRange)
+                if found.location == NSNotFound { break }
+                let attachment = TodoAttachment(isChecked: isChecked)
+                let atStr = NSMutableAttributedString(attachment: attachment)
+                atStr.addAttribute(.font, value: NSFont.systemFont(ofSize: fontSize),
+                                   range: NSRange(location: 0, length: atStr.length))
+                mutable.replaceCharacters(in: found, with: atStr)
+                let nextLoc = found.location + atStr.length
+                searchRange = NSRange(location: nextLoc, length: mutable.length - nextLoc)
+            }
         }
         textStorage?.setAttributedString(mutable)
         needsDisplay = true
@@ -770,22 +909,43 @@ final class FloatNotesTextView: NSTextView {
     override func menu(for event: NSEvent) -> NSMenu? {
         guard let menu = super.menu(for: event) else { return nil }
 
-        let sub = NSMenu(title: "Transformations")
+        // Remove "Layout Orientation" item from the default menu
+        for item in menu.items where item.title == "Layout Orientation" {
+            menu.removeItem(item)
+        }
+
+        // Find the existing "Transformations" submenu added by NSTextView
+        var transformationsMenu: NSMenu?
+        for item in menu.items where item.title == "Transformations" {
+            transformationsMenu = item.submenu
+            break
+        }
+
+        // If not found, create a new one
+        if transformationsMenu == nil {
+            let sub = NSMenu(title: "Transformations")
+            let parent = NSMenuItem(title: "Transformations", action: nil, keyEquivalent: "")
+            parent.submenu = sub
+            menu.addItem(.separator())
+            menu.addItem(parent)
+            transformationsMenu = sub
+        }
+
+        guard let sub = transformationsMenu else { return menu }
+
+        // Append our formatting items to the existing Transformations submenu
+        sub.addItem(.separator())
         let boldItem      = sub.addItem(withTitle: "Bold",      action: #selector(boldAction(_:)),      keyEquivalent: "")
         let italicItem    = sub.addItem(withTitle: "Italic",    action: #selector(italicAction(_:)),    keyEquivalent: "")
         let underlineItem = sub.addItem(withTitle: "Underline", action: #selector(underlineAction(_:)), keyEquivalent: "")
         sub.addItem(.separator())
-        sub.addItem(withTitle: "Link…", action: #selector(linkAction(_:)), keyEquivalent: "")
+        let linkItem = sub.addItem(withTitle: "Link…", action: #selector(linkAction(_:)), keyEquivalent: "")
 
         boldItem.target      = self
         italicItem.target    = self
         underlineItem.target = self
-        sub.items.last?.target = self
+        linkItem.target      = self
 
-        let parent = NSMenuItem(title: "Transformations", action: nil, keyEquivalent: "")
-        parent.submenu = sub
-        menu.addItem(.separator())
-        menu.addItem(parent)
         return menu
     }
 
