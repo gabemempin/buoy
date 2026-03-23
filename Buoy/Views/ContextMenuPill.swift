@@ -94,7 +94,7 @@ struct ContextMenuPillView: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
-        .floatNotesGlass(material: .popover)
+        .buoyGlass(material: .popover)
         .clipShape(Capsule())
         .shadow(radius: 6)
         .onHover { hovering in

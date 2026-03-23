@@ -51,7 +51,7 @@ struct ShortcutsPanel: View {
         }
         .frame(width: 248)
         .background(WindowDragBlocker())
-        .floatNotesGlassPanel(cornerRadius: 14)
+        .buoyGlassPanel(cornerRadius: 14)
         .shadow(radius: 8)
         .transition(
             .asymmetric(

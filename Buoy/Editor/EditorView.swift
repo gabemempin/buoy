@@ -34,7 +34,7 @@ struct EditorView: NSViewRepresentable {
         let textView = BuoyTextView(frame: .zero)
         textView.fontSize = fontSize
         textView.delegate = context.coordinator
-        textView.floatDelegate = context.coordinator
+        textView.buoyDelegate = context.coordinator
 
         scrollView.documentView = textView
         context.coordinator.currentNoteID = noteID

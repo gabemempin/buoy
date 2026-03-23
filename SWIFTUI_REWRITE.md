@@ -1,24 +1,24 @@
-# FloatNotes (Swift) — SwiftUI Native App Guide (macOS 26 Tahoe)
+# Buoy — SwiftUI Native App Guide (macOS 26 Tahoe)
 
-> **Note:** This is the **SwiftUI rewrite** of FloatNotes. The original Electron app lives in a separate repository. This document covers the native macOS SwiftUI version only — not the Electron app.
+> **Note:** This is the **SwiftUI rewrite** of Buoy. The original Electron app lives in a separate repository. This document covers the native macOS SwiftUI version only — not the Electron app.
 
-This document contains everything needed to build FloatNotes (Swift) as a native macOS SwiftUI app targeting macOS 26. It references the prior Electron behavior only as context for what to replicate or improve. Read it fully before writing any code.
+This document contains everything needed to build Buoy as a native macOS SwiftUI app targeting macOS 26. It references the prior Electron behavior only as context for what to replicate or improve. Read it fully before writing any code.
 
 ---
 
 ## App Identity
 
-- **App name:** FloatNotes
-- **Bundle ID:** `com.floatnotes.app` (or similar)
+- **App name:** Buoy
+- **Bundle ID:** `GabeMempin.Buoy` (or similar)
 - **Type:** macOS menu bar app — no persistent Dock presence by default
-- **GitHub:** `kristofbernal/floatnotes`
+- **GitHub:** `gabemempin/Buoy`
 - **Current Electron version:** 1.1.3
 
 ---
 
 ## What This App Does
 
-FloatNotes is a frameless, always-on-top floating notepad that lives in the macOS menu bar. The user toggles it with a global hotkey (default ⌥⌘N) or by clicking the tray icon. Notes are stored locally in SQLite. The window is transparent with macOS vibrancy/Liquid Glass. There is no cloud sync, no login, no Dock icon by default.
+Buoy is a frameless, always-on-top floating notepad that lives in the macOS menu bar. The user toggles it with a global hotkey (default ⌥⌘N) or by clicking the tray icon. Notes are stored locally in SQLite. The window is transparent with macOS vibrancy/Liquid Glass. There is no cloud sync, no login, no Dock icon by default.
 
 ---
 
@@ -60,7 +60,7 @@ Content height is measured by fitting the text, then clamped: `max(200, min(700,
   - Settings
   - Check for Updates
   - separator
-  - Quit FloatNotes
+  - Quit Buoy
 
 In SwiftUI: use `NSStatusItem` with `NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)`. Set the icon via `statusItem.button?.image`.
 
@@ -271,7 +271,7 @@ Three panels that overlay the window content (not separate windows). Only one ca
 - Segmented control: Font Size (S / M / L)
 - Segmented control: Theme (Auto / Light / Dark)
 - Global shortcut recorder (see below)
-- Footer: "Check for Updates" button + "Quit FloatNotes" danger button
+- Footer: "Check for Updates" button + "Quit Buoy" danger button
 
 **Keyboard Shortcuts panel** — anchors bottom-left (above footer), width 248pt:
 - Static list of all shortcuts (see keyboard shortcuts table below)
@@ -388,7 +388,7 @@ Shown when `settings.onboarded == false`.
 
 Full-window overlay on top of main content:
 - App icon (80×80, rounded 18pt corners)
-- Title: "Welcome to FloatNotes" (18pt bold, centered)
+- Title: "Welcome to Buoy" (18pt bold, centered)
 - Subtitle: "A floating notepad that lives in your menu bar." (12pt, secondary, centered)
 - Feature pills (3 rows):
   - "Always on top of other windows"
@@ -406,16 +406,16 @@ To re-trigger: delete `~/.floating-notes/settings.json` or set `"onboarded": fal
 ## Application Menu
 
 ```
-FloatNotes
-  About FloatNotes
+Buoy
+  About Buoy
   ─────────────────
   Check for Updates…
   ─────────────────
-  Hide FloatNotes        ⌘H
+  Hide Buoy        ⌘H
   Hide Others            ⌥⌘H
   Show All
   ─────────────────
-  Quit FloatNotes        ⌘Q
+  Quit Buoy        ⌘Q
 
 Edit
   Undo    ⌘Z
@@ -456,7 +456,7 @@ In Electron, `systemPreferences.getAccentColor()` is read and applied at reduced
 
 ### App icon
 - Source: `resources/icon.icon` (Icon Composer bundle)
-- Compiled: `resources/compiled-icon/FloatNotes Icon.icns` and `Assets.car`
+- Compiled: `resources/compiled-icon/Buoy Icon.icns` and `Assets.car`
 - Variants: Light, Dark, Clear, Tinted (for macOS 26 Tahoe adaptive icons)
 - Copy `Assets.car` and `.icns` into the Xcode project's asset catalog
 
@@ -465,9 +465,9 @@ In Electron, `systemPreferences.getAccentColor()` is read and applied at reduced
 ## Architecture Recommendation
 
 ```
-Flote/
+Buoy/
 ├── App/
-│   ├── FloteApp.swift              # @main, AppDelegate
+│   ├── BuoyApp.swift              # @main, AppDelegate
 │   └── AppDelegate.swift           # window setup, NSStatusItem, global hotkey
 ├── Models/
 │   ├── Note.swift                  # Codable struct
@@ -491,7 +491,7 @@ Flote/
 │   └── AppleNotesService.swift     # AppleScript bridge
 └── Resources/
     ├── Assets.xcassets
-    └── FloatNotes Icon.icns
+    └── Buoy Icon.icns
 ```
 
 Use `@Observable` (Swift 5.9+ / macOS 14+) or `ObservableObject` for `NoteStore` and settings. `NoteStore` is the single source of truth passed via `.environment`.
@@ -553,6 +553,6 @@ Use `@Observable` (Swift 5.9+ / macOS 14+) or `ObservableObject` for `NoteStore`
 - [ ] Font size setting (S/M/L)
 - [ ] Accent color for selection highlight
 - [ ] Sparkle auto-updater
-- [ ] Native app menu (FloatNotes / Edit / Window)
+- [ ] Native app menu (Buoy / Edit / Window)
 - [ ] Dock click shows hidden window
 - [ ] App icon with all variants (Light/Dark/Clear/Tinted)

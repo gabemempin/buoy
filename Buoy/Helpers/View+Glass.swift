@@ -4,7 +4,7 @@ extension View {
     /// Applies Liquid Glass on macOS 26+, NSVisualEffectView on macOS 15.
     /// Main window — includes edge depth border.
     @ViewBuilder
-    func floatNotesGlass(material: NSVisualEffectView.Material = .menu) -> some View {
+    func buoyGlass(material: NSVisualEffectView.Material = .menu) -> some View {
         if #available(macOS 26, *) {
             self.background(
                     VisualEffectBackground(material: .underPageBackground, blendingMode: .behindWindow)  // ← blur layer; try .underPageBackground, .menu, .sidebar
@@ -43,7 +43,7 @@ extension View {
 
     /// More opaque glass for overlay panels (Settings, Shortcuts, AllNotes).
     @ViewBuilder
-    func floatNotesGlassPanel(cornerRadius: CGFloat = 14) -> some View {
+    func buoyGlassPanel(cornerRadius: CGFloat = 14) -> some View {
         if #available(macOS 26, *) {
             self.glassEffect(in: RoundedRectangle(cornerRadius: cornerRadius))
                 .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
@@ -61,7 +61,7 @@ extension View {
 
     /// Applies a circular Liquid Glass effect on macOS 26+, subtle filled circle on macOS 15.
     @ViewBuilder
-    func floatNotesGlassCircle() -> some View {
+    func buoyGlassCircle() -> some View {
         if #available(macOS 26, *) {
             self.glassEffect(in: Circle())
                 .shadow(color: .black.opacity(0.18), radius: 2, x: 0, y: 1)
@@ -76,7 +76,7 @@ extension View {
     }
 
     /// Solid accent-colored circle button with specular highlight and shadow.
-    func floatNotesAccentCircle() -> some View {
+    func buoyAccentCircle() -> some View {
         self.background(Color.accentColor, in: Circle())
             .overlay(
                 LinearGradient(
@@ -91,7 +91,7 @@ extension View {
     }
 
     /// Solid accent-colored capsule with specular highlight and shadow.
-    func floatNotesAccentCapsule() -> some View {
+    func buoyAccentCapsule() -> some View {
         self.background(Color.accentColor, in: Capsule())
             .overlay(
                 LinearGradient(
@@ -107,7 +107,7 @@ extension View {
 
     /// Applies a capsule Liquid Glass effect on macOS 26+, subtle filled capsule on macOS 15.
     @ViewBuilder
-    func floatNotesGlassCapsule() -> some View {
+    func buoyGlassCapsule() -> some View {
         if #available(macOS 26, *) {
             self.glassEffect(in: Capsule())
                 .shadow(color: .black.opacity(0.18), radius: 2, x: 0, y: 1)

@@ -23,7 +23,7 @@ struct ToolbarView: View {
             pillDivider
             ToolbarPillButton(systemImage: "link",        tooltip: "Insert Link (⌘K)", action: onLink)
         }
-        .floatNotesAccentCapsule()
+        .buoyAccentCapsule()
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
     }

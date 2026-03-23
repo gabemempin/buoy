@@ -285,7 +285,7 @@
 				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Buoy needs this to transfer notes to Apple Notes.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_SUEnableAutomaticChecks = NO;
-				INFOPLIST_KEY_SUFeedURL = "https://raw.githubusercontent.com/kristofbernal/floatnotes-swift/main/appcast.xml";
+				INFOPLIST_KEY_SUFeedURL = "";
 				INFOPLIST_KEY_SUPublicEDKey = "VVDmKT5PtGRLbD34LO8ILDOQsBfeCv6QVz48HgYL1x4=";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -323,7 +323,7 @@
 				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Buoy needs this to transfer notes to Apple Notes.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_SUEnableAutomaticChecks = NO;
-				INFOPLIST_KEY_SUFeedURL = "https://raw.githubusercontent.com/kristofbernal/floatnotes-swift/main/appcast.xml";
+				INFOPLIST_KEY_SUFeedURL = "";
 				INFOPLIST_KEY_SUPublicEDKey = "VVDmKT5PtGRLbD34LO8ILDOQsBfeCv6QVz48HgYL1x4=";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
