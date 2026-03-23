@@ -40,7 +40,7 @@ struct ShortcutsPanel: View {
 
             VStack(spacing: 0) {
                 // Global shortcut
-                ShortcutRow(key: globalShortcut, action: "Toggle FloatNotes")
+                ShortcutRow(key: globalShortcut, action: "Toggle Buoy")
                 Divider().padding(.horizontal, 10)
 
                 ForEach(Array(shortcuts.enumerated()), id: \.offset) { _, s in

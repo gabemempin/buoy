@@ -3,27 +3,27 @@ import AppKit
 // MARK: - App-level shortcut notifications
 
 extension Notification.Name {
-    static let floteNewNote         = Notification.Name("FloatNotes2NewNote")
-    static let floteDeleteNote      = Notification.Name("FloatNotes2DeleteNote")
-    static let floteCopyToClipboard = Notification.Name("FloatNotes2CopyToClipboard")
-    static let flotePreviousNote    = Notification.Name("FloatNotes2PreviousNote")
-    static let floteNextNote        = Notification.Name("FloatNotes2NextNote")
-    static let floteFocusTitle      = Notification.Name("FloatNotes2FocusTitle")
+    static let floteNewNote         = Notification.Name("BuoyNewNote")
+    static let floteDeleteNote      = Notification.Name("BuoyDeleteNote")
+    static let floteCopyToClipboard = Notification.Name("BuoyCopyToClipboard")
+    static let flotePreviousNote    = Notification.Name("BuoyPreviousNote")
+    static let floteNextNote        = Notification.Name("BuoyNextNote")
+    static let floteFocusTitle      = Notification.Name("BuoyFocusTitle")
 }
 
 // MARK: - Delegate Protocol
 
-protocol FloatNotesTextViewDelegate: AnyObject {
-    func textViewDidChange(_ textView: FloatNotesTextView)
+protocol BuoyTextViewDelegate: AnyObject {
+    func textViewDidChange(_ textView: BuoyTextView)
     func textViewHeightDidChange(_ height: CGFloat)
-    func textViewSelectionDidChange(_ textView: FloatNotesTextView)
+    func textViewSelectionDidChange(_ textView: BuoyTextView)
     func textViewRequestShowLinkDialog(selectedText: String)
 }
 
-// MARK: - FloatNotesTextView
+// MARK: - BuoyTextView
 
-final class FloatNotesTextView: NSTextView {
-    weak var floatDelegate: FloatNotesTextViewDelegate?
+final class BuoyTextView: NSTextView {
+    weak var floatDelegate: BuoyTextViewDelegate?
 
     /// Dedicated undo manager — bypasses the responder chain so undo always works
     /// regardless of whether NSHostingView breaks the chain to the panel-level manager.
@@ -117,7 +117,9 @@ final class FloatNotesTextView: NSTextView {
         attrs[.font] = font
         attrs[.foregroundColor] = NSColor.textColor
         attrs[.paragraphStyle] = style
+        attrs.removeValue(forKey: .attachment)
         attrs.removeValue(forKey: .backgroundColor)
+        attrs.removeValue(forKey: .link)
         return attrs
     }
 
@@ -715,6 +717,7 @@ final class FloatNotesTextView: NSTextView {
         storage.replaceCharacters(in: sel, with: atStr)
         setSelectedRange(NSRange(location: sel.location + atStr.length, length: 0))
         didChangeText()
+        typingAttributes = normalizedTypingAttributes()
     }
 
     // MARK: - Height Measurement

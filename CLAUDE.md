@@ -4,15 +4,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-FloatNotes is a native macOS menu bar sticky-note app — a SwiftUI/AppKit rewrite of a prior Electron version. It lives in the menu bar, shows a floating panel on hotkey, and persists notes as RTF in SQLite.
+Buoy is a native macOS menu bar sticky-note app — a SwiftUI/AppKit rewrite of a prior Electron version. It lives in the menu bar, shows a floating panel on hotkey, and persists notes as RTF in SQLite.
 
-- **Bundle ID:** `com.floatnotes.app`
+- **Bundle ID:** `GabeMempin.Buoy`
 - **Deployment target:** macOS 15.0 (macOS 26 Liquid Glass conditionals via `#available`)
 - **Xcode:** 26.3+, Swift 5.9+, File System Synchronization enabled
 
 ## Build & Run
 
-Open `FloatNotes.xcodeproj` in Xcode and press ⌘R. No CLI build system. Code signing is set to "Sign to Run Locally" — no developer account required.
+Open `Buoy.xcodeproj` in Xcode and press ⌘R. No CLI build system. Code signing is set to "Sign to Run Locally" — no developer account required.
 
 **Swift Package dependencies** (managed via Xcode SPM):
 - `GRDB.swift` (groue/GRDB) — SQLite ORM
@@ -24,7 +24,7 @@ Open `FloatNotes.xcodeproj` in Xcode and press ⌘R. No CLI build system. Code s
 
 ### App Entry & Window Management
 
-`FloatNotes2App.swift` is the `@main` entry. Almost all app logic lives in **`AppDelegate.swift`** (NSApplicationDelegateAdaptor), which:
+`BuoyApp.swift` is the `@main` entry. Almost all app logic lives in **`AppDelegate.swift`** (NSApplicationDelegateAdaptor), which:
 - Creates a borderless, always-on-top `NSPanel` (non-activating, transparent)
 - Manages the `NSStatusItem` (menu bar icon) with left/right-click handling
 - Owns the `NoteStore` and `AppSettings` instances passed into SwiftUI
@@ -34,7 +34,7 @@ Open `FloatNotes.xcodeproj` in Xcode and press ⌘R. No CLI build system. Code s
 ### State Management
 
 - **`NoteStore`** (`@Observable`) — single source of truth for notes; loaded from GRDB, with 1s/0.6s debounced auto-save for content/title respectively. Call `flushPendingSaves()` on termination.
-- **`AppSettings`** (Codable struct) — persisted to `~/.floating-notes/settings.json`; changes broadcast via `NotificationCenter.settingsDidChange`
+- **`AppSettings`** (Codable struct) — persisted to `~/.buoy/settings.json`; changes broadcast via `NotificationCenter.settingsDidChange`
 - **`Note`** (GRDB record) — stores RTF as `Data` (`contentRTF`), timestamps as `Int64` milliseconds
 
 ### View Hierarchy
@@ -45,7 +45,7 @@ AppDelegate → NSPanel
         ├── HeaderView        — traffic lights, title field, note nav buttons
         ├── ToolbarView       — bold/italic/underline/bullet/todo/link buttons
         ├── LinkDialog        — inline modal (conditional)
-        ├── EditorView        — NSViewRepresentable wrapping FloatNotesTextView
+        ├── EditorView        — NSViewRepresentable wrapping BuoyTextView
         ├── FooterView        — timestamps, settings/shortcuts/copy/transfer buttons
         ├── AllNotesPanel     — overlay (top-right anchor)
         ├── SettingsPanel     — overlay (bottom-left anchor)
@@ -54,7 +54,7 @@ AppDelegate → NSPanel
 
 ### Rich Text Editor
 
-**`FloatNotesTextView`** (NSTextView subclass, 557 lines) is the core editing engine:
+**`BuoyTextView`** (NSTextView subclass) is the core editing engine:
 - Stores/loads RTF via `NSAttributedString`
 - Handles all in-app keyboard shortcuts in `keyDown` (⌘N, ⌘⌫, ⌘⏎, ⌘←/→, ⌘K)
 - Auto-converts `- ` + Space → bullet `•`, `[] ` + Space → checkbox attachment
@@ -67,10 +67,12 @@ AppDelegate → NSPanel
 
 | Data | Location | Format |
 |------|----------|--------|
-| Notes | `~/.floating-notes/notes.db` | GRDB SQLite (RTF binary) |
-| Settings | `~/.floating-notes/settings.json` | JSON (Codable) |
+| Notes | `~/.buoy/notes.db` | GRDB SQLite (RTF binary) |
+| Settings | `~/.buoy/settings.json` | JSON (Codable) |
 
 GRDB migrations are defined in `NoteStore.swift` (`v1_initial`, `v2_contentRTF`). Legacy HTML→RTF migration from the Electron version lives in `NoteStore+Migration.swift`.
+
+> **Note:** If you have existing notes from the FloatNotes era, run `mv ~/.floating-notes ~/.buoy` in Terminal to preserve them.
 
 ### Key Services
 
@@ -92,7 +94,7 @@ The `View+Glass.swift` helper abstracts this behind `.floatNotesGlass()`.
 | `App/AppDelegate.swift` | Window, menu bar, hotkey, theme management |
 | `Models/NoteStore.swift` | @Observable data store + GRDB CRUD |
 | `Models/AppSettings.swift` | Settings persistence |
-| `Editor/FloatNotesTextView.swift` | Core NSTextView with all formatting logic |
+| `Editor/BuoyTextView.swift` | Core NSTextView with all formatting logic |
 | `Views/ContentView.swift` | Root SwiftUI layout and panel state |
 | `SWIFTUI_REWRITE.md` | Full feature specification (authoritative reference) |
 | `XCODE_SETUP.md` | Step-by-step Xcode configuration guide |

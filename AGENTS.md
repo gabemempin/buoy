@@ -1,37 +1,106 @@
-# Repository Guidelines
+# Agent Instructions
 
-## Project Structure & Module Organization
+This file provides guidance to AI coding agents (Claude Code, OpenAI Codex CLI, Gemini CLI, and others) when working with code in this repository.
 
-`FloatNotes/` contains the macOS app source. Core areas are `App/` for app lifecycle and panel management, `Editor/` for the AppKit-backed rich text editor, `Models/` for persistence and settings, `Services/` for integrations such as hotkeys and Apple Notes, `Views/` for SwiftUI screens, and `Helpers/` for shared UI and utility code. Assets live in `FloatNotes/Assets.xcassets/` and icon sources are in `FloatNotes Icon.icon/` and `FloatNotes/FloatNotes Icon.icon/`. Project configuration is in `FloatNotes.xcodeproj/`. Reference docs live at `CLAUDE.md`, `SWIFTUI_REWRITE.md`, and `XCODE_SETUP.md`.
+## Project Overview
 
-## Build, Test, and Development Commands
+Buoy is a native macOS menu bar sticky-note app — a SwiftUI/AppKit rewrite of a prior Electron version. It lives in the menu bar, shows a floating panel on hotkey, and persists notes as RTF in SQLite.
 
-Open the project in Xcode for normal development:
+- **Bundle ID:** `GabeMempin.Buoy`
+- **Deployment target:** macOS 15.0 (macOS 26 Liquid Glass conditionals via `#available`)
+- **Xcode:** 26.3+, Swift 5.9+, File System Synchronization enabled
 
-```bash
-open FloatNotes.xcodeproj
+## Build & Run
+
+Open `Buoy.xcodeproj` in Xcode and press ⌘R. No CLI build system. Code signing is set to "Sign to Run Locally" — no developer account required.
+
+**Swift Package dependencies** (managed via Xcode SPM):
+- `GRDB.swift` (groue/GRDB) — SQLite ORM
+- `Sparkle` (sparkle-project/Sparkle) — auto-updater
+- `KeyboardShortcuts` (sindresorhus/KeyboardShortcuts) — global hotkey registration
+- `LaunchAtLogin-Modern` (sindresorhus/LaunchAtLogin-Modern) — login item management
+
+## Architecture
+
+### App Entry & Window Management
+
+`BuoyApp.swift` is the `@main` entry. Almost all app logic lives in **`AppDelegate.swift`** (NSApplicationDelegateAdaptor), which:
+- Creates a borderless, always-on-top `NSPanel` (non-activating, transparent)
+- Manages the `NSStatusItem` (menu bar icon) with left/right-click handling
+- Owns the `NoteStore` and `AppSettings` instances passed into SwiftUI
+- Registers the global hotkey via `HotkeyService`
+- Applies themes by setting `NSAppearance` on the app
+
+### State Management
+
+- **`NoteStore`** (`@Observable`) — single source of truth for notes; loaded from GRDB, with 1s/0.6s debounced auto-save for content/title respectively. Call `flushPendingSaves()` on termination.
+- **`AppSettings`** (Codable struct) — persisted to `~/.buoy/settings.json`; changes broadcast via `NotificationCenter.settingsDidChange`
+- **`Note`** (GRDB record) — stores RTF as `Data` (`contentRTF`), timestamps as `Int64` milliseconds
+
+### View Hierarchy
+
+```
+AppDelegate → NSPanel
+  └── ContentView (root SwiftUI, ZStack)
+        ├── HeaderView        — traffic lights, title field, note nav buttons
+        ├── ToolbarView       — bold/italic/underline/bullet/todo/link buttons
+        ├── LinkDialog        — inline modal (conditional)
+        ├── EditorView        — NSViewRepresentable wrapping BuoyTextView
+        ├── FooterView        — timestamps, settings/shortcuts/copy/transfer buttons
+        ├── AllNotesPanel     — overlay (top-right anchor)
+        ├── SettingsPanel     — overlay (bottom-left anchor)
+        └── OnboardingView    — first-run overlay
 ```
 
-Build and run with Xcode using the `FloatNotes` scheme and `Sign to Run Locally`. For CLI builds, use:
+### Rich Text Editor
 
-```bash
-xcodebuild -project FloatNotes.xcodeproj -scheme FloatNotes -configuration Debug build
-```
+**`BuoyTextView`** (NSTextView subclass) is the core editing engine:
+- Stores/loads RTF via `NSAttributedString`
+- Handles all in-app keyboard shortcuts in `keyDown` (⌘N, ⌘⌫, ⌘⏎, ⌘←/→, ⌘K)
+- Auto-converts `- ` + Space → bullet `•`, `[] ` + Space → checkbox attachment
+- Bullets continue on Enter; empty bullet line removes bullet
+- `TodoAttachment` is a custom `NSTextAttachment` subclass for checkboxes
 
-This project uses Swift Package Manager through Xcode for `GRDB.swift`, `Sparkle`, `KeyboardShortcuts`, and `LaunchAtLogin-Modern`, so the first build may resolve packages.
+**`EditorView`** wraps it as `NSViewRepresentable`; **`TextViewCoordinator`** relays delegate callbacks (`onHeightChange`, `onSelectionChange`, `onContentChange`).
 
-## Coding Style & Naming Conventions
+### Data Persistence
 
-Use Swift conventions already present in the codebase: `UpperCamelCase` for types, `lowerCamelCase` for methods and properties, and one primary type per file named after that type, for example `NoteStore.swift` or `HotkeyService.swift`. Match the existing style in each file, including `// MARK:` sections and `#available(macOS 26, *)` guards where platform-specific behavior is needed. Keep SwiftUI views thin when logic belongs in models, services, or AppKit coordinators.
+| Data | Location | Format |
+|------|----------|--------|
+| Notes | `~/.buoy/notes.db` | GRDB SQLite (RTF binary) |
+| Settings | `~/.buoy/settings.json` | JSON (Codable) |
 
-## Testing Guidelines
+GRDB migrations are defined in `NoteStore.swift` (`v1_initial`, `v2_contentRTF`). Legacy HTML→RTF migration from the Electron version lives in `NoteStore+Migration.swift`.
 
-There is currently no dedicated test target in the project. Until one is added, verify changes by building in Xcode and walking through the behaviors listed in `XCODE_SETUP.md`, especially editor formatting, panel toggling, persistence, and Apple Notes transfer. When adding tests, prefer an `FloatNotesTests` target and name files after the subject under test, such as `NoteStoreTests.swift`.
+> **Note:** If you have existing notes from the FloatNotes era, run `mv ~/.floating-notes ~/.buoy` in Terminal to preserve them.
 
-## Commit & Pull Request Guidelines
+### Key Services
 
-Recent history favors short, imperative commit subjects such as `Fix Apple Notes transfer...` and `Remove internal dev docs...`. Keep commits focused and descriptive. Pull requests should include a summary of user-visible changes, affected areas like `Editor/` or `Services/`, manual verification steps, and screenshots or recordings for UI changes.
+- **`HotkeyService`** — singleton wrapping `KeyboardShortcuts`. Parses Electron-style shortcut strings (`"Option+Cmd+N"`) into `KeyboardShortcuts.Shortcut`.
+- **`AppleNotesService`** — writes plain text to a temp file, then runs AppleScript via `osascript` (background queue) to create a new note in Apple Notes.
 
-## Configuration & Data Notes
+### macOS Version Conditionals
 
-The app persists data outside the repo in `~/.floating-notes/notes.db` and `~/.floating-notes/settings.json`. Do not commit secrets, signing material, or machine-specific cache output.
+Glass/vibrancy uses `#available(macOS 26, *)`:
+- **macOS 26+:** `.glassEffect()` SwiftUI modifier (Liquid Glass)
+- **macOS 15:** `NSVisualEffectView` with `.menu` material via `VisualEffectBackground`
+
+The `View+Glass.swift` helper abstracts this behind `.floatNotesGlass()`.
+
+## Notes for Specific Agents
+
+- **Claude Code** — also reads `CLAUDE.md` (identical content); use `/help` for Claude Code-specific commands.
+- **OpenAI Codex CLI** — reads this `AGENTS.md` file automatically.
+- **Gemini CLI** — reads `GEMINI.md`; a symlink or copy of this file should be maintained there if Gemini CLI is used.
+
+## Key Files
+
+| File | Purpose |
+|------|---------|
+| `App/AppDelegate.swift` | Window, menu bar, hotkey, theme management |
+| `Models/NoteStore.swift` | @Observable data store + GRDB CRUD |
+| `Models/AppSettings.swift` | Settings persistence |
+| `Editor/BuoyTextView.swift` | Core NSTextView with all formatting logic |
+| `Views/ContentView.swift` | Root SwiftUI layout and panel state |
+| `SWIFTUI_REWRITE.md` | Full feature specification (authoritative reference) |
+| `XCODE_SETUP.md` | Step-by-step Xcode configuration guide |

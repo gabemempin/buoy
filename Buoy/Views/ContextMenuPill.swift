@@ -6,7 +6,7 @@ import AppKit
 final class ContextMenuPillController {
     private var panel: NSPanel?
     private var hostingView: NSHostingView<ContextMenuPillView>?
-    weak var textView: FloatNotesTextView?
+    weak var textView: BuoyTextView?
 
     func show(near rect: NSRect, in parentWindow: NSWindow) {
         guard let tv = textView else { return }

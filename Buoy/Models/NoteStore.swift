@@ -25,7 +25,7 @@ final class NoteStore {
 
     private func setupDatabase() {
         let home = FileManager.default.homeDirectoryForCurrentUser
-        let dir = home.appendingPathComponent(".floating-notes")
+        let dir = home.appendingPathComponent(".buoy")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let dbPath = dir.appendingPathComponent("notes.db").path
 

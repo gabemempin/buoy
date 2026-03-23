@@ -6,7 +6,7 @@ import Sparkle
 /// @State ensures the reference survives all SwiftUI re-renders and is safe to mutate
 /// from within makeNSView/updateNSView without triggering re-render loops.
 private final class TextViewRef {
-    var value: FloatNotesTextView?
+    var value: BuoyTextView?
 }
 
 struct ContentView: View {
@@ -203,7 +203,7 @@ struct ContentView: View {
         .frame(minWidth: 380)
         .background(WindowDragBlocker())
         .floatNotesGlass()
-        // App-level shortcut notifications from FloatNotesTextView
+        // App-level shortcut notifications from BuoyTextView
         .onReceive(NotificationCenter.default.publisher(for: .floteNewNote))         { _ in createNote() }
         .onReceive(NotificationCenter.default.publisher(for: .floteDeleteNote))      { _ in deleteCurrentNote() }
         .onReceive(NotificationCenter.default.publisher(for: .floteCopyToClipboard)) { _ in copyToClipboard() }
@@ -288,7 +288,7 @@ struct ContentView: View {
         }
     }
 
-    private func applyEditorFormat(_ action: @escaping (FloatNotesTextView) -> Void) {
+    private func applyEditorFormat(_ action: @escaping (BuoyTextView) -> Void) {
         guard let tv = tvRef.value else { return }
         // Ensure the text view is first responder, then restore selection and apply formatting.
         // Using async so makeFirstResponder + becomeFirstResponder fully complete first.

@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct FloatNotes2App: App {
+struct BuoyApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     var body: some Scene {
