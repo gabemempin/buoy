@@ -48,7 +48,7 @@ struct AllNotesPanel: View {
         }
         .frame(width: 214)
         .background(WindowDragBlocker())
-        .floatNotesGlassPanel(cornerRadius: 14)
+        .buoyGlassPanel(cornerRadius: 14)
         .shadow(radius: 8)
         .transition(
             .asymmetric(

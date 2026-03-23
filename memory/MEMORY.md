@@ -1,6 +1,6 @@
-# FloatNotes (Swift) — Project Memory Index
+# Buoy — Project Memory Index
 
-This directory contains persistent memory files for the FloatNotes Swift project session.
+This directory contains persistent memory files for the Buoy project session.
 
 ## Memory Files
 

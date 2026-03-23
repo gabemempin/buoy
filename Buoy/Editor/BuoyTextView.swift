@@ -3,12 +3,12 @@ import AppKit
 // MARK: - App-level shortcut notifications
 
 extension Notification.Name {
-    static let floteNewNote         = Notification.Name("BuoyNewNote")
-    static let floteDeleteNote      = Notification.Name("BuoyDeleteNote")
-    static let floteCopyToClipboard = Notification.Name("BuoyCopyToClipboard")
-    static let flotePreviousNote    = Notification.Name("BuoyPreviousNote")
-    static let floteNextNote        = Notification.Name("BuoyNextNote")
-    static let floteFocusTitle      = Notification.Name("BuoyFocusTitle")
+    static let buoyNewNote         = Notification.Name("BuoyNewNote")
+    static let buoyDeleteNote      = Notification.Name("BuoyDeleteNote")
+    static let buoyCopyToClipboard = Notification.Name("BuoyCopyToClipboard")
+    static let buoyPreviousNote    = Notification.Name("BuoyPreviousNote")
+    static let buoyNextNote        = Notification.Name("BuoyNextNote")
+    static let buoyFocusTitle      = Notification.Name("BuoyFocusTitle")
 }
 
 // MARK: - Delegate Protocol
@@ -23,7 +23,7 @@ protocol BuoyTextViewDelegate: AnyObject {
 // MARK: - BuoyTextView
 
 final class BuoyTextView: NSTextView {
-    weak var floatDelegate: BuoyTextViewDelegate?
+    weak var buoyDelegate: BuoyTextViewDelegate?
 
     /// Dedicated undo manager — bypasses the responder chain so undo always works
     /// regardless of whether NSHostingView breaks the chain to the panel-level manager.
@@ -275,10 +275,10 @@ final class BuoyTextView: NSTextView {
         // Arrow key navigation (keyCodes are hardware-position-based, reliable for arrows)
         switch event.keyCode {
         case 123: // ⌘← — previous note
-            NotificationCenter.default.post(name: .flotePreviousNote, object: nil)
+            NotificationCenter.default.post(name: .buoyPreviousNote, object: nil)
             return true
         case 124: // ⌘→ — next note
-            NotificationCenter.default.post(name: .floteNextNote, object: nil)
+            NotificationCenter.default.post(name: .buoyNextNote, object: nil)
             return true
         default:
             return super.performKeyEquivalent(with: event)
@@ -294,19 +294,19 @@ final class BuoyTextView: NSTextView {
 
         // ⌘N → new note
         if chars == "n" && onlyCmd {
-            NotificationCenter.default.post(name: .floteNewNote, object: nil)
+            NotificationCenter.default.post(name: .buoyNewNote, object: nil)
             return
         }
 
         // ⌘⌫ (Backspace/Delete key = keyCode 51) → delete note
         if event.keyCode == 51 && onlyCmd {
-            NotificationCenter.default.post(name: .floteDeleteNote, object: nil)
+            NotificationCenter.default.post(name: .buoyDeleteNote, object: nil)
             return
         }
 
         // ⌘⏎ → copy to clipboard
         if (chars == "\r" || chars == "\n") && onlyCmd {
-            NotificationCenter.default.post(name: .floteCopyToClipboard, object: nil)
+            NotificationCenter.default.post(name: .buoyCopyToClipboard, object: nil)
             return
         }
 
@@ -314,7 +314,7 @@ final class BuoyTextView: NSTextView {
         if chars == "k" && onlyCmd {
             let sel = selectedRange()
             let selected = sel.length > 0 ? (string as NSString).substring(with: sel) : ""
-            floatDelegate?.textViewRequestShowLinkDialog(selectedText: selected)
+            buoyDelegate?.textViewRequestShowLinkDialog(selectedText: selected)
             return
         }
 
@@ -779,10 +779,10 @@ final class BuoyTextView: NSTextView {
     }
 
     private func notifyChange() {
-        floatDelegate?.textViewDidChange(self)
+        buoyDelegate?.textViewDidChange(self)
         let h = measureContentHeight()
         measuredHeight = h
-        floatDelegate?.textViewHeightDidChange(h)
+        buoyDelegate?.textViewHeightDidChange(h)
         needsDisplay = true // refresh placeholder
     }
 
@@ -793,7 +793,7 @@ final class BuoyTextView: NSTextView {
         }
         super.setSelectedRange(charRange, affinity: affinity, stillSelecting: stillSelecting)
         if !stillSelecting {
-            floatDelegate?.textViewSelectionDidChange(self)
+            buoyDelegate?.textViewSelectionDidChange(self)
         }
     }
 
@@ -808,7 +808,7 @@ final class BuoyTextView: NSTextView {
             lastKnownSelection = first
         }
         if !stillSelecting {
-            floatDelegate?.textViewSelectionDidChange(self)
+            buoyDelegate?.textViewSelectionDidChange(self)
         }
     }
 
@@ -1051,6 +1051,6 @@ final class BuoyTextView: NSTextView {
     @objc private func linkAction(_ sender: Any?) {
         let sel = selectedRange()
         let selected = sel.length > 0 ? (string as NSString).substring(with: sel) : ""
-        floatDelegate?.textViewRequestShowLinkDialog(selectedText: selected)
+        buoyDelegate?.textViewRequestShowLinkDialog(selectedText: selected)
     }
 }

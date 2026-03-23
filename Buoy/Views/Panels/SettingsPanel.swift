@@ -127,7 +127,7 @@ struct SettingsPanel: View {
         }
         .frame(width: 260)
         .background(WindowDragBlocker())
-        .floatNotesGlassPanel(cornerRadius: 20)
+        .buoyGlassPanel(cornerRadius: 20)
         .shadow(radius: 8)
         .transition(
             .asymmetric(

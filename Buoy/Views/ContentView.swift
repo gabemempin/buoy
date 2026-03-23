@@ -202,13 +202,13 @@ struct ContentView: View {
         .padding(6)
         .frame(minWidth: 380)
         .background(WindowDragBlocker())
-        .floatNotesGlass()
+        .buoyGlass()
         // App-level shortcut notifications from BuoyTextView
-        .onReceive(NotificationCenter.default.publisher(for: .floteNewNote))         { _ in createNote() }
-        .onReceive(NotificationCenter.default.publisher(for: .floteDeleteNote))      { _ in deleteCurrentNote() }
-        .onReceive(NotificationCenter.default.publisher(for: .floteCopyToClipboard)) { _ in copyToClipboard() }
-        .onReceive(NotificationCenter.default.publisher(for: .flotePreviousNote))    { _ in noteStore.previousNote(); focusEditor() }
-        .onReceive(NotificationCenter.default.publisher(for: .floteNextNote))        { _ in noteStore.nextNote(); focusEditor() }
+        .onReceive(NotificationCenter.default.publisher(for: .buoyNewNote))         { _ in createNote() }
+        .onReceive(NotificationCenter.default.publisher(for: .buoyDeleteNote))      { _ in deleteCurrentNote() }
+        .onReceive(NotificationCenter.default.publisher(for: .buoyCopyToClipboard)) { _ in copyToClipboard() }
+        .onReceive(NotificationCenter.default.publisher(for: .buoyPreviousNote))    { _ in noteStore.previousNote(); focusEditor() }
+        .onReceive(NotificationCenter.default.publisher(for: .buoyNextNote))        { _ in noteStore.nextNote(); focusEditor() }
         .onReceive(NotificationCenter.default.publisher(for: .showLinkDialog)) { notif in
             linkDialogSelectedText = notif.object as? String ?? ""
             withAnimation { showLinkDialog = true }

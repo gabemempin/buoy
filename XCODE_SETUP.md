@@ -1,10 +1,10 @@
-# Xcode Project Setup for FloatNotes (Swift)
+# Xcode Project Setup for Buoy
 
 ## 1. Create New Project
 
 - Xcode → File → New → Project → **macOS → App**
-- Product Name: `FloatNotes`
-- Bundle ID: `com.floatnotes.app`
+- Product Name: `Buoy`
+- Bundle ID: `GabeMempin.Buoy`
 - Interface: **SwiftUI**
 - Language: **Swift**
 - Deployment Target: **macOS 15.0**
@@ -28,7 +28,7 @@ For Sparkle, add both the `Sparkle` library AND the `Sparkle XPC Service` target
 
 ## 4. Drag in the generated Swift files
 
-From `FloatNotes (Swift)/FloatNotes/`, drag all folders into the Xcode project navigator, preserving the group structure:
+From `Buoy/Buoy/`, drag all folders into the Xcode project navigator, preserving the group structure:
 
 ```
 App/
@@ -40,7 +40,7 @@ Views/
 Views/Panels/
 ```
 
-Make sure all files are added to the `FloatNotes` target.
+Make sure all files are added to the `Buoy` target.
 
 ## 5. Info.plist entries
 
@@ -82,7 +82,7 @@ Since the app is unsigned, users must right-click → Open on first launch to by
 - [ ] Left-click tray icon toggles the panel
 - [ ] Right-click shows Settings / Check for Updates / Quit menu
 - [ ] ⌥⌘N global hotkey toggles panel from any app
-- [ ] Existing notes load from `~/.floating-notes/notes.db`
+- [ ] Existing notes load from `~/.buoy/notes.db`
 - [ ] Bold/Italic/Underline formatting works and persists
 - [ ] Bullet auto-format: type `- ` then Space → `• `
 - [ ] Todo auto-format: type `[] ` then Space → checkbox

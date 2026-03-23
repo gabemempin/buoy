@@ -72,7 +72,7 @@ AppDelegate → NSPanel
 
 GRDB migrations are defined in `NoteStore.swift` (`v1_initial`, `v2_contentRTF`). Legacy HTML→RTF migration from the Electron version lives in `NoteStore+Migration.swift`.
 
-> **Note:** If you have existing notes from the FloatNotes era, run `mv ~/.floating-notes ~/.buoy` in Terminal to preserve them.
+> **Note:** If you have existing notes from the previous app version, run `mv ~/.floating-notes ~/.buoy` in Terminal to preserve them.
 
 ### Key Services
 
@@ -85,7 +85,7 @@ Glass/vibrancy uses `#available(macOS 26, *)`:
 - **macOS 26+:** `.glassEffect()` SwiftUI modifier (Liquid Glass)
 - **macOS 15:** `NSVisualEffectView` with `.menu` material via `VisualEffectBackground`
 
-The `View+Glass.swift` helper abstracts this behind `.floatNotesGlass()`.
+The `View+Glass.swift` helper abstracts this behind `.buoyGlass()`.
 
 ## Notes for Specific Agents
 

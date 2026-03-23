@@ -59,7 +59,7 @@ struct FooterView: View {
                         .foregroundStyle(.white.opacity(0.85))
                         .frame(width: 28, height: 28)
                         .contentShape(Circle())
-                        .floatNotesAccentCircle()
+                        .buoyAccentCircle()
                 }
                 .buttonStyle(.plain)
                 .help("Keyboard Shortcuts")
@@ -70,7 +70,7 @@ struct FooterView: View {
                         .foregroundStyle(.white.opacity(0.85))
                         .frame(width: 28, height: 28)
                         .contentShape(Circle())
-                        .floatNotesAccentCircle()
+                        .buoyAccentCircle()
                 }
                 .buttonStyle(.plain)
                 .help("Settings")
@@ -113,7 +113,7 @@ struct FooterView: View {
                     .buttonStyle(.plain)
                     .help("Copy to clipboard (⌘Return)")
                 }
-                .floatNotesAccentCapsule()
+                .buoyAccentCapsule()
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 6)

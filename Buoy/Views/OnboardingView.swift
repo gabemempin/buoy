@@ -9,7 +9,7 @@ struct OnboardingView: View {
             // Background
             if #available(macOS 26, *) {
                 Color.clear
-                    .floatNotesGlass()
+                    .buoyGlass()
             } else {
                 VisualEffectBackground(material: .menu, blendingMode: .behindWindow)
             }
