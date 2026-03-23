@@ -14,13 +14,13 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		1A1C3B552F6B962700F7F7E8 /* FloatNotes.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FloatNotes.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		1A1C3B552F6B962700F7F7E8 /* Buoy.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Buoy.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		1A1C3B572F6B962700F7F7E8 /* FloatNotes */ = {
+		1A1C3B572F6B962700F7F7E8 /* Buoy */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = FloatNotes;
+			path = Buoy;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -43,7 +43,7 @@
 		1A1C3B4C2F6B962700F7F7E8 = {
 			isa = PBXGroup;
 			children = (
-				1A1C3B572F6B962700F7F7E8 /* FloatNotes */,
+				1A1C3B572F6B962700F7F7E8 /* Buoy */,
 				1A1C3B562F6B962700F7F7E8 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -51,7 +51,7 @@
 		1A1C3B562F6B962700F7F7E8 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				1A1C3B552F6B962700F7F7E8 /* FloatNotes.app */,
+				1A1C3B552F6B962700F7F7E8 /* Buoy.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -59,9 +59,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		1A1C3B542F6B962700F7F7E8 /* FloatNotes */ = {
+		1A1C3B542F6B962700F7F7E8 /* Buoy */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 1A1C3B602F6B962900F7F7E8 /* Build configuration list for PBXNativeTarget "FloatNotes" */;
+			buildConfigurationList = 1A1C3B602F6B962900F7F7E8 /* Build configuration list for PBXNativeTarget "Buoy" */;
 			buildPhases = (
 				1A1C3B512F6B962700F7F7E8 /* Sources */,
 				1A1C3B522F6B962700F7F7E8 /* Frameworks */,
@@ -72,17 +72,17 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				1A1C3B572F6B962700F7F7E8 /* FloatNotes */,
+				1A1C3B572F6B962700F7F7E8 /* Buoy */,
 			);
-			name = FloatNotes;
+			name = Buoy;
 			packageProductDependencies = (
 				1AD6E9092F6B9C6C00399F47 /* GRDB */,
 				1AD6E90E2F6B9CAB00399F47 /* Sparkle */,
 				1AD6E9112F6B9CC700399F47 /* KeyboardShortcuts */,
 				1AD6E9142F6B9CEE00399F47 /* LaunchAtLogin */,
 			);
-			productName = FloatNotes;
-			productReference = 1A1C3B552F6B962700F7F7E8 /* FloatNotes.app */;
+			productName = Buoy;
+			productReference = 1A1C3B552F6B962700F7F7E8 /* Buoy.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -100,7 +100,7 @@
 					};
 				};
 			};
-			buildConfigurationList = 1A1C3B502F6B962700F7F7E8 /* Build configuration list for PBXProject "FloatNotes" */;
+			buildConfigurationList = 1A1C3B502F6B962700F7F7E8 /* Build configuration list for PBXProject "Buoy" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -120,7 +120,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				1A1C3B542F6B962700F7F7E8 /* FloatNotes */,
+				1A1C3B542F6B962700F7F7E8 /* Buoy */,
 			);
 		};
 /* End PBXProject section */
@@ -269,7 +269,7 @@
 		1A1C3B612F6B962900F7F7E8 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = "FloatNotes Icon";
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_IDENTITY = "-";
@@ -282,7 +282,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_LSUIElement = YES;
-				INFOPLIST_KEY_NSAppleEventsUsageDescription = "FloatNotes needs this to transfer notes to Apple Notes.";
+				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Buoy needs this to transfer notes to Apple Notes.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_SUEnableAutomaticChecks = NO;
 				INFOPLIST_KEY_SUFeedURL = "https://raw.githubusercontent.com/kristofbernal/floatnotes-swift/main/appcast.xml";
@@ -292,7 +292,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = GabeMempin.FloatNotes;
+				PRODUCT_BUNDLE_IDENTIFIER = GabeMempin.Buoy;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -307,7 +307,7 @@
 		1A1C3B622F6B962900F7F7E8 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = "FloatNotes Icon";
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_IDENTITY = "-";
@@ -320,7 +320,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_LSUIElement = YES;
-				INFOPLIST_KEY_NSAppleEventsUsageDescription = "FloatNotes needs this to transfer notes to Apple Notes.";
+				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Buoy needs this to transfer notes to Apple Notes.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_SUEnableAutomaticChecks = NO;
 				INFOPLIST_KEY_SUFeedURL = "https://raw.githubusercontent.com/kristofbernal/floatnotes-swift/main/appcast.xml";
@@ -330,7 +330,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = GabeMempin.FloatNotes;
+				PRODUCT_BUNDLE_IDENTIFIER = GabeMempin.Buoy;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -345,7 +345,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		1A1C3B502F6B962700F7F7E8 /* Build configuration list for PBXProject "FloatNotes" */ = {
+		1A1C3B502F6B962700F7F7E8 /* Build configuration list for PBXProject "Buoy" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				1A1C3B5E2F6B962900F7F7E8 /* Debug */,
@@ -354,7 +354,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		1A1C3B602F6B962900F7F7E8 /* Build configuration list for PBXNativeTarget "FloatNotes" */ = {
+		1A1C3B602F6B962900F7F7E8 /* Build configuration list for PBXNativeTarget "Buoy" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				1A1C3B612F6B962900F7F7E8 /* Debug */,

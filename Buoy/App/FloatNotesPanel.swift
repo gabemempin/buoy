@@ -2,7 +2,7 @@ import AppKit
 
 /// NSPanel subclass that can become key, enabling keyboard input in
 /// the contained SwiftUI text views while still using .nonactivatingPanel.
-final class FloatNotesPanel: NSPanel {
+final class BuoyPanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
 

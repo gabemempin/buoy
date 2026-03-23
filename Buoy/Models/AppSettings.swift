@@ -31,7 +31,7 @@ struct AppSettings: Codable {
     private static var fileURL: URL {
         let home = FileManager.default.homeDirectoryForCurrentUser
         return home
-            .appendingPathComponent(".floating-notes")
+            .appendingPathComponent(".buoy")
             .appendingPathComponent("settings.json")
     }
 
@@ -58,5 +58,5 @@ struct AppSettings: Codable {
 }
 
 extension Notification.Name {
-    static let settingsDidChange = Notification.Name("FloatNotes2SettingsDidChange")
+    static let settingsDidChange = Notification.Name("BuoySettingsDidChange")
 }

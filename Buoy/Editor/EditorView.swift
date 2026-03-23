@@ -13,7 +13,7 @@ struct EditorView: NSViewRepresentable {
     var onHeightChange: ((CGFloat) -> Void)?
     var onSelectionChange: ((NSRange) -> Void)?
     var onContentChange: ((Data) -> Void)?
-    var textViewRef: ((FloatNotesTextView) -> Void)?
+    var textViewRef: ((BuoyTextView) -> Void)?
 
     func makeCoordinator() -> TextViewCoordinator {
         let c = TextViewCoordinator()
@@ -31,7 +31,7 @@ struct EditorView: NSViewRepresentable {
         scrollView.backgroundColor = .clear
         scrollView.drawsBackground = false
 
-        let textView = FloatNotesTextView(frame: .zero)
+        let textView = BuoyTextView(frame: .zero)
         textView.fontSize = fontSize
         textView.delegate = context.coordinator
         textView.floatDelegate = context.coordinator
@@ -49,7 +49,7 @@ struct EditorView: NSViewRepresentable {
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
-        guard let textView = scrollView.documentView as? FloatNotesTextView else { return }
+        guard let textView = scrollView.documentView as? BuoyTextView else { return }
 
         // Always refresh the reference — ContentView's @State resets when the view is recreated
         // but makeNSView is not called again, so the ref would stay nil without this.
@@ -77,10 +77,10 @@ struct EditorView: NSViewRepresentable {
     }
 }
 
-// MARK: - Coordinator FloatNotesTextViewDelegate conformance
+// MARK: - Coordinator BuoyTextViewDelegate conformance
 
-extension TextViewCoordinator: FloatNotesTextViewDelegate {
-    func textViewDidChange(_ textView: FloatNotesTextView) {
+extension TextViewCoordinator: BuoyTextViewDelegate {
+    func textViewDidChange(_ textView: BuoyTextView) {
         guard !isLoadingContent else { return }
         if let rtf = textView.rtfContent() {
             onContentChange?(rtf)
@@ -93,7 +93,7 @@ extension TextViewCoordinator: FloatNotesTextViewDelegate {
         }
     }
 
-    func textViewSelectionDidChange(_ textView: FloatNotesTextView) {
+    func textViewSelectionDidChange(_ textView: BuoyTextView) {
         onSelectionChange?(textView.selectedRange())
     }
 
@@ -103,5 +103,5 @@ extension TextViewCoordinator: FloatNotesTextViewDelegate {
 }
 
 extension Notification.Name {
-    static let showLinkDialog = Notification.Name("FloatNotes2ShowLinkDialog")
+    static let showLinkDialog = Notification.Name("BuoyShowLinkDialog")
 }

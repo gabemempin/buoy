@@ -4,7 +4,7 @@ import Sparkle
 import KeyboardShortcuts
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private var panel: FloatNotesPanel?
+    private var panel: BuoyPanel?
     private var hostingView: NSHostingView<ContentView>?
     private var statusItem: NSStatusItem?
     private var updaterController: SPUStandardUpdaterController?
@@ -94,7 +94,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hosting.wantsLayer = true
         hosting.layer?.backgroundColor = .clear
 
-        let p = FloatNotesPanel(
+        let p = BuoyPanel(
             contentRect: NSRect(x: 0, y: 0, width: 380, height: compactHeight),
             styleMask: [.borderless, .resizable, .nonactivatingPanel],
             backing: .buffered,
@@ -129,7 +129,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             // Fallback: pencil SF symbol
             let config = NSImage.SymbolConfiguration(pointSize: 14, weight: .medium)
-            button.image = NSImage(systemSymbolName: "note.text", accessibilityDescription: "FloatNotes")?
+            button.image = NSImage(systemSymbolName: "note.text", accessibilityDescription: "Buoy")?
                 .withSymbolConfiguration(config)
         }
 
@@ -152,7 +152,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(withTitle: "Settings", action: #selector(openSettings), keyEquivalent: "")
         menu.addItem(withTitle: "Check for Updates", action: #selector(checkForUpdates), keyEquivalent: "")
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Quit FloatNotes", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: "Quit Buoy", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
         statusItem?.menu = menu
         statusItem?.button?.performClick(nil)
         statusItem?.menu = nil
@@ -237,15 +237,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         mainMenu.addItem(appItem)
         let appMenu = NSMenu()
         appItem.submenu = appMenu
-        appMenu.addItem(withTitle: "About FloatNotes", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        appMenu.addItem(withTitle: "About Buoy", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         appMenu.addItem(withTitle: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "")
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "Hide FloatNotes", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        appMenu.addItem(withTitle: "Hide Buoy", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         let hideOthers = appMenu.addItem(withTitle: "Hide Others", action: #selector(NSApplication.hideOtherApplications(_:)), keyEquivalent: "h")
         hideOthers.keyEquivalentModifierMask = [.command, .option]
         appMenu.addItem(withTitle: "Show All", action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: "")
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "Quit FloatNotes", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenu.addItem(withTitle: "Quit Buoy", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
 
         // Edit menu
         let editItem = NSMenuItem()
@@ -287,5 +287,5 @@ extension AppDelegate {
 }
 
 extension Notification.Name {
-    static let openSettings = Notification.Name("FloatNotes2OpenSettings")
+    static let openSettings = Notification.Name("Buoy2OpenSettings")
 }

@@ -112,7 +112,7 @@ struct SettingsPanel: View {
                     }
                     .buttonStyle(.plain)
 
-                    Button("Quit FloatNotes") { onQuit() }
+                    Button("Quit Buoy") { onQuit() }
                         .font(.system(size: 12))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6)

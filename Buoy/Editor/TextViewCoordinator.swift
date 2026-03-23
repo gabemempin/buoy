@@ -1,6 +1,6 @@
 import AppKit
 
-/// NSTextViewDelegate that bridges FloatNotesTextView events upward via callbacks.
+/// NSTextViewDelegate that bridges BuoyTextView events upward via callbacks.
 final class TextViewCoordinator: NSObject, NSTextViewDelegate {
     var onHeightChange: ((CGFloat) -> Void)?
     var onSelectionChange: ((NSRange) -> Void)?
@@ -16,7 +16,7 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
 
     func textDidChange(_ notification: Notification) {
         guard !isLoadingContent,
-              let tv = notification.object as? FloatNotesTextView else { return }
+              let tv = notification.object as? BuoyTextView else { return }
         if let rtf = tv.rtfContent() {
             onContentChange?(rtf)
         }
@@ -27,7 +27,7 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
     }
 
     func textViewDidChangeSelection(_ notification: Notification) {
-        guard let tv = notification.object as? FloatNotesTextView else { return }
+        guard let tv = notification.object as? BuoyTextView else { return }
         onSelectionChange?(tv.selectedRange())
     }
 

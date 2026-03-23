@@ -26,7 +26,7 @@ struct OnboardingView: View {
 
                 // Title
                 VStack(spacing: 6) {
-                    Text("Welcome to FloatNotes")
+                    Text("Welcome to Buoy")
                         .font(.system(size: 18, weight: .bold))
                         .multilineTextAlignment(.center)
                     Text("A floating notepad that lives in your menu bar.")
