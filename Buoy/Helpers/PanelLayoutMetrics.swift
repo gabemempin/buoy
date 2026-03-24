@@ -3,6 +3,8 @@ import CoreGraphics
 enum PanelLayoutMetrics {
     static let windowPadding: CGFloat = 6
     static let stackSpacing: CGFloat = 4
+    static let onboardingInset: CGFloat = 2
+    static let onboardingCornerRadius: CGFloat = 15
 
     static let headerMinimumHeight: CGFloat = 70
     static let toolbarMinimumHeight: CGFloat = 36

@@ -38,6 +38,26 @@ struct ContentView: View {
 
     // Cursor position captured before link dialog opens (avoids stale selection overwriting it)
     @State private var savedInsertionPoint: NSRange = NSRange(location: 0, length: 0)
+    @State private var showOnboarding: Bool
+
+    init(
+        noteStore: NoteStore,
+        settings: Binding<AppSettings>,
+        updaterController: SPUStandardUpdaterController?,
+        onHeightChange: ((CGFloat) -> Void)?,
+        onClose: @escaping () -> Void,
+        onMinimize: @escaping () -> Void,
+        onExpand: @escaping () -> Void
+    ) {
+        self.noteStore = noteStore
+        self._settings = settings
+        self.updaterController = updaterController
+        self.onHeightChange = onHeightChange
+        self.onClose = onClose
+        self.onMinimize = onMinimize
+        self.onExpand = onExpand
+        self._showOnboarding = State(initialValue: !settings.wrappedValue.onboarded)
+    }
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -192,11 +212,13 @@ struct ContentView: View {
             .allowsHitTesting(showSettings || showShortcuts)
 
             // Onboarding overlay
-            if !settings.onboarded {
+            if showOnboarding {
                 OnboardingView(
                     settings: $settings,
-                    onShortcutChanged: { s in HotkeyService.shared.register(shortcut: s) }
+                    onShortcutChanged: { s in HotkeyService.shared.register(shortcut: s) },
+                    onDismiss: { showOnboarding = false }
                 )
+                .padding(2)
             }
         }
         .padding(6)
@@ -231,6 +253,9 @@ struct ContentView: View {
                 let h = tv.measureContentHeight()
                 onHeightChange?(h + 160)
             }
+        }
+        .onAppear {
+            showOnboarding = !settings.onboarded
         }
     }
 

@@ -1,29 +1,58 @@
 import SwiftUI
 
+private enum BuoyGlassMetrics {
+    static let windowCornerRadius: CGFloat = 20
+}
+
 extension View {
     /// Applies Liquid Glass on macOS 26+, NSVisualEffectView on macOS 15.
     /// Main window — includes edge depth border.
     @ViewBuilder
     func buoyGlass(material: NSVisualEffectView.Material = .menu) -> some View {
+        buoyRoundedGlass(
+            material: material,
+            cornerRadius: BuoyGlassMetrics.windowCornerRadius
+        )
+    }
+
+    /// Rounded glass inset from the main window edge. Keeps corners aligned with the
+    /// host window by deriving the inner radius from the outer window radius.
+    @ViewBuilder
+    func buoyInsetGlass(
+        inset: CGFloat,
+        cornerRadius: CGFloat? = nil,
+        material: NSVisualEffectView.Material = .menu
+    ) -> some View {
+        buoyRoundedGlass(
+            material: material,
+            cornerRadius: cornerRadius ?? max(0, BuoyGlassMetrics.windowCornerRadius - inset)
+        )
+    }
+
+    @ViewBuilder
+    private func buoyRoundedGlass(
+        material: NSVisualEffectView.Material,
+        cornerRadius: CGFloat
+    ) -> some View {
         if #available(macOS 26, *) {
             self.background(
                     VisualEffectBackground(material: .underPageBackground, blendingMode: .behindWindow)  // ← blur layer; try .underPageBackground, .menu, .sidebar
-                        .clipShape(RoundedRectangle(cornerRadius: 20))
+                        .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
                         .opacity(0.85)  // ← tune 0.5–1.0 for blur intensity
                 )
-                .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20))
-                .clipShape(RoundedRectangle(cornerRadius: 20))
+                .glassEffect(.clear, in: RoundedRectangle(cornerRadius: cornerRadius))
+                .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
                 .overlay(
                     LinearGradient(
                         colors: [.clear, Color.accentColor.opacity(0.0)],  // ← tune 0.04–0.12
                         startPoint: .top,
                         endPoint: .bottom
                     )
-                    .clipShape(RoundedRectangle(cornerRadius: 20))
+                    .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
                     .allowsHitTesting(false)
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 20)
+                    RoundedRectangle(cornerRadius: cornerRadius)
                         .strokeBorder(
                             LinearGradient(
                                 colors: [.white.opacity(0.25), .clear, .white.opacity(0.08)],
@@ -37,7 +66,7 @@ extension View {
             self.background(
                 VisualEffectBackground(material: material, blendingMode: .behindWindow)
             )
-            .clipShape(RoundedRectangle(cornerRadius: 20))
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
         }
     }
 
