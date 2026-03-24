@@ -90,12 +90,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
 
         let hosting = NSHostingView(rootView: contentView)
-        hosting.frame = NSRect(x: 0, y: 0, width: 380, height: compactHeight)
+        hosting.frame = NSRect(
+            x: 0,
+            y: 0,
+            width: max(380, PanelLayoutMetrics.minimumWindowWidth),
+            height: compactHeight
+        )
         hosting.wantsLayer = true
         hosting.layer?.backgroundColor = .clear
 
         let p = BuoyPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 380, height: compactHeight),
+            contentRect: NSRect(
+                x: 0,
+                y: 0,
+                width: max(380, PanelLayoutMetrics.minimumWindowWidth),
+                height: compactHeight
+            ),
             styleMask: [.borderless, .resizable, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -107,7 +117,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         p.hidesOnDeactivate = false
         p.isMovableByWindowBackground = false
         p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        p.minSize = NSSize(width: 380, height: 400)
+        p.minSize = NSSize(
+            width: PanelLayoutMetrics.minimumWindowWidth,
+            height: PanelLayoutMetrics.minimumWindowHeight
+        )
         p.contentView = hosting
 
         panel = p
@@ -189,7 +202,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func animateHeight(_ newHeight: CGFloat, allowShrink: Bool) {
         guard let p = panel else { return }
-        let target = max(200, min(700, newHeight))
+        let target = max(PanelLayoutMetrics.minimumWindowHeight, min(700, newHeight))
         guard allowShrink || target > currentHeight else { return }
         currentHeight = target
         NSAnimationContext.runAnimationGroup { ctx in
