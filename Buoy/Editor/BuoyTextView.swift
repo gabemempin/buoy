@@ -23,6 +23,12 @@ protocol BuoyTextViewDelegate: AnyObject {
 // MARK: - BuoyTextView
 
 final class BuoyTextView: NSTextView {
+    private enum EditorSpacing {
+        static let line: CGFloat = 4
+        static let paragraph: CGFloat = 0
+        static let todoParagraph: CGFloat = 4
+    }
+
     weak var buoyDelegate: BuoyTextViewDelegate?
 
     /// Dedicated undo manager — bypasses the responder chain so undo always works
@@ -98,6 +104,24 @@ final class BuoyTextView: NSTextView {
         typingAttributes = normalizedTypingAttributes()
     }
 
+    private func paragraphStyle(
+        basedOn source: NSParagraphStyle? = nil,
+        isTodoParagraph: Bool = false
+    ) -> NSMutableParagraphStyle {
+        let style = (source?.mutableCopy() as? NSMutableParagraphStyle) ?? NSMutableParagraphStyle()
+        style.lineSpacing = EditorSpacing.line
+        style.paragraphSpacing = isTodoParagraph ? EditorSpacing.todoParagraph : EditorSpacing.paragraph
+        return style
+    }
+
+    private func todoSpacerAttributedString() -> NSAttributedString {
+        NSAttributedString(string: " ", attributes: [
+            .font: NSFont.systemFont(ofSize: fontSize),
+            .foregroundColor: NSColor.textColor,
+            .paragraphStyle: paragraphStyle(isTodoParagraph: true)
+        ])
+    }
+
     /// Returns a safe attribute set for inserted plain text.
     /// This keeps checklist pastes on the app's system font, adaptive color, and line spacing
     /// while preserving paragraph-level settings from the surrounding text when available.
@@ -105,9 +129,7 @@ final class BuoyTextView: NSTextView {
         basedOn source: [NSAttributedString.Key: Any]? = nil
     ) -> [NSAttributedString.Key: Any] {
         let sysFont = NSFont.systemFont(ofSize: fontSize)
-        let style = ((source?[.paragraphStyle] as? NSParagraphStyle)?.mutableCopy() as? NSMutableParagraphStyle)
-            ?? NSMutableParagraphStyle()
-        style.lineSpacing = 3
+        let style = paragraphStyle(basedOn: source?[.paragraphStyle] as? NSParagraphStyle)
 
         let traits = (source?[.font] as? NSFont)?.fontDescriptor.symbolicTraits ?? []
         let desc = sysFont.fontDescriptor.withSymbolicTraits(traits)
@@ -364,13 +386,7 @@ final class BuoyTextView: NSTextView {
                                range: NSRange(location: 0, length: atStr.length))
             // Explicit font on the space — prevents the first typed character from inheriting
             // stale typingAttributes (e.g. a non-system font from a previous RTF round-trip)
-            let style = NSMutableParagraphStyle()
-            style.lineSpacing = 3
-            atStr.append(NSAttributedString(string: " ", attributes: [
-                .font: NSFont.systemFont(ofSize: fontSize),
-                .foregroundColor: NSColor.textColor,
-                .paragraphStyle: style
-            ]))
+            atStr.append(todoSpacerAttributedString())
             guard replaceText(in: NSRange(location: lineStart, length: 2), with: atStr) else { return false }
             setSelectedRange(NSRange(location: lineStart + atStr.length, length: 0))
             updateDefaultTypingAttributes()
@@ -426,7 +442,7 @@ final class BuoyTextView: NSTextView {
                                          range: NSRange(location: 0, length: newAtStr.length))
                     let newLine = NSMutableAttributedString(string: "\n")
                     newLine.append(newAtStr)
-                    newLine.append(NSAttributedString(string: " "))
+                    newLine.append(todoSpacerAttributedString())
                     guard replaceText(in: sel, with: newLine) else { return false }
                     setSelectedRange(NSRange(location: pos + newLine.length, length: 0))
                 }
@@ -678,13 +694,7 @@ final class BuoyTextView: NSTextView {
                 let aStr = NSMutableAttributedString(attachment: a)
                 aStr.addAttribute(.font, value: NSFont.systemFont(ofSize: fontSize),
                                   range: NSRange(location: 0, length: aStr.length))
-                let style = NSMutableParagraphStyle()
-                style.lineSpacing = 3
-                aStr.append(NSAttributedString(string: " ", attributes: [
-                    .font: NSFont.systemFont(ofSize: fontSize),
-                    .foregroundColor: NSColor.textColor,
-                    .paragraphStyle: style
-                ]))
+                aStr.append(todoSpacerAttributedString())
                 if lineText.hasPrefix("• ") {
                     storage.replaceCharacters(in: NSRange(location: adjStart, length: 2), with: aStr)
                     offset += aStr.length - 2
@@ -885,8 +895,7 @@ final class BuoyTextView: NSTextView {
         // Replace backward to avoid index shifting
         for (range, isChecked) in attachments.reversed() {
             let marker = isChecked ? "\u{2611}" : "\u{2610}" // ☑ or ☐
-            let style = NSMutableParagraphStyle()
-            style.lineSpacing = 3
+            let style = paragraphStyle(isTodoParagraph: true)
             let replacement = NSAttributedString(string: marker, attributes: [
                 .font: NSFont.systemFont(ofSize: fontSize),
                 .foregroundColor: NSColor.textColor,
@@ -938,9 +947,7 @@ final class BuoyTextView: NSTextView {
         // Apply consistent line spacing while preserving other paragraph attributes
         var styleUpdates: [(NSRange, NSMutableParagraphStyle)] = []
         mutable.enumerateAttribute(.paragraphStyle, in: fullRange) { val, range, _ in
-            let style = ((val as? NSParagraphStyle)?.mutableCopy() as? NSMutableParagraphStyle)
-                ?? NSMutableParagraphStyle()
-            style.lineSpacing = 3
+            let style = paragraphStyle(basedOn: val as? NSParagraphStyle)
             styleUpdates.append((range, style))
         }
         for (range, style) in styleUpdates {
@@ -966,6 +973,20 @@ final class BuoyTextView: NSTextView {
                 let nextLoc = found.location + atStr.length
                 searchRange = NSRange(location: nextLoc, length: mutable.length - nextLoc)
             }
+        }
+        let normalizedString = mutable.string as NSString
+        var paragraphStart = 0
+        while paragraphStart < mutable.length {
+            let paragraphRange = normalizedString.paragraphRange(for: NSRange(location: paragraphStart, length: 0))
+            if paragraphRange.location < mutable.length,
+               mutable.attribute(.attachment, at: paragraphRange.location, effectiveRange: nil) is TodoAttachment {
+                mutable.addAttribute(
+                    .paragraphStyle,
+                    value: paragraphStyle(isTodoParagraph: true),
+                    range: paragraphRange
+                )
+            }
+            paragraphStart = NSMaxRange(paragraphRange)
         }
         textStorage?.setAttributedString(mutable)
         updateDefaultTypingAttributes()
