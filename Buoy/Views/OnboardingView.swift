@@ -3,16 +3,16 @@ import SwiftUI
 struct OnboardingView: View {
     @Binding var settings: AppSettings
     var onShortcutChanged: (String) -> Void
+    var onDismiss: () -> Void
 
     var body: some View {
         ZStack {
             // Background
-            if #available(macOS 26, *) {
-                Color.clear
-                    .buoyGlass()
-            } else {
-                VisualEffectBackground(material: .menu, blendingMode: .behindWindow)
-            }
+            Color.clear
+                .buoyInsetGlass(
+                    inset: PanelLayoutMetrics.onboardingInset,
+                    cornerRadius: PanelLayoutMetrics.onboardingCornerRadius
+                )
 
             VStack(spacing: 16) {
                 // App icon
@@ -29,7 +29,7 @@ struct OnboardingView: View {
                     Text("Welcome to Buoy")
                         .font(.system(size: 18, weight: .bold))
                         .multilineTextAlignment(.center)
-                    Text("A floating notepad that lives in your menu bar.")
+                    Text("A notepad that's always there on top of all your windows.")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -53,8 +53,11 @@ struct OnboardingView: View {
 
                 // CTA
                 Button {
-                    settings.onboarded = true
-                    settings.save()
+                    var updatedSettings = settings
+                    updatedSettings.onboarded = true
+                    updatedSettings.save()
+                    settings = updatedSettings
+                    onDismiss()
                 } label: {
                     Text("Get Started")
                         .font(.system(size: 13, weight: .semibold))
@@ -65,8 +68,9 @@ struct OnboardingView: View {
                 .padding(.horizontal, 24)
             }
             .padding(24)
+            .frame(maxWidth: 360)
         }
-        .frame(width: 380)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
