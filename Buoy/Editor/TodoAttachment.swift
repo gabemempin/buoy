@@ -20,7 +20,7 @@ final class TodoAttachment: NSTextAttachment {
     }
 
     private func updateImage() {
-        let size = CGSize(width: 16, height: 16)
+        let size = CGSize(width: 19, height: 19)
         let image = NSImage(size: size, flipped: false) { rect in
             let circle = rect.insetBy(dx: 1, dy: 1)
             if self.isChecked {

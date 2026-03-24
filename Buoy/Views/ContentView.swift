@@ -105,7 +105,7 @@ struct ContentView: View {
                             tvRef.value = tv
                         }
                     )
-                    .frame(minHeight: 200)
+                    .frame(minHeight: PanelLayoutMetrics.editorMinimumHeight)
                 }
 
                 FooterView(
@@ -200,7 +200,10 @@ struct ContentView: View {
             }
         }
         .padding(6)
-        .frame(minWidth: 380)
+        .frame(
+            minWidth: PanelLayoutMetrics.minimumContentWidth,
+            minHeight: PanelLayoutMetrics.minimumWindowHeight
+        )
         .background(WindowDragBlocker())
         .buoyGlass()
         // App-level shortcut notifications from BuoyTextView
