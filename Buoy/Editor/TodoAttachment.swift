@@ -1,7 +1,5 @@
 import AppKit
 
-/// NSTextAttachment subclass that renders as a checkbox.
-/// Used inline in NSTextView to represent to-do items.
 final class TodoAttachment: NSTextAttachment {
     var isChecked: Bool {
         didSet { updateImage() }
@@ -26,7 +24,6 @@ final class TodoAttachment: NSTextAttachment {
             if self.isChecked {
                 NSColor.controlAccentColor.setFill()
                 NSBezierPath(ovalIn: circle).fill()
-                // Checkmark
                 NSColor.white.setStroke()
                 let check = NSBezierPath()
                 check.lineWidth = 1.5
@@ -47,8 +44,6 @@ final class TodoAttachment: NSTextAttachment {
         self.image = image
         self.bounds = CGRect(origin: CGPoint(x: 0, y: -3), size: size)
     }
-
-    // MARK: - Archiving support
 
     func encode() -> Data? {
         let archiver = NSKeyedArchiver(requiringSecureCoding: true)

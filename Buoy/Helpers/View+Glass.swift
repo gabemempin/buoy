@@ -36,21 +36,16 @@ extension View {
     ) -> some View {
         if #available(macOS 26, *) {
             self.background(
-                    VisualEffectBackground(material: .underPageBackground, blendingMode: .behindWindow)  // ← blur layer; try .underPageBackground, .menu, .sidebar
-                        .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
-                        .opacity(0.85)  // ← tune 0.5–1.0 for blur intensity
+                    ZStack {
+                        VisualEffectBackground(material: .underPageBackground, blendingMode: .behindWindow)
+                            .opacity(0.85)
+                        RoundedRectangle(cornerRadius: cornerRadius)
+                            .fill(Color.accentColor.opacity(0.05))
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
                 )
                 .glassEffect(.clear, in: RoundedRectangle(cornerRadius: cornerRadius))
                 .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
-                .overlay(
-                    LinearGradient(
-                        colors: [.clear, Color.accentColor.opacity(0.0)],  // ← tune 0.04–0.12
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
-                    .allowsHitTesting(false)
-                )
                 .overlay(
                     RoundedRectangle(cornerRadius: cornerRadius)
                         .strokeBorder(
@@ -64,7 +59,11 @@ extension View {
                 )
         } else {
             self.background(
-                VisualEffectBackground(material: material, blendingMode: .behindWindow)
+                ZStack {
+                    VisualEffectBackground(material: material, blendingMode: .behindWindow)
+                    RoundedRectangle(cornerRadius: cornerRadius)
+                        .fill(Color.accentColor.opacity(0.20))
+                }
             )
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
         }

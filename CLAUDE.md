@@ -16,7 +16,6 @@ Open `Buoy.xcodeproj` in Xcode and press ⌘R. No CLI build system. Code signing
 
 **Swift Package dependencies** (managed via Xcode SPM):
 - `GRDB.swift` (groue/GRDB) — SQLite ORM
-- `Sparkle` (sparkle-project/Sparkle) — auto-updater
 - `KeyboardShortcuts` (sindresorhus/KeyboardShortcuts) — global hotkey registration
 - `LaunchAtLogin-Modern` (sindresorhus/LaunchAtLogin-Modern) — login item management
 

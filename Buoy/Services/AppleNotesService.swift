@@ -2,10 +2,6 @@ import Foundation
 import AppKit
 
 enum AppleNotesService {
-    /// Transfers HTML content to Apple Notes via NSAppleScript.
-    /// Launches Notes via NSWorkspace first (sandbox-safe) to guarantee it is running
-    /// before the Apple Events call, avoiding the -600 "app not running" error.
-    /// Calls completion on main thread with nil on success, error message on failure.
     static func transfer(htmlContent: String, completion: @escaping (String?) -> Void) {
         guard let notesURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Notes") else {
             DispatchQueue.main.async { completion("Apple Notes not found on this Mac.") }
@@ -46,15 +42,10 @@ end tell
         }
     }
 
-    /// Encodes a plain string as a valid AppleScript string expression,
-    /// safely embedding quotes and newlines.
     private static func buildASString(_ text: String) -> String {
         if text.isEmpty { return "\"\"" }
-        let lines = text.components(separatedBy: "\n")
-        let encodedLines = lines.map { line -> String in
-            let parts = line.components(separatedBy: "\"")
-            return parts.map { "\"\($0)\"" }.joined(separator: " & quote & ")
-        }
-        return encodedLines.joined(separator: " & return & ")
+        return text.components(separatedBy: "\n").map { line in
+            line.components(separatedBy: "\"").map { "\"\($0)\"" }.joined(separator: " & quote & ")
+        }.joined(separator: " & return & ")
     }
 }

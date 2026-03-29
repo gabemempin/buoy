@@ -1,12 +1,10 @@
 import SwiftUI
 import AppKit
-import Sparkle
 import LaunchAtLogin
 
 struct SettingsPanel: View {
     @Binding var isShowing: Bool
     @Binding var settings: AppSettings
-    var updaterController: SPUStandardUpdaterController?
     var onQuit: () -> Void
     var onShortcutChanged: (String) -> Void
 
@@ -36,7 +34,6 @@ struct SettingsPanel: View {
             Divider()
 
             VStack(alignment: .leading, spacing: 2) {
-                // Toggles
                 SettingsToggle(label: "Show in Dock", isOn: $settings.showInDock)
                     .onChange(of: settings.showInDock) { _, val in
                         NSApp.setActivationPolicy(val ? .regular : .accessory)
@@ -52,20 +49,28 @@ struct SettingsPanel: View {
 
                 Divider().padding(.horizontal, 10).padding(.vertical, 4)
 
-                // Font Size
                 SettingsRow(label: "Font Size") {
-                    Picker("", selection: $settings.fontSize) {
-                        Text("S").tag(FontSize.small)
-                        Text("M").tag(FontSize.medium)
-                        Text("L").tag(FontSize.large)
+                    HStack(spacing: 6) {
+                        Slider(value: $settings.fontSize, in: 11...20, step: 1)
+                            .frame(width: 100)
+                            .background {
+                                GeometryReader { geo in
+                                    let inset: CGFloat = 9
+                                    let x = inset + (3.0 / 9.0) * (geo.size.width - inset * 2)
+                                    Circle()
+                                        .fill(Color.primary.opacity(0.65))
+                                        .frame(width: 3, height: 3)
+                                        .position(x: x, y: geo.size.height - 1)
+                                }
+                                .allowsHitTesting(false)
+                            }
+                        Text("\(Int(settings.fontSize))pt")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 28, alignment: .leading)
                     }
-                    .pickerStyle(.segmented)
-                    .controlSize(.small)
-                    .frame(width: 100)
-                    .onChange(of: settings.fontSize) { _, _ in settings.save() }
                 }
 
-                // Theme
                 SettingsRow(label: "Theme") {
                     Picker("", selection: $settings.theme) {
                         Text("Auto").tag(AppTheme.system)
@@ -83,7 +88,6 @@ struct SettingsPanel: View {
 
                 Divider().padding(.horizontal, 10).padding(.vertical, 4)
 
-                // Global Shortcut
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Global Shortcut")
                         .font(.system(size: 11))
@@ -97,7 +101,6 @@ struct SettingsPanel: View {
 
                 Divider().padding(.horizontal, 10).padding(.vertical, 4)
 
-                // Update + Quit
                 VStack(spacing: 6) {
                     Button { checkForUpdates() } label: {
                         Group {
@@ -129,12 +132,7 @@ struct SettingsPanel: View {
         .background(WindowDragBlocker())
         .buoyGlassPanel(cornerRadius: 20)
         .shadow(radius: 8)
-        .transition(
-            .asymmetric(
-                insertion: .scale(scale: 0.92, anchor: .bottomLeading).combined(with: .opacity),
-                removal: .scale(scale: 0.92, anchor: .bottomLeading).combined(with: .opacity)
-            )
-        )
+        .transition(.scale(scale: 0.92, anchor: .bottomLeading).combined(with: .opacity))
     }
 
     private func applyTheme(_ theme: AppTheme) {
@@ -150,15 +148,20 @@ struct SettingsPanel: View {
     }
 
     private func checkForUpdates() {
-        updaterController?.updater.checkForUpdates()
-        // Optimistically show "up to date" after 3s if no Sparkle UI appeared
         updateStatus = "Checking…"
         updateStatusTask?.cancel()
         updateStatusTask = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(3))
-            let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
-            updateStatus = "Up to date (v\(version))!"
-            try? await Task.sleep(for: .seconds(3))
+            let result = await UpdateService.shared.checkForUpdates()
+            switch result {
+            case .upToDate(let version):
+                updateStatus = "Up to date (v\(version))!"
+            case .available(let version, let url):
+                updateStatus = "v\(version) available — click to install"
+                NSWorkspace.shared.open(url)
+            case .error:
+                updateStatus = "Couldn't check for updates"
+            }
+            try? await Task.sleep(for: .seconds(4))
             updateStatus = nil
         }
     }
