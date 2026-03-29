@@ -78,11 +78,7 @@ final class NoteStore {
     }
 
     func switchNote(to note: Note) {
-        // Save pending changes first
-        saveContentWork?.perform()
-        saveContentWork?.cancel()
-        saveTitleWork?.perform()
-        saveTitleWork?.cancel()
+        flushPendingSaves()
 
         guard let db else { return }
         currentNote = (try? db.read { db in
@@ -130,7 +126,6 @@ final class NoteStore {
         }
         saveContentWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: work)
-        // Update in-memory copy immediately
         currentNote?.contentRTF = rtfData
         currentNote?.updatedAt = Note.currentTimestamp()
     }

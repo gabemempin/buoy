@@ -2,7 +2,6 @@ import Foundation
 import AppKit
 import GRDB
 
-/// Handles one-time migration from legacy Electron HTML content to RTF data.
 enum NoteStore_Migration {
 
     static func migrateHTMLtoRTF(in db: DatabaseQueue) {
@@ -42,15 +41,12 @@ enum NoteStore_Migration {
         print("[Migration] Migrated \(rows.count) notes from HTML to RTF.")
     }
 
-    // MARK: - HTML → NSAttributedString
-
     private static func parseHTMLtoAttributedString(_ html: String) -> NSAttributedString {
         let result = NSMutableAttributedString()
-        // Split by <div> blocks
-        let divs = html
+        let lines = html
             .replacingOccurrences(of: "<div>", with: "\n")
             .replacingOccurrences(of: "</div>", with: "")
-        let lines = divs.components(separatedBy: "\n")
+            .components(separatedBy: "\n")
 
         for (i, line) in lines.enumerated() {
             if i > 0 { result.append(NSAttributedString(string: "\n")) }
@@ -60,26 +56,14 @@ enum NoteStore_Migration {
     }
 
     private static func parseLine(_ line: String) -> NSAttributedString {
-        // Check for todo items
         if line.contains("todo-check") {
-            let isChecked = line.contains("checked")
-            let attachment = TodoAttachment(isChecked: isChecked)
+            let attachment = TodoAttachment(isChecked: line.contains("checked"))
             let atStr = NSMutableAttributedString(attachment: attachment)
-            // Strip todo HTML and get text
-            let text = stripHTML(line)
-                .trimmingCharacters(in: .whitespaces)
-            if !text.isEmpty {
-                atStr.append(NSAttributedString(string: " " + text))
-            }
+            let text = stripHTML(line).trimmingCharacters(in: .whitespaces)
+            if !text.isEmpty { atStr.append(NSAttributedString(string: " " + text)) }
             return atStr
         }
-
-        // Parse inline formatting: <b>, <i>, <u>, <a href>
-        return parseInlineHTML(line)
-    }
-
-    private static func parseInlineHTML(_ html: String) -> NSAttributedString {
-        return NSMutableAttributedString(string: stripHTML(html))
+        return NSMutableAttributedString(string: stripHTML(line))
     }
 
     private static func stripHTML(_ html: String) -> String {

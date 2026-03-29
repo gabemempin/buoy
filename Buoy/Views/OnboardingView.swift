@@ -15,7 +15,6 @@ struct OnboardingView: View {
                 )
 
             VStack(spacing: 16) {
-                // App icon
                 if let icon = NSApp.applicationIconImage {
                     Image(nsImage: icon)
                         .resizable()
@@ -24,7 +23,6 @@ struct OnboardingView: View {
                         .shadow(radius: 4)
                 }
 
-                // Title
                 VStack(spacing: 6) {
                     Text("Welcome to Buoy")
                         .font(.system(size: 18, weight: .bold))
@@ -35,7 +33,6 @@ struct OnboardingView: View {
                         .multilineTextAlignment(.center)
                 }
 
-                // Feature pills
                 VStack(spacing: 8) {
                     FeaturePill(icon: "arrow.up.left.and.arrow.down.right", text: "Always on top of other windows")
                     FeaturePill(icon: "arrow.clockwise", text: "Notes saved automatically")
@@ -44,19 +41,15 @@ struct OnboardingView: View {
 
                 Divider().padding(.horizontal, 24)
 
-                // Shortcut recorder
                 VStack(spacing: 8) {
                     Text("Global Shortcut")
                         .font(.system(size: 12, weight: .medium))
                     ShortcutRecorderView(shortcut: $settings.globalShortcut, onChanged: onShortcutChanged)
                 }
 
-                // CTA
                 Button {
-                    var updatedSettings = settings
-                    updatedSettings.onboarded = true
-                    updatedSettings.save()
-                    settings = updatedSettings
+                    settings.onboarded = true
+                    settings.save()
                     onDismiss()
                 } label: {
                     Text("Get Started")

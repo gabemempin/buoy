@@ -13,7 +13,6 @@ final class HotkeyService {
     private init() {}
 
     func register(shortcut: String? = nil) {
-        // If a shortcut string is provided, update it
         if let shortcut, !shortcut.isEmpty {
             updateShortcut(from: shortcut)
         }
@@ -24,7 +23,6 @@ final class HotkeyService {
     }
 
     private func updateShortcut(from string: String) {
-        // Map from Electron-style "Option+Cmd+N" to KeyboardShortcuts.Shortcut
         var mods: NSEvent.ModifierFlags = []
         var key: KeyboardShortcuts.Key?
 
@@ -36,11 +34,7 @@ final class HotkeyService {
             case "option", "alt": mods.insert(.option)
             case "shift": mods.insert(.shift)
             default:
-                if let k = KeyboardShortcuts.Key(string: part.lowercased()) {
-                    key = k
-                } else if part.count == 1, let c = part.lowercased().first {
-                    key = KeyboardShortcuts.Key(string: String(c))
-                }
+                key = KeyboardShortcuts.Key(string: part.lowercased())
             }
         }
 

@@ -1,0 +1,30 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Run Buoy",
+      "type": "shell",
+      "command": "xcodebuild -project Buoy.xcodeproj -scheme Buoy -configuration Debug build && open \"$(ls -td ~/Library/Developer/Xcode/DerivedData/*/Build/Products/Debug/Buoy.app | head -1)\"",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Kill Buoy",
+      "type": "shell",
+      "command": "killall Buoy 2>/dev/null || true",
+      "group": "build",
+      "presentation": {
+        "reveal": "silent",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    }
+  ]
+}

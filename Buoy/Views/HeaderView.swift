@@ -89,7 +89,6 @@ struct HeaderView: View {
 
     var body: some View {
         VStack(spacing: 6) {
-            // Top row: traffic lights + spacer + nav buttons
             HStack(spacing: 0) {
                 TrafficLightsView(onClose: onClose, onMinimize: onMinimize, onExpand: onExpand)
                     .padding(.leading, 12)
@@ -105,7 +104,6 @@ struct HeaderView: View {
             .frame(height: 28)
             .padding(.top, 6)
 
-            // Title row below traffic lights — NSViewRepresentable for ⌘A support
             TitleTextField(
                 text: $title,
                 placeholder: "Untitled",
@@ -116,11 +114,7 @@ struct HeaderView: View {
             .padding(.horizontal, 12)
             .padding(.bottom, 4)
         }
-        .background(Group {
-            if dragEnabled {
-                WindowDragHandle()
-            }
-        })
+        .background(dragEnabled ? WindowDragHandle() : nil)
         .onChange(of: focusTitleTrigger) { _, _ in
             titleFocused = true
             DispatchQueue.main.async {

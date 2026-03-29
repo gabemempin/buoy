@@ -1,8 +1,6 @@
 import SwiftUI
 import AppKit
 
-/// NSViewRepresentable wrapping NSVisualEffectView.
-/// Used as the macOS 15 fallback wherever Liquid Glass would be used on macOS 26.
 struct VisualEffectBackground: NSViewRepresentable {
     var material: NSVisualEffectView.Material
     var blendingMode: NSVisualEffectView.BlendingMode

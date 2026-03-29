@@ -39,11 +39,10 @@ struct ShortcutsPanel: View {
             Divider()
 
             VStack(spacing: 0) {
-                // Global shortcut
                 ShortcutRow(key: globalShortcut, action: "Toggle Buoy")
                 Divider().padding(.horizontal, 10)
 
-                ForEach(Array(shortcuts.enumerated()), id: \.offset) { _, s in
+                ForEach(shortcuts, id: \.key) { s in
                     ShortcutRow(key: s.key, action: s.action)
                 }
             }
@@ -53,12 +52,7 @@ struct ShortcutsPanel: View {
         .background(WindowDragBlocker())
         .buoyGlassPanel(cornerRadius: 14)
         .shadow(radius: 8)
-        .transition(
-            .asymmetric(
-                insertion: .scale(scale: 0.92, anchor: .bottomLeading).combined(with: .opacity),
-                removal: .scale(scale: 0.92, anchor: .bottomLeading).combined(with: .opacity)
-            )
-        )
+        .transition(.scale(scale: 0.92, anchor: .bottomLeading).combined(with: .opacity))
     }
 }
 

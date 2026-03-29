@@ -8,7 +8,6 @@
 
 /* Begin PBXBuildFile section */
 		1AD6E90A2F6B9C6C00399F47 /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = 1AD6E9092F6B9C6C00399F47 /* GRDB */; };
-		1AD6E90F2F6B9CAB00399F47 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 1AD6E90E2F6B9CAB00399F47 /* Sparkle */; };
 		1AD6E9122F6B9CC700399F47 /* KeyboardShortcuts in Frameworks */ = {isa = PBXBuildFile; productRef = 1AD6E9112F6B9CC700399F47 /* KeyboardShortcuts */; };
 		1AD6E9152F6B9CEE00399F47 /* LaunchAtLogin in Frameworks */ = {isa = PBXBuildFile; productRef = 1AD6E9142F6B9CEE00399F47 /* LaunchAtLogin */; };
 /* End PBXBuildFile section */
@@ -30,7 +29,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				1AD6E90F2F6B9CAB00399F47 /* Sparkle in Frameworks */,
 				1AD6E9122F6B9CC700399F47 /* KeyboardShortcuts in Frameworks */,
 				1AD6E90A2F6B9C6C00399F47 /* GRDB in Frameworks */,
 				1AD6E9152F6B9CEE00399F47 /* LaunchAtLogin in Frameworks */,
@@ -77,7 +75,6 @@
 			name = Buoy;
 			packageProductDependencies = (
 				1AD6E9092F6B9C6C00399F47 /* GRDB */,
-				1AD6E90E2F6B9CAB00399F47 /* Sparkle */,
 				1AD6E9112F6B9CC700399F47 /* KeyboardShortcuts */,
 				1AD6E9142F6B9CEE00399F47 /* LaunchAtLogin */,
 			);
@@ -111,7 +108,6 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				1AD6E9082F6B9C6C00399F47 /* XCRemoteSwiftPackageReference "GRDB" */,
-				1AD6E90D2F6B9CAB00399F47 /* XCRemoteSwiftPackageReference "Sparkle" */,
 				1AD6E9102F6B9CC700399F47 /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */,
 				1AD6E9132F6B9CED00399F47 /* XCRemoteSwiftPackageReference "LaunchAtLogin-Modern" */,
 			);
@@ -284,9 +280,6 @@
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Buoy needs this to transfer notes to Apple Notes.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				INFOPLIST_KEY_SUEnableAutomaticChecks = NO;
-				INFOPLIST_KEY_SUFeedURL = "";
-				INFOPLIST_KEY_SUPublicEDKey = "VVDmKT5PtGRLbD34LO8ILDOQsBfeCv6QVz48HgYL1x4=";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -322,9 +315,6 @@
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Buoy needs this to transfer notes to Apple Notes.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				INFOPLIST_KEY_SUEnableAutomaticChecks = NO;
-				INFOPLIST_KEY_SUFeedURL = "";
-				INFOPLIST_KEY_SUPublicEDKey = "VVDmKT5PtGRLbD34LO8ILDOQsBfeCv6QVz48HgYL1x4=";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -374,14 +364,6 @@
 				kind = branch;
 			};
 		};
-		1AD6E90D2F6B9CAB00399F47 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/sparkle-project/Sparkle";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 2.9.0;
-			};
-		};
 		1AD6E9102F6B9CC700399F47 /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/sindresorhus/KeyboardShortcuts";
@@ -405,11 +387,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 1AD6E9082F6B9C6C00399F47 /* XCRemoteSwiftPackageReference "GRDB" */;
 			productName = GRDB;
-		};
-		1AD6E90E2F6B9CAB00399F47 /* Sparkle */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 1AD6E90D2F6B9CAB00399F47 /* XCRemoteSwiftPackageReference "Sparkle" */;
-			productName = Sparkle;
 		};
 		1AD6E9112F6B9CC700399F47 /* KeyboardShortcuts */ = {
 			isa = XCSwiftPackageProductDependency;

@@ -122,9 +122,15 @@ final class BuoyTextView: NSTextView {
         ])
     }
 
-    /// Returns a safe attribute set for inserted plain text.
-    /// This keeps checklist pastes on the app's system font, adaptive color, and line spacing
-    /// while preserving paragraph-level settings from the surrounding text when available.
+    private func todoAttachmentAttributedString(isChecked: Bool = false) -> NSMutableAttributedString {
+        let attachment = TodoAttachment(isChecked: isChecked)
+        let atStr = NSMutableAttributedString(attachment: attachment)
+        atStr.addAttribute(.font, value: NSFont.systemFont(ofSize: fontSize),
+                           range: NSRange(location: 0, length: atStr.length))
+        atStr.append(todoSpacerAttributedString())
+        return atStr
+    }
+
     private func normalizedTypingAttributes(
         basedOn source: [NSAttributedString.Key: Any]? = nil
     ) -> [NSAttributedString.Key: Any] {
@@ -149,13 +155,12 @@ final class BuoyTextView: NSTextView {
         guard let storage = textStorage, storage.length > 0 else {
             return normalizedTypingAttributes()
         }
-
-        let clampedLocation = min(max(location, 0), storage.length)
-        if clampedLocation < storage.length {
-            return normalizedTypingAttributes(basedOn: storage.attributes(at: clampedLocation, effectiveRange: nil))
+        let loc = min(max(location, 0), storage.length)
+        if loc < storage.length {
+            return normalizedTypingAttributes(basedOn: storage.attributes(at: loc, effectiveRange: nil))
         }
-        if clampedLocation > 0 {
-            return normalizedTypingAttributes(basedOn: storage.attributes(at: clampedLocation - 1, effectiveRange: nil))
+        if loc > 0 {
+            return normalizedTypingAttributes(basedOn: storage.attributes(at: loc - 1, effectiveRange: nil))
         }
         return normalizedTypingAttributes()
     }
@@ -213,21 +218,6 @@ final class BuoyTextView: NSTextView {
         return result
     }
 
-    /// Restores first responder and selection highlight after direct textStorage mutation.
-    private func refocusWithSelection() {
-        window?.makeFirstResponder(self)
-        if lastKnownSelection.length > 0 {
-            super.setSelectedRange(lastKnownSelection)
-        }
-    }
-
-    /// Restores first responder and cursor position for bullet/todo.
-    private func restoreFirstResponder() {
-        guard window?.firstResponder !== self else { return }
-        window?.makeFirstResponder(self)
-        super.setSelectedRange(lastKnownCursorPosition)
-    }
-
     // MARK: - Placeholder
 
     override func draw(_ dirtyRect: NSRect) {
@@ -262,44 +252,25 @@ final class BuoyTextView: NSTextView {
 
         guard mods == .command else { return super.performKeyEquivalent(with: event) }
 
-        // Use charactersIgnoringModifiers for locale-independent key matching
         let ch = event.charactersIgnoringModifiers ?? ""
 
         switch ch {
-        case "a":  // ⌘A — select all
-            selectAll(nil)
-            return true
-        case "z":  // ⌘Z — undo
-            undoManager?.undo()
-            return true
-        case "c":  // ⌘C — copy (handle directly so it works in non-activating panel)
-            copy(nil)
-            return true
-        case "v":  // ⌘V — paste
-            paste(nil)
-            return true
-        case "x":  // ⌘X — cut
-            cut(nil)
-            return true
-        case "b":  // ⌘B — bold
-            applyBold()
-            return true
-        case "i":  // ⌘I — italic
-            applyItalic()
-            return true
-        case "u":  // ⌘U — underline
-            applyUnderline()
-            return true
-        default:
-            break
+        case "a":  selectAll(nil);      return true
+        case "z":  undoManager?.undo(); return true
+        case "c":  copy(nil);           return true
+        case "v":  paste(nil);          return true
+        case "x":  cut(nil);            return true
+        case "b":  applyBold();         return true
+        case "i":  applyItalic();       return true
+        case "u":  applyUnderline();    return true
+        default:   break
         }
 
-        // Arrow key navigation (keyCodes are hardware-position-based, reliable for arrows)
         switch event.keyCode {
-        case 123: // ⌘← — previous note
+        case 123: // ⌘←
             NotificationCenter.default.post(name: .buoyPreviousNote, object: nil)
             return true
-        case 124: // ⌘→ — next note
+        case 124: // ⌘→
             NotificationCenter.default.post(name: .buoyNextNote, object: nil)
             return true
         default:
@@ -314,25 +285,21 @@ final class BuoyTextView: NSTextView {
         let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let onlyCmd = mods == .command
 
-        // ⌘N → new note
         if chars == "n" && onlyCmd {
             NotificationCenter.default.post(name: .buoyNewNote, object: nil)
             return
         }
 
-        // ⌘⌫ (Backspace/Delete key = keyCode 51) → delete note
         if event.keyCode == 51 && onlyCmd {
             NotificationCenter.default.post(name: .buoyDeleteNote, object: nil)
             return
         }
 
-        // ⌘⏎ → copy to clipboard
         if (chars == "\r" || chars == "\n") && onlyCmd {
             NotificationCenter.default.post(name: .buoyCopyToClipboard, object: nil)
             return
         }
 
-        // ⌘K → link dialog
         if chars == "k" && onlyCmd {
             let sel = selectedRange()
             let selected = sel.length > 0 ? (string as NSString).substring(with: sel) : ""
@@ -340,20 +307,11 @@ final class BuoyTextView: NSTextView {
             return
         }
 
-        // Space → check auto-completion prefixes
-        if chars == " " {
-            if handleAutoComplete() { return }
-        }
+        if chars == " " && handleAutoComplete() { return }
 
-        // Enter / Return
-        if chars == "\r" || chars == "\n" {
-            if handleReturn() { return }
-        }
+        if (chars == "\r" || chars == "\n") && handleReturn() { return }
 
-        // Backspace on empty list line (no modifiers)
-        if event.keyCode == 51 && mods.isEmpty {
-            if handleBackspace() { return }
-        }
+        if event.keyCode == 51 && mods.isEmpty && handleBackspace() { return }
 
         super.keyDown(with: event)
     }
@@ -361,7 +319,6 @@ final class BuoyTextView: NSTextView {
     // MARK: - Auto-complete
 
     private func handleAutoComplete() -> Bool {
-        guard let storage = textStorage else { return false }
         let sel = selectedRange()
         let pos = sel.location
         guard pos > 0 else { return false }
@@ -370,7 +327,6 @@ final class BuoyTextView: NSTextView {
         let lineStart = lineRange.location
         let textOnLine = nsString.substring(with: NSRange(location: lineStart, length: pos - lineStart))
 
-        // `- ` → bullet
         if textOnLine == "-" {
             guard replaceText(in: NSRange(location: lineStart, length: 1), with: "• ") else { return false }
             setSelectedRange(NSRange(location: lineStart + 2, length: 0))
@@ -378,15 +334,10 @@ final class BuoyTextView: NSTextView {
             return true
         }
 
-        // `[]` → todo
         if textOnLine == "[]" {
-            let attachment = TodoAttachment(isChecked: false)
-            let atStr = NSMutableAttributedString(attachment: attachment)
-            atStr.addAttribute(.font, value: NSFont.systemFont(ofSize: fontSize),
-                               range: NSRange(location: 0, length: atStr.length))
-            // Explicit font on the space — prevents the first typed character from inheriting
-            // stale typingAttributes (e.g. a non-system font from a previous RTF round-trip)
-            atStr.append(todoSpacerAttributedString())
+            // Explicit font on the space prevents the first typed character from inheriting
+            // stale typingAttributes after an RTF round-trip.
+            let atStr = todoAttachmentAttributedString()
             guard replaceText(in: NSRange(location: lineStart, length: 2), with: atStr) else { return false }
             setSelectedRange(NSRange(location: lineStart + atStr.length, length: 0))
             updateDefaultTypingAttributes()
@@ -408,7 +359,6 @@ final class BuoyTextView: NSTextView {
         let lineStart = lineRange.location
         let lineText = nsString.substring(with: NSRange(location: lineStart, length: pos - lineStart))
 
-        // Bullet line
         if lineText.hasPrefix("• ") {
             let content = String(lineText.dropFirst(2))
             if content.trimmingCharacters(in: .whitespaces).isEmpty {
@@ -423,32 +373,24 @@ final class BuoyTextView: NSTextView {
             return true
         }
 
-        // Todo line
-        if lineStart < storage.length {
-            let attr = storage.attributes(at: lineStart, effectiveRange: nil)
-            if attr[.attachment] is TodoAttachment {
-                let lineContent = pos > lineStart + 2
-                    ? nsString.substring(with: NSRange(location: lineStart + 2, length: pos - lineStart - 2))
-                    : ""
+        if lineStart < storage.length,
+           storage.attributes(at: lineStart, effectiveRange: nil)[.attachment] is TodoAttachment {
+            let lineContent = pos > lineStart + 2
+                ? nsString.substring(with: NSRange(location: lineStart + 2, length: pos - lineStart - 2))
+                : ""
 
-                if lineContent.trimmingCharacters(in: .whitespaces).isEmpty {
-                    let removeLen = min(2, storage.length - lineStart)
-                    guard replaceText(in: NSRange(location: lineStart, length: removeLen), with: "") else { return false }
-                    setSelectedRange(NSRange(location: lineStart, length: 0))
-                } else {
-                    let newAttachment = TodoAttachment(isChecked: false)
-                    let newAtStr = NSMutableAttributedString(attachment: newAttachment)
-                    newAtStr.addAttribute(.font, value: NSFont.systemFont(ofSize: fontSize),
-                                         range: NSRange(location: 0, length: newAtStr.length))
-                    let newLine = NSMutableAttributedString(string: "\n")
-                    newLine.append(newAtStr)
-                    newLine.append(todoSpacerAttributedString())
-                    guard replaceText(in: sel, with: newLine) else { return false }
-                    setSelectedRange(NSRange(location: pos + newLine.length, length: 0))
-                }
-                notifyChange()
-                return true
+            if lineContent.trimmingCharacters(in: .whitespaces).isEmpty {
+                let removeLen = min(2, storage.length - lineStart)
+                guard replaceText(in: NSRange(location: lineStart, length: removeLen), with: "") else { return false }
+                setSelectedRange(NSRange(location: lineStart, length: 0))
+            } else {
+                let newLine = NSMutableAttributedString(string: "\n")
+                newLine.append(todoAttachmentAttributedString())
+                guard replaceText(in: sel, with: newLine) else { return false }
+                setSelectedRange(NSRange(location: pos + newLine.length, length: 0))
             }
+            notifyChange()
+            return true
         }
 
         return false
@@ -468,7 +410,6 @@ final class BuoyTextView: NSTextView {
         let lineStart = lineRange.location
         let lineText = nsString.substring(with: NSRange(location: lineStart, length: pos - lineStart))
 
-        // Bullet: cursor immediately after "• "
         if lineText == "• " {
             guard replaceText(in: NSRange(location: lineStart, length: 2), with: "") else { return false }
             setSelectedRange(NSRange(location: lineStart, length: 0))
@@ -476,16 +417,14 @@ final class BuoyTextView: NSTextView {
             return true
         }
 
-        // Todo: cursor right after attachment + space
-        if lineStart < storage.length {
-            let attr = storage.attributes(at: lineStart, effectiveRange: nil)
-            if attr[.attachment] is TodoAttachment, pos == lineStart + 2 {
-                let removeLen = min(2, storage.length - lineStart)
-                guard replaceText(in: NSRange(location: lineStart, length: removeLen), with: "") else { return false }
-                setSelectedRange(NSRange(location: lineStart, length: 0))
-                notifyChange()
-                return true
-            }
+        if lineStart < storage.length,
+           storage.attributes(at: lineStart, effectiveRange: nil)[.attachment] is TodoAttachment,
+           pos == lineStart + 2 {
+            let removeLen = min(2, storage.length - lineStart)
+            guard replaceText(in: NSRange(location: lineStart, length: removeLen), with: "") else { return false }
+            setSelectedRange(NSRange(location: lineStart, length: 0))
+            notifyChange()
+            return true
         }
 
         return false
@@ -538,7 +477,6 @@ final class BuoyTextView: NSTextView {
             && (storage.attributes(at: lineStart, effectiveRange: nil)[.attachment] is TodoAttachment)
 
         if isBulletLine || isTodoLine {
-            // Strip bullet/todo prefixes and paste as plain text
             var cleaned = pasted
             if let regex = try? NSRegularExpression(pattern: "^[•☐☑] ") {
                 cleaned = regex.stringByReplacingMatches(
@@ -551,7 +489,6 @@ final class BuoyTextView: NSTextView {
             typingAttributes = insertionAttributes
             notifyChange()
         } else {
-            // Standard paste, then normalize fonts/colors on the pasted region
             let beforeLoc = sel.location
             super.paste(sender)
             let afterLoc = selectedRange().location
@@ -585,7 +522,6 @@ final class BuoyTextView: NSTextView {
     func applyItalic() { toggleFontTrait(.italic) }
 
     func applyUnderline() {
-        // selectedRange() is valid when we're first responder (ensured by applyEditorFormat in ContentView)
         var sel = selectedRange()
         if sel.length == 0 { sel = lastKnownSelection }
         guard sel.length > 0, let storage = textStorage else { return }
@@ -608,32 +544,21 @@ final class BuoyTextView: NSTextView {
 
     func applyBullet(_ cursorRange: NSRange? = nil) {
         guard let storage = textStorage else { return }
-        let rawSel = cursorRange ?? (lastKnownSelection.length > 0 ? lastKnownSelection : lastKnownCursorPosition)
-        // Clamp to valid bounds — cursor may point past end if text was deleted
-        let safeLoc = min(rawSel.location, storage.length)
-        let sel = NSRange(location: safeLoc, length: min(rawSel.length, storage.length - safeLoc))
-        let nsString = string as NSString
-        var lineRanges: [NSRange] = []
-        let scanRange = sel.length > 0 ? sel : nsString.lineRange(for: sel)
-        var pos = scanRange.location
-        while pos <= scanRange.location + scanRange.length {
-            let lr = nsString.lineRange(for: NSRange(location: pos, length: 0))
-            lineRanges.append(lr)
-            pos = lr.upperBound
-            if pos >= scanRange.location + scanRange.length { break }
-        }
+        let sel = clampedSelection(cursorRange, to: storage)
+        let lineRanges = coveredLineRanges(for: sel)
+
         storage.beginEditing()
         var offset = 0
         for lr in lineRanges {
-            // Skip lines that are empty (only a newline character or nothing)
-            let origLineText = nsString.substring(with: lr).trimmingCharacters(in: .whitespacesAndNewlines)
-            if origLineText.isEmpty { continue }
+            let origLineText = (string as NSString).substring(with: lr).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !origLineText.isEmpty else { continue }
 
             let adjStart = lr.location + offset
             guard adjStart <= storage.length else { continue }
             let previewLen = min(2, storage.length - adjStart)
             let lineText = (storage.string as NSString).substring(
                 with: NSRange(location: adjStart, length: previewLen))
+
             if lineText.hasPrefix("• ") {
                 storage.replaceCharacters(in: NSRange(location: adjStart, length: 2), with: "")
                 offset -= 2
@@ -652,36 +577,20 @@ final class BuoyTextView: NSTextView {
 
     func applyTodo(_ cursorRange: NSRange? = nil) {
         guard let storage = textStorage else { return }
-        let rawSel = cursorRange ?? (lastKnownSelection.length > 0 ? lastKnownSelection : lastKnownCursorPosition)
-        // Clamp to valid bounds — cursor may point past end if text was deleted
-        let safeLoc = min(rawSel.location, storage.length)
-        let safeLen = min(rawSel.length, storage.length - safeLoc)
-        let sel = NSRange(location: safeLoc, length: safeLen)
-        let nsString = string as NSString
-
-        // Collect all line ranges covered by the selection (mirrors applyBullet logic)
-        var lineRanges: [NSRange] = []
-        let scanRange = sel.length > 0 ? sel : nsString.lineRange(for: sel)
-        var pos = scanRange.location
-        while pos <= scanRange.location + scanRange.length {
-            let lr = nsString.lineRange(for: NSRange(location: pos, length: 0))
-            lineRanges.append(lr)
-            pos = lr.upperBound
-            if pos >= scanRange.location + scanRange.length { break }
-        }
+        let sel = clampedSelection(cursorRange, to: storage)
+        let lineRanges = coveredLineRanges(for: sel)
 
         storage.beginEditing()
         var offset = 0
         for lr in lineRanges {
-            // Skip lines that are empty (only a newline character or nothing)
-            let origLineText = nsString.substring(with: lr).trimmingCharacters(in: .whitespacesAndNewlines)
-            if origLineText.isEmpty { continue }
+            let origLineText = (string as NSString).substring(with: lr).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !origLineText.isEmpty else { continue }
 
             let adjStart = lr.location + offset
             guard adjStart <= storage.length else { continue }
+
             if adjStart < storage.length,
                storage.attributes(at: adjStart, effectiveRange: nil)[.attachment] is TodoAttachment {
-                // Already a todo — remove it
                 let removeLen = min(2, storage.length - adjStart)
                 storage.replaceCharacters(in: NSRange(location: adjStart, length: removeLen), with: "")
                 offset -= removeLen
@@ -690,11 +599,7 @@ final class BuoyTextView: NSTextView {
                 let lineText = adjStart < storage.length
                     ? (storage.string as NSString).substring(with: NSRange(location: adjStart, length: previewLen))
                     : ""
-                let a = TodoAttachment(isChecked: false)
-                let aStr = NSMutableAttributedString(attachment: a)
-                aStr.addAttribute(.font, value: NSFont.systemFont(ofSize: fontSize),
-                                  range: NSRange(location: 0, length: aStr.length))
-                aStr.append(todoSpacerAttributedString())
+                let aStr = todoAttachmentAttributedString()
                 if lineText.hasPrefix("• ") {
                     storage.replaceCharacters(in: NSRange(location: adjStart, length: 2), with: aStr)
                     offset += aStr.length - 2
@@ -720,7 +625,6 @@ final class BuoyTextView: NSTextView {
             .link: URL(string: finalURL) as Any
         ]
         let atStr = NSAttributedString(string: display, attributes: attrs)
-        // Use caller-captured position (avoids stale lastKnownSelection overwriting cursor)
         let sel = position ?? (lastKnownSelection.length > 0 ? lastKnownSelection : lastKnownCursorPosition)
         window?.makeFirstResponder(self)
         guard shouldChangeText(in: sel, replacementString: atStr.string) else { return }
@@ -742,13 +646,34 @@ final class BuoyTextView: NSTextView {
 
     // MARK: - Helpers
 
+    /// Clamps a raw cursor/selection range to valid storage bounds.
+    private func clampedSelection(_ range: NSRange?, to storage: NSTextStorage) -> NSRange {
+        let raw = range ?? (lastKnownSelection.length > 0 ? lastKnownSelection : lastKnownCursorPosition)
+        let loc = min(raw.location, storage.length)
+        return NSRange(location: loc, length: min(raw.length, storage.length - loc))
+    }
+
+    /// Returns line ranges for every line covered by the selection (or the line at the cursor).
+    private func coveredLineRanges(for sel: NSRange) -> [NSRange] {
+        let nsString = string as NSString
+        let scanRange = sel.length > 0 ? sel : nsString.lineRange(for: sel)
+        var ranges: [NSRange] = []
+        var pos = scanRange.location
+        while pos <= scanRange.location + scanRange.length {
+            let lr = nsString.lineRange(for: NSRange(location: pos, length: 0))
+            ranges.append(lr)
+            pos = lr.upperBound
+            if pos >= scanRange.location + scanRange.length { break }
+        }
+        return ranges
+    }
+
     /// Toggles a font trait (bold/italic) on the current selection.
     /// If there is no selection, toggles the trait for future typing via typingAttributes only —
     /// this prevents accidentally bolding text on a different line.
     private func toggleFontTrait(_ trait: NSFontDescriptor.SymbolicTraits) {
         let sel = selectedRange()
         guard sel.length > 0, let storage = textStorage else {
-            // No selection — toggle for future typing only (don't touch existing text)
             var attrs = typingAttributes
             if let font = attrs[.font] as? NSFont {
                 let traits = font.fontDescriptor.symbolicTraits
@@ -793,7 +718,7 @@ final class BuoyTextView: NSTextView {
         let h = measureContentHeight()
         measuredHeight = h
         buoyDelegate?.textViewHeightDidChange(h)
-        needsDisplay = true // refresh placeholder
+        needsDisplay = true
     }
 
     override func setSelectedRange(_ charRange: NSRange, affinity: NSSelectionAffinity, stillSelecting: Bool) {
@@ -808,8 +733,7 @@ final class BuoyTextView: NSTextView {
     }
 
     /// NSTextView routes ALL user-driven selection changes (drag, click, shift-click) through
-    /// setSelectedRanges (plural), bypassing the singular overrides above. This is the definitive
-    /// hook for tracking what the user actually selected.
+    /// setSelectedRanges (plural), bypassing the singular overrides above.
     override func setSelectedRanges(_ ranges: [NSValue], affinity: NSSelectionAffinity, stillSelecting: Bool) {
         super.setSelectedRanges(ranges, affinity: affinity, stillSelecting: stillSelecting)
         guard let first = ranges.first?.rangeValue else { return }
@@ -841,26 +765,13 @@ final class BuoyTextView: NSTextView {
 
     func htmlContent() -> String {
         guard let storage = textStorage else { return plainTextContent() }
-
-        // Build a copy with TodoAttachments replaced by ☐/☑ Unicode chars for HTML export
-        let mutable = NSMutableAttributedString(attributedString:
-            storage.attributedSubstring(from: NSRange(location: 0, length: storage.length)))
-
-        var attachments: [(NSRange, Bool)] = []
-        storage.enumerateAttribute(.attachment, in: NSRange(location: 0, length: storage.length)) { val, range, _ in
-            if let todo = val as? TodoAttachment {
-                attachments.append((range, todo.isChecked))
-            }
-        }
-        for (range, isChecked) in attachments.reversed() {
+        let mutable = mutableCopyReplacingTodoAttachments(in: storage) { isChecked in
             let symbol = isChecked ? "☑" : "☐"
-            let replacement = NSAttributedString(string: symbol, attributes: [
+            return NSAttributedString(string: symbol, attributes: [
                 .font: NSFont.systemFont(ofSize: fontSize),
                 .foregroundColor: NSColor.textColor
             ])
-            mutable.replaceCharacters(in: range, with: replacement)
         }
-
         let documentAttributes: [NSAttributedString.DocumentAttributeKey: Any] = [
             .documentType: NSAttributedString.DocumentType.html,
             .characterEncoding: String.Encoding.utf8.rawValue
@@ -881,8 +792,26 @@ final class BuoyTextView: NSTextView {
 
     func rtfContent() -> Data? {
         guard let storage = textStorage else { return nil }
+        let mutable = mutableCopyReplacingTodoAttachments(in: storage) { isChecked in
+            let marker = isChecked ? "\u{2611}" : "\u{2610}"
+            return NSAttributedString(string: marker, attributes: [
+                .font: NSFont.systemFont(ofSize: fontSize),
+                .foregroundColor: NSColor.textColor,
+                .paragraphStyle: paragraphStyle(isTodoParagraph: true)
+            ])
+        }
+        return try? mutable.data(
+            from: NSRange(location: 0, length: mutable.length),
+            documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]
+        )
+    }
 
-        // Build a copy with TodoAttachments replaced by ☐/☑ so the state persists in RTF
+    /// Returns a mutable copy of `storage` with every TodoAttachment replaced using `makeReplacement`.
+    /// Replacements are applied in reverse order to preserve correct indices.
+    private func mutableCopyReplacingTodoAttachments(
+        in storage: NSTextStorage,
+        makeReplacement: (Bool) -> NSAttributedString
+    ) -> NSMutableAttributedString {
         let mutable = NSMutableAttributedString(attributedString:
             storage.attributedSubstring(from: NSRange(location: 0, length: storage.length)))
 
@@ -892,51 +821,37 @@ final class BuoyTextView: NSTextView {
                 attachments.append((range, todo.isChecked))
             }
         }
-        // Replace backward to avoid index shifting
         for (range, isChecked) in attachments.reversed() {
-            let marker = isChecked ? "\u{2611}" : "\u{2610}" // ☑ or ☐
-            let style = paragraphStyle(isTodoParagraph: true)
-            let replacement = NSAttributedString(string: marker, attributes: [
-                .font: NSFont.systemFont(ofSize: fontSize),
-                .foregroundColor: NSColor.textColor,
-                .paragraphStyle: style
-            ])
-            mutable.replaceCharacters(in: range, with: replacement)
+            mutable.replaceCharacters(in: range, with: makeReplacement(isChecked))
         }
-
-        return try? mutable.data(
-            from: NSRange(location: 0, length: mutable.length),
-            documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]
-        )
+        return mutable
     }
 
     func loadRTF(_ data: Data) {
-        if data.isEmpty {
+        guard !data.isEmpty,
+              let atStr = try? NSAttributedString(
+                data: data,
+                options: [.documentType: NSAttributedString.DocumentType.rtf],
+                documentAttributes: nil
+              ) else {
             textStorage?.setAttributedString(NSAttributedString(string: ""))
             needsDisplay = true
             return
         }
-        guard let atStr = try? NSAttributedString(
-            data: data,
-            options: [.documentType: NSAttributedString.DocumentType.rtf],
-            documentAttributes: nil
-        ) else {
-            textStorage?.setAttributedString(NSAttributedString(string: ""))
-            needsDisplay = true
-            return
-        }
-        // Normalize all fonts to system font, preserving bold/italic traits
+
         let mutable = NSMutableAttributedString(attributedString: atStr)
-        mutable.enumerateAttribute(.font, in: NSRange(location: 0, length: mutable.length)) { val, range, _ in
+        let fullRange = NSRange(location: 0, length: mutable.length)
+
+        // Normalize all fonts to system font, preserving bold/italic traits
+        mutable.enumerateAttribute(.font, in: fullRange) { val, range, _ in
             guard let font = val as? NSFont else { return }
             let traits = font.fontDescriptor.symbolicTraits
             let desc = NSFont.systemFont(ofSize: fontSize).fontDescriptor.withSymbolicTraits(traits)
             let newFont = NSFont(descriptor: desc, size: fontSize)
             mutable.addAttribute(.font, value: newFont ?? NSFont.systemFont(ofSize: fontSize), range: range)
         }
-        // Normalize all foreground colors to adaptive labelColor (RTF stores fixed colors).
-        // Re-apply link color to link ranges so hyperlinks remain styled.
-        let fullRange = NSRange(location: 0, length: mutable.length)
+
+        // Normalize foreground colors to adaptive textColor; re-apply linkColor to link ranges
         mutable.removeAttribute(.foregroundColor, range: fullRange)
         mutable.addAttribute(.foregroundColor, value: NSColor.textColor, range: fullRange)
         mutable.enumerateAttribute(.link, in: fullRange) { val, range, _ in
@@ -944,6 +859,7 @@ final class BuoyTextView: NSTextView {
                 mutable.addAttribute(.foregroundColor, value: NSColor.linkColor, range: range)
             }
         }
+
         // Apply consistent line spacing while preserving other paragraph attributes
         var styleUpdates: [(NSRange, NSMutableParagraphStyle)] = []
         mutable.enumerateAttribute(.paragraphStyle, in: fullRange) { val, range, _ in
@@ -953,27 +869,27 @@ final class BuoyTextView: NSTextView {
         for (range, style) in styleUpdates {
             mutable.addAttribute(.paragraphStyle, value: style, range: range)
         }
-        // RTF round-trip often loses the font attribute on attachment characters (NSTextAttachment
-        // uses U+FFFC). Explicitly set system font on all attachment characters.
+
+        // RTF round-trip often loses the font attribute on attachment characters (U+FFFC).
         mutable.enumerateAttribute(.attachment, in: fullRange) { val, range, _ in
             guard val != nil else { return }
             mutable.addAttribute(.font, value: NSFont.systemFont(ofSize: fontSize), range: range)
         }
+
         // Restore TodoAttachments from ☐/☑ markers written by rtfContent()
         for (marker, isChecked) in [("\u{2611}", true), ("\u{2610}", false)] as [(String, Bool)] {
             var searchRange = NSRange(location: 0, length: mutable.length)
             while searchRange.location < mutable.length {
                 let found = (mutable.string as NSString).range(of: marker, options: [], range: searchRange)
                 if found.location == NSNotFound { break }
-                let attachment = TodoAttachment(isChecked: isChecked)
-                let atStr = NSMutableAttributedString(attachment: attachment)
-                atStr.addAttribute(.font, value: NSFont.systemFont(ofSize: fontSize),
-                                   range: NSRange(location: 0, length: atStr.length))
+                let atStr = todoAttachmentAttributedString(isChecked: isChecked)
                 mutable.replaceCharacters(in: found, with: atStr)
                 let nextLoc = found.location + atStr.length
                 searchRange = NSRange(location: nextLoc, length: mutable.length - nextLoc)
             }
         }
+
+        // Apply todoParagraph spacing to paragraphs that start with a TodoAttachment
         let normalizedString = mutable.string as NSString
         var paragraphStart = 0
         while paragraphStart < mutable.length {
@@ -988,6 +904,7 @@ final class BuoyTextView: NSTextView {
             }
             paragraphStart = NSMaxRange(paragraphRange)
         }
+
         textStorage?.setAttributedString(mutable)
         updateDefaultTypingAttributes()
         needsDisplay = true
@@ -998,25 +915,17 @@ final class BuoyTextView: NSTextView {
     override func menu(for event: NSEvent) -> NSMenu? {
         guard let menu = super.menu(for: event) else { return nil }
 
-        // Remove writing direction / layout orientation item using action selectors
-        // (locale-independent — title strings differ across macOS versions and languages).
-        // The standard actions are makeBaseWritingDirectionNatural: / changeLayoutOrientation:
+        // Remove writing direction / layout orientation items (identified by action selectors,
+        // locale-independent — title strings differ across macOS versions and languages).
         for item in menu.items where itemIsWritingDirectionOrLayoutOrientation(item) {
             menu.removeItem(item)
         }
 
-        // Find the existing Transformations submenu by checking for the standard
-        // uppercaseWord: action inside it (also locale-independent).
-        var transformationsItem: NSMenuItem?
-        for item in menu.items {
-            if let sub = item.submenu,
-               sub.items.contains(where: { $0.action == #selector(NSResponder.uppercaseWord(_:)) }) {
-                transformationsItem = item
-                break
-            }
+        // Find the existing Transformations submenu by checking for the standard uppercaseWord: action.
+        var transformationsItem = menu.items.first { item in
+            item.submenu?.items.contains { $0.action == #selector(NSResponder.uppercaseWord(_:)) } == true
         }
 
-        // If not found, create a new Transformations submenu
         if transformationsItem == nil {
             let sub = NSMenu(title: "Transformations")
             let parent = NSMenuItem(title: "Transformations", action: nil, keyEquivalent: "")
@@ -1028,7 +937,6 @@ final class BuoyTextView: NSTextView {
 
         guard let sub = transformationsItem?.submenu else { return menu }
 
-        // Append our formatting items to the Transformations submenu
         sub.addItem(.separator())
         let boldItem      = sub.addItem(withTitle: "Bold",      action: #selector(boldAction(_:)),      keyEquivalent: "")
         let italicItem    = sub.addItem(withTitle: "Italic",    action: #selector(italicAction(_:)),    keyEquivalent: "")
@@ -1036,16 +944,13 @@ final class BuoyTextView: NSTextView {
         sub.addItem(.separator())
         let linkItem = sub.addItem(withTitle: "Link…", action: #selector(linkAction(_:)), keyEquivalent: "")
 
-        boldItem.target      = self
-        italicItem.target    = self
-        underlineItem.target = self
-        linkItem.target      = self
+        for item in [boldItem, italicItem, underlineItem, linkItem] {
+            item.target = self
+        }
 
         return menu
     }
 
-    /// Returns true if the menu item represents the writing direction or layout orientation
-    /// submenu — identified by the standard NSResponder action selectors it contains.
     private func itemIsWritingDirectionOrLayoutOrientation(_ item: NSMenuItem) -> Bool {
         guard let sub = item.submenu else { return false }
         let writingDirectionActions: [Selector] = [
@@ -1058,9 +963,12 @@ final class BuoyTextView: NSTextView {
     }
 
     override func validateMenuItem(_ item: NSMenuItem) -> Bool {
-        if item.action == #selector(boldAction(_:)) ||
-           item.action == #selector(italicAction(_:)) ||
-           item.action == #selector(underlineAction(_:)) {
+        let formattingActions: Set<Selector> = [
+            #selector(boldAction(_:)),
+            #selector(italicAction(_:)),
+            #selector(underlineAction(_:))
+        ]
+        if formattingActions.contains(item.action ?? Selector("")) {
             return selectedRange().length > 0
         }
         return super.validateMenuItem(item)

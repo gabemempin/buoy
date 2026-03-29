@@ -1,18 +1,6 @@
 import Foundation
 import AppKit
 
-enum FontSize: String, Codable, CaseIterable {
-    case small, medium, large
-
-    var pointSize: CGFloat {
-        switch self {
-        case .small: return 13
-        case .medium: return 14
-        case .large: return 16
-        }
-    }
-}
-
 enum AppTheme: String, Codable, CaseIterable {
     case system, light, dark
 }
@@ -21,12 +9,10 @@ struct AppSettings: Codable {
     var showInDock: Bool = false
     var alwaysOnTop: Bool = true
     var launchAtLogin: Bool = false
-    var fontSize: FontSize = .medium
+    var fontSize: CGFloat = 14
     var theme: AppTheme = .system
     var globalShortcut: String = "Option+Cmd+N"
     var onboarded: Bool = false
-
-    // MARK: - Persistence
 
     private static var fileURL: URL {
         let home = FileManager.default.homeDirectoryForCurrentUser
@@ -36,13 +22,9 @@ struct AppSettings: Codable {
     }
 
     static func load() -> AppSettings {
-        let url = fileURL
-        guard FileManager.default.fileExists(atPath: url.path),
-              let data = try? Data(contentsOf: url),
+        guard let data = try? Data(contentsOf: fileURL),
               let settings = try? JSONDecoder().decode(AppSettings.self, from: data)
-        else {
-            return AppSettings()
-        }
+        else { return AppSettings() }
         return settings
     }
 

@@ -40,7 +40,6 @@ struct EditorView: NSViewRepresentable {
         context.coordinator.currentNoteID = noteID
         textViewRef?(textView)
 
-        // Load initial content
         context.coordinator.setLoadingContent(true)
         textView.loadRTF(rtfData)
         context.coordinator.setLoadingContent(false)
@@ -51,26 +50,21 @@ struct EditorView: NSViewRepresentable {
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = scrollView.documentView as? BuoyTextView else { return }
 
-        // Always refresh the reference — ContentView's @State resets when the view is recreated
-        // but makeNSView is not called again, so the ref would stay nil without this.
         textViewRef?(textView)
 
         if textView.fontSize != fontSize {
             textView.fontSize = fontSize
         }
 
-        // Reload content when switching notes
         if context.coordinator.currentNoteID != noteID {
             context.coordinator.currentNoteID = noteID
             context.coordinator.setLoadingContent(true)
             textView.loadRTF(rtfData)
             context.coordinator.setLoadingContent(false)
-            // Allow height to shrink on note switch
             let h = textView.measureContentHeight()
             onHeightChange?(h)
         }
 
-        // Update callbacks
         context.coordinator.onHeightChange = onHeightChange
         context.coordinator.onSelectionChange = onSelectionChange
         context.coordinator.onContentChange = onContentChange
