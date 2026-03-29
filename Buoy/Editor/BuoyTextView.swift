@@ -29,6 +29,11 @@ final class BuoyTextView: NSTextView {
         static let todoParagraph: CGFloat = 4
     }
 
+    private enum ListIndent {
+        static let width: CGFloat = 20
+        static let maxNestingLevel = 2
+    }
+
     weak var buoyDelegate: BuoyTextViewDelegate?
 
     /// Dedicated undo manager — bypasses the responder chain so undo always works
@@ -114,20 +119,24 @@ final class BuoyTextView: NSTextView {
         return style
     }
 
-    private func todoSpacerAttributedString() -> NSAttributedString {
-        NSAttributedString(string: " ", attributes: [
-            .font: NSFont.systemFont(ofSize: fontSize),
-            .foregroundColor: NSColor.textColor,
-            .paragraphStyle: paragraphStyle(isTodoParagraph: true)
-        ])
-    }
+    private func todoAttachmentAttributedString(isChecked: Bool = false, indentLevel: Int = 0) -> NSMutableAttributedString {
+        let indent = CGFloat(indentLevel) * ListIndent.width
+        let para = paragraphStyle(isTodoParagraph: true)
+        para.headIndent = indent
+        para.firstLineHeadIndent = indent
 
-    private func todoAttachmentAttributedString(isChecked: Bool = false) -> NSMutableAttributedString {
         let attachment = TodoAttachment(isChecked: isChecked)
         let atStr = NSMutableAttributedString(attachment: attachment)
         atStr.addAttribute(.font, value: NSFont.systemFont(ofSize: fontSize),
                            range: NSRange(location: 0, length: atStr.length))
-        atStr.append(todoSpacerAttributedString())
+        atStr.addAttribute(.paragraphStyle, value: para,
+                           range: NSRange(location: 0, length: atStr.length))
+        let spacer = NSAttributedString(string: " ", attributes: [
+            .font: NSFont.systemFont(ofSize: fontSize),
+            .foregroundColor: NSColor.textColor,
+            .paragraphStyle: para
+        ])
+        atStr.append(spacer)
         return atStr
     }
 
@@ -148,6 +157,17 @@ final class BuoyTextView: NSTextView {
         attrs.removeValue(forKey: .attachment)
         attrs.removeValue(forKey: .backgroundColor)
         attrs.removeValue(forKey: .link)
+        return attrs
+    }
+
+    private func normalizedTypingAttributesForEscapedList(
+        basedOn source: [NSAttributedString.Key: Any]? = nil
+    ) -> [NSAttributedString.Key: Any] {
+        var attrs = normalizedTypingAttributes(basedOn: source ?? typingAttributes)
+        let style = paragraphStyle(basedOn: attrs[.paragraphStyle] as? NSParagraphStyle)
+        style.headIndent = 0
+        style.firstLineHeadIndent = 0
+        attrs[.paragraphStyle] = style
         return attrs
     }
 
@@ -313,6 +333,12 @@ final class BuoyTextView: NSTextView {
 
         if event.keyCode == 51 && mods.isEmpty && handleBackspace() { return }
 
+        // Tab / Shift+Tab — indent/outdent list items
+        if event.keyCode == 48 {
+            if mods.isEmpty && handleTab(isShift: false) { return }
+            if mods == .shift && handleTab(isShift: true) { return }
+        }
+
         super.keyDown(with: event)
     }
 
@@ -359,15 +385,32 @@ final class BuoyTextView: NSTextView {
         let lineStart = lineRange.location
         let lineText = nsString.substring(with: NSRange(location: lineStart, length: pos - lineStart))
 
-        if lineText.hasPrefix("• ") {
+        if lineText.hasPrefix("• ") || lineText.hasPrefix("◦ ") {
+            let marker = lineText.hasPrefix("◦ ") ? "◦" : "•"
             let content = String(lineText.dropFirst(2))
+            let currentLevel = indentLevel(at: lineStart)
             if content.trimmingCharacters(in: .whitespaces).isEmpty {
                 guard replaceText(in: NSRange(location: lineStart, length: 2), with: "") else { return false }
+                // Only reset indent if lineStart still points inside the document after removal.
+                // If lineStart == storage.length the characters were at the end and are now gone;
+                // calling resetParagraphIndent would clip to the previous paragraph's \n and
+                // incorrectly strip its indentation.
+                if currentLevel > 0 && lineStart < storage.length {
+                    resetParagraphIndent(at: lineStart)
+                }
                 setSelectedRange(NSRange(location: lineStart, length: 0))
+                // Reset typingAttributes so subsequent typing doesn't inherit the nested indent.
+                typingAttributes = normalizedTypingAttributesForEscapedList()
             } else {
-                let newLine = NSAttributedString(string: "\n• ", attributes: typingAttributes)
+                let indent = CGFloat(currentLevel) * ListIndent.width
+                let newPara = paragraphStyle()
+                newPara.headIndent = indent
+                newPara.firstLineHeadIndent = indent
+                var newAttrs = normalizedTypingAttributes(basedOn: typingAttributes)
+                newAttrs[.paragraphStyle] = newPara
+                let newLine = NSAttributedString(string: "\n\(marker) ", attributes: newAttrs)
                 guard replaceText(in: sel, with: newLine) else { return false }
-                setSelectedRange(NSRange(location: pos + 3, length: 0))
+                setSelectedRange(NSRange(location: pos + newLine.length, length: 0))
             }
             notifyChange()
             return true
@@ -378,14 +421,19 @@ final class BuoyTextView: NSTextView {
             let lineContent = pos > lineStart + 2
                 ? nsString.substring(with: NSRange(location: lineStart + 2, length: pos - lineStart - 2))
                 : ""
+            let currentLevel = indentLevel(at: lineStart)
 
             if lineContent.trimmingCharacters(in: .whitespaces).isEmpty {
                 let removeLen = min(2, storage.length - lineStart)
                 guard replaceText(in: NSRange(location: lineStart, length: removeLen), with: "") else { return false }
+                if currentLevel > 0 && lineStart < storage.length {
+                    resetParagraphIndent(at: lineStart)
+                }
                 setSelectedRange(NSRange(location: lineStart, length: 0))
+                typingAttributes = normalizedTypingAttributesForEscapedList()
             } else {
                 let newLine = NSMutableAttributedString(string: "\n")
-                newLine.append(todoAttachmentAttributedString())
+                newLine.append(todoAttachmentAttributedString(indentLevel: currentLevel))
                 guard replaceText(in: sel, with: newLine) else { return false }
                 setSelectedRange(NSRange(location: pos + newLine.length, length: 0))
             }
@@ -417,17 +465,111 @@ final class BuoyTextView: NSTextView {
             return true
         }
 
+        if lineText == "◦ " {
+            guard replaceText(in: NSRange(location: lineStart, length: 2), with: "") else { return false }
+            resetParagraphIndent(at: lineStart)
+            setSelectedRange(NSRange(location: lineStart, length: 0))
+            typingAttributes = normalizedTypingAttributesForEscapedList()
+            notifyChange()
+            return true
+        }
+
         if lineStart < storage.length,
            storage.attributes(at: lineStart, effectiveRange: nil)[.attachment] is TodoAttachment,
            pos == lineStart + 2 {
             let removeLen = min(2, storage.length - lineStart)
             guard replaceText(in: NSRange(location: lineStart, length: removeLen), with: "") else { return false }
+            resetParagraphIndent(at: lineStart)
             setSelectedRange(NSRange(location: lineStart, length: 0))
+            typingAttributes = normalizedTypingAttributesForEscapedList()
             notifyChange()
             return true
         }
 
         return false
+    }
+
+    // MARK: - Tab / Indent
+
+    private func indentLevel(at lineStart: Int) -> Int {
+        guard let storage = textStorage, lineStart < storage.length else { return 0 }
+        let style = storage.attribute(.paragraphStyle, at: lineStart, effectiveRange: nil) as? NSParagraphStyle
+        return Int((style?.headIndent ?? 0) / ListIndent.width)
+    }
+
+    private func resetParagraphIndent(at location: Int) {
+        guard let storage = textStorage, storage.length > 0 else { return }
+        // When a list marker is removed at end-of-document, the original lineStart can now equal
+        // storage.length. Resetting at that clamped location would target the previous paragraph's
+        // trailing newline and strip the indent from the line above.
+        guard location >= 0, location < storage.length else { return }
+        let paraRange = (storage.string as NSString).paragraphRange(for: NSRange(location: location, length: 0))
+        guard shouldChangeText(in: paraRange, replacementString: nil) else { return }
+        storage.beginEditing()
+        storage.enumerateAttribute(.paragraphStyle, in: paraRange) { val, range, _ in
+            let style = self.paragraphStyle(basedOn: val as? NSParagraphStyle)
+            style.headIndent = 0
+            style.firstLineHeadIndent = 0
+            storage.addAttribute(.paragraphStyle, value: style, range: range)
+        }
+        storage.endEditing()
+        didChangeText()
+    }
+
+    private func setIndentLevel(_ level: Int, lineStart: Int, isBullet: Bool) {
+        guard let storage = textStorage else { return }
+        let indent = CGFloat(level) * ListIndent.width
+
+        // Swap bullet character if needed (• and ◦ are both 1 NSString character)
+        if isBullet && lineStart < storage.length {
+            let ch = (storage.string as NSString).substring(with: NSRange(location: lineStart, length: 1))
+            if level == 0 && ch == "◦" {
+                replaceText(in: NSRange(location: lineStart, length: 1), with: "•")
+            } else if level > 0 && ch == "•" {
+                replaceText(in: NSRange(location: lineStart, length: 1), with: "◦")
+            }
+        }
+
+        // Apply paragraph indentation
+        let paraRange = (storage.string as NSString).paragraphRange(for: NSRange(location: lineStart, length: 0))
+        guard shouldChangeText(in: paraRange, replacementString: nil) else { return }
+        storage.beginEditing()
+        storage.enumerateAttribute(.paragraphStyle, in: paraRange) { val, range, _ in
+            let style = self.paragraphStyle(basedOn: val as? NSParagraphStyle, isTodoParagraph: !isBullet)
+            style.headIndent = indent
+            style.firstLineHeadIndent = indent
+            storage.addAttribute(.paragraphStyle, value: style, range: range)
+        }
+        storage.endEditing()
+        didChangeText()
+        notifyChange()
+    }
+
+    private func handleTab(isShift: Bool) -> Bool {
+        guard let storage = textStorage else { return false }
+        let pos = selectedRange().location
+        let nsString = string as NSString
+        let lineRange = nsString.lineRange(for: NSRange(location: pos, length: 0))
+        let lineStart = lineRange.location
+        guard lineStart < storage.length else { return false }
+
+        let previewLen = min(2, storage.length - lineStart)
+        let lineText2 = nsString.substring(with: NSRange(location: lineStart, length: previewLen))
+        let isBullet = lineText2.hasPrefix("• ") || lineText2.hasPrefix("◦ ")
+        let isTodo = storage.attributes(at: lineStart, effectiveRange: nil)[.attachment] is TodoAttachment
+
+        guard isBullet || isTodo else { return false }
+
+        let currentLevel = indentLevel(at: lineStart)
+
+        if isShift {
+            guard currentLevel > 0 else { return false }
+            setIndentLevel(currentLevel - 1, lineStart: lineStart, isBullet: isBullet)
+        } else {
+            guard currentLevel < ListIndent.maxNestingLevel else { return false }
+            setIndentLevel(currentLevel + 1, lineStart: lineStart, isBullet: isBullet)
+        }
+        return true
     }
 
     // MARK: - Mouse Down (toggle checkboxes)
@@ -545,6 +687,16 @@ final class BuoyTextView: NSTextView {
     func applyBullet(_ cursorRange: NSRange? = nil) {
         guard let storage = textStorage else { return }
         let sel = clampedSelection(cursorRange, to: storage)
+
+        if let emptyLineRange = emptyCurrentLineContentRange(for: sel) {
+            let marker = NSAttributedString(string: "• ", attributes: normalizedTypingAttributes())
+            guard replaceText(in: emptyLineRange, with: marker) else { return }
+            window?.makeFirstResponder(self)
+            setSelectedRange(NSRange(location: emptyLineRange.location + marker.length, length: 0))
+            notifyChange()
+            return
+        }
+
         let lineRanges = coveredLineRanges(for: sel)
 
         storage.beginEditing()
@@ -578,6 +730,16 @@ final class BuoyTextView: NSTextView {
     func applyTodo(_ cursorRange: NSRange? = nil) {
         guard let storage = textStorage else { return }
         let sel = clampedSelection(cursorRange, to: storage)
+
+        if let emptyLineRange = emptyCurrentLineContentRange(for: sel) {
+            let todo = todoAttachmentAttributedString()
+            guard replaceText(in: emptyLineRange, with: todo) else { return }
+            window?.makeFirstResponder(self)
+            setSelectedRange(NSRange(location: emptyLineRange.location + todo.length, length: 0))
+            notifyChange()
+            return
+        }
+
         let lineRanges = coveredLineRanges(for: sel)
 
         storage.beginEditing()
@@ -666,6 +828,26 @@ final class BuoyTextView: NSTextView {
             if pos >= scanRange.location + scanRange.length { break }
         }
         return ranges
+    }
+
+    /// Returns the editable portion of the current line when the caret is on a blank line.
+    /// Trailing line breaks are excluded so list markers are inserted before the newline.
+    private func emptyCurrentLineContentRange(for sel: NSRange) -> NSRange? {
+        guard sel.length == 0 else { return nil }
+        let nsString = string as NSString
+        let lineRange = nsString.lineRange(for: sel)
+        var contentLength = lineRange.length
+
+        while contentLength > 0 {
+            let scalar = nsString.character(at: lineRange.location + contentLength - 1)
+            guard scalar == 10 || scalar == 13 else { break }
+            contentLength -= 1
+        }
+
+        let contentRange = NSRange(location: lineRange.location, length: contentLength)
+        let lineText = nsString.substring(with: contentRange)
+        guard lineText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return contentRange
     }
 
     /// Toggles a font trait (bold/italic) on the current selection.
@@ -889,16 +1071,18 @@ final class BuoyTextView: NSTextView {
             }
         }
 
-        // Apply todoParagraph spacing to paragraphs that start with a TodoAttachment
+        // Apply todoParagraph spacing to paragraphs that start with a TodoAttachment,
+        // preserving headIndent so nested todos survive the RTF round-trip.
         let normalizedString = mutable.string as NSString
         var paragraphStart = 0
         while paragraphStart < mutable.length {
             let paragraphRange = normalizedString.paragraphRange(for: NSRange(location: paragraphStart, length: 0))
             if paragraphRange.location < mutable.length,
                mutable.attribute(.attachment, at: paragraphRange.location, effectiveRange: nil) is TodoAttachment {
+                let existingStyle = mutable.attribute(.paragraphStyle, at: paragraphRange.location, effectiveRange: nil) as? NSParagraphStyle
                 mutable.addAttribute(
                     .paragraphStyle,
-                    value: paragraphStyle(isTodoParagraph: true),
+                    value: paragraphStyle(basedOn: existingStyle, isTodoParagraph: true),
                     range: paragraphRange
                 )
             }
