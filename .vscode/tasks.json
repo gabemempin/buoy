@@ -4,7 +4,7 @@
     {
       "label": "Run Buoy",
       "type": "shell",
-      "command": "xcodebuild -project Buoy.xcodeproj -scheme Buoy -configuration Debug build && open \"$(ls -td ~/Library/Developer/Xcode/DerivedData/*/Build/Products/Debug/Buoy.app | head -1)\"",
+      "command": "killall Buoy 2>/dev/null || true; xcodebuild -project Buoy.xcodeproj -scheme Buoy -configuration Debug build && open \"$(ls -td ~/Library/Developer/Xcode/DerivedData/*/Build/Products/Debug/Buoy.app | head -1)\"",
       "group": {
         "kind": "build",
         "isDefault": true

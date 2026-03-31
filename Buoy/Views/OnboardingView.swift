@@ -18,14 +18,15 @@ struct OnboardingView: View {
                 if let icon = NSApp.applicationIconImage {
                     Image(nsImage: icon)
                         .resizable()
-                        .frame(width: 80, height: 80)
+                        .frame(width: 90, height: 90)
                         .clipShape(RoundedRectangle(cornerRadius: 18))
-                        .shadow(radius: 4)
+                        .shadow(radius: 3)
                 }
 
                 VStack(spacing: 6) {
                     Text("Welcome to Buoy")
-                        .font(.system(size: 18, weight: .bold))
+                        .font(.system(size: 23, weight: .bold))
+                        .fontWidth(.expanded)
                         .multilineTextAlignment(.center)
                     Text("A notepad that's always there on top of all your windows.")
                         .font(.system(size: 12))
@@ -40,10 +41,14 @@ struct OnboardingView: View {
                 }
 
                 Divider().padding(.horizontal, 24)
+                    .frame(maxWidth: .infinity)
 
                 VStack(spacing: 8) {
-                    Text("Global Shortcut")
-                        .font(.system(size: 12, weight: .medium))
+                    Text("Set a shortcut to quickly open Buoy from anywhere, or keep the default")
+                        .font(.system(size: 13, weight: .medium))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 24)
+                        .tracking(-0.2)
                     ShortcutRecorderView(shortcut: $settings.globalShortcut, onChanged: onShortcutChanged)
                 }
 
@@ -58,6 +63,7 @@ struct OnboardingView: View {
                         .padding(.vertical, 8)
                 }
                 .buttonStyle(.borderedProminent)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
                 .padding(.horizontal, 24)
             }
             .padding(24)
@@ -82,6 +88,7 @@ private struct FeaturePill: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
+        .frame(width: 240)
         .background(Color.primary.opacity(0.05))
         .clipShape(Capsule())
     }
