@@ -35,7 +35,7 @@ final class TodoAttachment: NSTextAttachment {
                 check.stroke()
             } else {
                 let path = NSBezierPath(ovalIn: circle)
-                NSColor.tertiaryLabelColor.setStroke()
+                NSColor.secondaryLabelColor.setStroke()
                 path.lineWidth = 1.5
                 path.stroke()
             }
