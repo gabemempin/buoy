@@ -59,11 +59,8 @@ extension View {
                 )
         } else {
             self.background(
-                ZStack {
-                    VisualEffectBackground(material: material, blendingMode: .behindWindow)
-                    RoundedRectangle(cornerRadius: cornerRadius)
-                        .fill(Color.accentColor.opacity(0.20))
-                }
+                VisualEffectBackground(material: .sidebar, blendingMode: .behindWindow)
+                    .opacity(0.7)
             )
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
         }
