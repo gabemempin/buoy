@@ -38,13 +38,10 @@ final class ContextMenuPillController {
             p.level = .floating
             p.hidesOnDeactivate = false
             p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-            p.contentView = hosting
             panel = p
-            hostingView = hosting
-        } else {
-            panel?.contentView = hosting
-            hostingView = hosting
         }
+        panel?.contentView = hosting
+        hostingView = hosting
 
         // Position above selection rect (in screen coordinates)
         var screenRect = parentWindow.convertToScreen(rect)
@@ -61,8 +58,6 @@ final class ContextMenuPillController {
         panel?.orderOut(nil)
     }
 }
-
-// MARK: - SwiftUI View
 
 struct ContextMenuPillView: View {
     var onBold: () -> Void

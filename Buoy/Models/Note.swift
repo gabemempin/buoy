@@ -14,13 +14,7 @@ struct Note: Identifiable, Codable, FetchableRecord, PersistableRecord {
         case id, title, contentRTF, createdAt, updatedAt
     }
 
-    // MARK: - Convenience
-
-    static func newID() -> String {
-        return String(Int64(Date().timeIntervalSince1970 * 1000))
-    }
-
-    static func currentTimestamp() -> Int64 {
-        return Int64(Date().timeIntervalSince1970 * 1000)
-    }
+    static func nowMs() -> Int64 { Int64(Date().timeIntervalSince1970 * 1000) }
+    static func newID() -> String { String(nowMs()) }
+    static func currentTimestamp() -> Int64 { nowMs() }
 }

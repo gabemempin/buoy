@@ -1,16 +1,14 @@
 import AppKit
 import SwiftUI
-import Sparkle
 import KeyboardShortcuts
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var panel: BuoyPanel?
     private var hostingView: NSHostingView<ContentView>?
     private var statusItem: NSStatusItem?
-    private var updaterController: SPUStandardUpdaterController?
 
     let noteStore = NoteStore()
-    var settings = AppSettings.load()
+    var settingsStore = SettingsStore()
 
     private let compactHeight: CGFloat = 520
     private let expandedHeight: CGFloat = 780
@@ -21,49 +19,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - App Launch
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Activation policy
-        NSApp.setActivationPolicy(settings.showInDock ? .regular : .accessory)
-
-        // Apply saved theme
-        applyTheme(settings.theme)
-
-        // Sparkle
-        updaterController = SPUStandardUpdaterController(
-            startingUpdater: true,
-            updaterDelegate: nil,
-            userDriverDelegate: nil
-        )
-
-        // Build panel
+        NSApp.setActivationPolicy(settingsStore.value.showInDock ? .regular : .accessory)
+        applyTheme(settingsStore.value.theme)
         setupPanel()
-
-        // Status bar item
         setupStatusItem()
-
-        // Global hotkey
-        HotkeyService.shared.register(shortcut: settings.globalShortcut)
-        HotkeyService.shared.onToggle = { [weak self] in
-            self?.togglePanel()
-        }
-
-        // Observe settings changes for always-on-top
+        HotkeyService.shared.register(shortcut: settingsStore.value.globalShortcut)
+        HotkeyService.shared.onToggle = { [weak self] in self?.togglePanel() }
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleSettingsUpdate),
             name: .settingsDidChange,
             object: nil
         )
-
-        // Native menus
         buildMainMenu()
-
-        // Show on launch
         showPanel()
     }
 
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        return false
-    }
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         showPanel()
@@ -80,7 +52,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let contentView = ContentView(
             noteStore: noteStore,
             settings: settingsBinding(),
-            updaterController: updaterController,
             onHeightChange: { [weak self] h in
                 self?.animateHeight(h, allowShrink: false)
             },
@@ -89,28 +60,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             onExpand: { [weak self] in self?.toggleExpand() }
         )
 
+        let initialWidth = max(380, PanelLayoutMetrics.minimumWindowWidth)
+        let initialRect = NSRect(x: 0, y: 0, width: initialWidth, height: compactHeight)
+
         let hosting = NSHostingView(rootView: contentView)
-        hosting.frame = NSRect(
-            x: 0,
-            y: 0,
-            width: max(380, PanelLayoutMetrics.minimumWindowWidth),
-            height: compactHeight
-        )
+        hosting.frame = initialRect
         hosting.wantsLayer = true
         hosting.layer?.backgroundColor = .clear
 
         let p = BuoyPanel(
-            contentRect: NSRect(
-                x: 0,
-                y: 0,
-                width: max(380, PanelLayoutMetrics.minimumWindowWidth),
-                height: compactHeight
-            ),
+            contentRect: initialRect,
             styleMask: [.borderless, .resizable, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
-        p.level = settings.alwaysOnTop ? .statusBar : .normal
+        p.level = settingsStore.value.alwaysOnTop ? .statusBar : .normal
         p.isOpaque = false
         p.backgroundColor = .clear
         p.isFloatingPanel = true
@@ -135,7 +99,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         guard let button = statusItem?.button else { return }
 
-        // Use colored icon (not template)
         if let icon = NSImage(named: "MenuBarIcon") {
             icon.isTemplate = false
             button.image = icon
@@ -163,7 +126,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func showContextMenu() {
         let menu = NSMenu()
         menu.addItem(withTitle: "Settings", action: #selector(openSettings), keyEquivalent: "")
-        menu.addItem(withTitle: "Check for Updates", action: #selector(checkForUpdates), keyEquivalent: "")
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit Buoy", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
         statusItem?.menu = menu
@@ -216,16 +178,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func openSettings() {
         showPanel()
-        // Settings panel opened via ContentView state (post notification)
         NotificationCenter.default.post(name: .openSettings, object: nil)
     }
 
-    @objc private func checkForUpdates() {
-        updaterController?.updater.checkForUpdates()
-    }
-
     @objc private func handleSettingsUpdate() {
-        panel?.level = settings.alwaysOnTop ? .statusBar : .normal
+        panel?.level = settingsStore.value.alwaysOnTop ? .statusBar : .normal
     }
 
     // MARK: - Theme
@@ -251,7 +208,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let appMenu = NSMenu()
         appItem.submenu = appMenu
         appMenu.addItem(withTitle: "About Buoy", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
-        appMenu.addItem(withTitle: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "")
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Hide Buoy", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         let hideOthers = appMenu.addItem(withTitle: "Hide Others", action: #selector(NSApplication.hideOtherApplications(_:)), keyEquivalent: "h")
@@ -293,8 +249,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 extension AppDelegate {
     func settingsBinding() -> Binding<AppSettings> {
         Binding(
-            get: { self.settings },
-            set: { self.settings = $0 }
+            get: { self.settingsStore.value },
+            set: { self.settingsStore.value = $0 }
         )
     }
 }

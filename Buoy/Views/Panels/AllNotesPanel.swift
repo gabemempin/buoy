@@ -28,7 +28,6 @@ struct AllNotesPanel: View {
 
             Divider()
 
-            // Note list
             ScrollView {
                 LazyVStack(spacing: 0) {
                     ForEach(notes) { note in
@@ -50,12 +49,7 @@ struct AllNotesPanel: View {
         .background(WindowDragBlocker())
         .buoyGlassPanel(cornerRadius: 14)
         .shadow(radius: 8)
-        .transition(
-            .asymmetric(
-                insertion: .scale(scale: 0.92, anchor: .topTrailing).combined(with: .opacity),
-                removal: .scale(scale: 0.92, anchor: .topTrailing).combined(with: .opacity)
-            )
-        )
+        .transition(.scale(scale: 0.92, anchor: .topTrailing).combined(with: .opacity))
     }
 }
 

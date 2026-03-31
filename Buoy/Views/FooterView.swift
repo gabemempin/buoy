@@ -13,7 +13,6 @@ struct FooterView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Timestamps — tap to toggle between Created and Last Edited
             HStack {
                 Spacer()
                 Button {
@@ -32,7 +31,6 @@ struct FooterView: View {
             .padding(.bottom, 4)
             .onChange(of: createdAt) { _, _ in showCreated = true }
 
-            // Transfer to Apple Notes (revealed by chevron)
             if showTransfer {
                 HStack {
                     Spacer()
@@ -51,7 +49,6 @@ struct FooterView: View {
                 .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
 
-            // Footer buttons — background enables window drag from empty areas of this row
             HStack(spacing: 6) {
                 Button(action: onShortcuts) {
                     Image(systemName: "keyboard")
@@ -77,12 +74,9 @@ struct FooterView: View {
 
                 Spacer()
 
-                // Unified [chevron | divider | Copy] pill — all one blue pill
                 HStack(spacing: 0) {
                     Button {
-                        DispatchQueue.main.async {
-                            withAnimation(.easeOut(duration: 0.16)) { showTransfer.toggle() }
-                        }
+                        withAnimation(.easeOut(duration: 0.16)) { showTransfer.toggle() }
                     } label: {
                         Image(systemName: showTransfer ? "chevron.up" : "chevron.down")
                             .font(.system(size: 9, weight: .semibold))
