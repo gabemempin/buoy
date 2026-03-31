@@ -32,11 +32,7 @@ private struct TitleTextField: NSViewRepresentable {
         field.isEditable = true
         field.isSelectable = true
         field.placeholderString = placeholder
-        var descriptor = NSFont.systemFont(ofSize: 19, weight: .semibold).fontDescriptor
-        descriptor = descriptor.addingAttributes([
-            .traits: [NSFontDescriptor.TraitKey.width: 0.5]
-        ])
-        field.font = NSFont(descriptor: descriptor, size: 19)
+        field.font = NSFont.systemFont(ofSize: 19, weight: .semibold, width: .expanded)
         field.textColor = NSColor.controlAccentColor
         field.alignment = .center
         field.focusRingType = .none
