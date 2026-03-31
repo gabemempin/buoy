@@ -4,7 +4,11 @@ description: Known bugs and their status, updated after each session
 type: project
 ---
 
-**App status:** All known bugs resolved as of 2026-03-23. Not yet committed.
+**App status:** All known bugs resolved as of 2026-03-29. Not yet committed.
+
+## Fixed this session (2026-03-29)
+
+- **Toolbar bullet/todo buttons no-op on blank lines** — `BuoyTextView.applyBullet(_:)` and `applyTodo(_:)` skipped whitespace-only lines, so clicking the toolbar buttons with the caret on an empty line did nothing. Fixed by adding `emptyCurrentLineContentRange(for:)` and explicitly inserting the bullet/todo marker before the line break on blank current lines.
 
 ## Fixed this session (2026-03-23)
 

@@ -1,10 +1,7 @@
 import SwiftUI
 import AppKit
-import Sparkle
 
-/// Stable reference holder for the NSTextView. Using a class (@StateObject) instead of
-/// @State ensures the reference survives all SwiftUI re-renders and is safe to mutate
-/// from within makeNSView/updateNSView without triggering re-render loops.
+// Class wrapper so the NSTextView reference survives SwiftUI re-renders without triggering update cycles.
 private final class TextViewRef {
     var value: BuoyTextView?
 }
@@ -12,7 +9,6 @@ private final class TextViewRef {
 struct ContentView: View {
     var noteStore: NoteStore
     @Binding var settings: AppSettings
-    var updaterController: SPUStandardUpdaterController?
     var onHeightChange: ((CGFloat) -> Void)?
     var onClose: () -> Void
     var onMinimize: () -> Void
@@ -43,7 +39,6 @@ struct ContentView: View {
     init(
         noteStore: NoteStore,
         settings: Binding<AppSettings>,
-        updaterController: SPUStandardUpdaterController?,
         onHeightChange: ((CGFloat) -> Void)?,
         onClose: @escaping () -> Void,
         onMinimize: @escaping () -> Void,
@@ -51,7 +46,6 @@ struct ContentView: View {
     ) {
         self.noteStore = noteStore
         self._settings = settings
-        self.updaterController = updaterController
         self.onHeightChange = onHeightChange
         self.onClose = onClose
         self.onMinimize = onMinimize
@@ -61,7 +55,6 @@ struct ContentView: View {
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            // Main layout
             VStack(spacing: 4) {
                 HeaderView(
                     title: titleBinding,
@@ -79,22 +72,11 @@ struct ContentView: View {
                     onBold:      { applyEditorFormat { $0.applyBold() } },
                     onItalic:    { applyEditorFormat { $0.applyItalic() } },
                     onUnderline: { applyEditorFormat { $0.applyUnderline() } },
-                    onBullet: {
-                        guard let tv = tvRef.value else { return }
-                        let pos = tv.lastKnownCursorPosition
-                        tv.window?.makeFirstResponder(tv)
-                        DispatchQueue.main.async { tv.applyBullet(pos) }
-                    },
-                    onTodo: {
-                        guard let tv = tvRef.value else { return }
-                        let pos = tv.lastKnownCursorPosition
-                        tv.window?.makeFirstResponder(tv)
-                        DispatchQueue.main.async { tv.applyTodo(pos) }
-                    },
+                    onBullet: { applyEditorCursorAction { $0.applyBullet($1) } },
+                    onTodo:   { applyEditorCursorAction { $0.applyTodo($1) } },
                     onLink:      { showLinkDialogFromToolbar() }
                 )
 
-                // Inline link dialog
                 if showLinkDialog {
                     LinkDialog(
                         isShowing: $showLinkDialog,
@@ -107,11 +89,10 @@ struct ContentView: View {
                     .transition(.opacity.combined(with: .move(edge: .top)))
                 }
 
-                // Editor
                 if let note = noteStore.currentNote {
                     EditorView(
                         rtfData: note.contentRTF,
-                        fontSize: settings.fontSize.pointSize,
+                        fontSize: settings.fontSize,
                         noteID: note.id,
                         onHeightChange: { h in
                             DispatchQueue.main.async {
@@ -138,7 +119,6 @@ struct ContentView: View {
                 )
             }
 
-            // Toast overlay
             ToastContainer(state: toastState)
 
             // Dismiss overlay — tapping outside a panel closes it
@@ -188,7 +168,6 @@ struct ContentView: View {
                     SettingsPanel(
                         isShowing: $showSettings,
                         settings: $settings,
-                        updaterController: updaterController,
                         onQuit: { NSApp.terminate(nil) },
                         onShortcutChanged: { s in HotkeyService.shared.register(shortcut: s) }
                     )
@@ -318,8 +297,6 @@ struct ContentView: View {
 
     private func applyEditorFormat(_ action: @escaping (BuoyTextView) -> Void) {
         guard let tv = tvRef.value else { return }
-        // Ensure the text view is first responder, then restore selection and apply formatting.
-        // Using async so makeFirstResponder + becomeFirstResponder fully complete first.
         tv.window?.makeFirstResponder(tv)
         DispatchQueue.main.async {
             if tv.lastKnownSelection.length > 0 {
@@ -329,12 +306,17 @@ struct ContentView: View {
         }
     }
 
+    private func applyEditorCursorAction(_ action: @escaping (BuoyTextView, NSRange) -> Void) {
+        guard let tv = tvRef.value else { return }
+        let pos = tv.lastKnownCursorPosition
+        tv.window?.makeFirstResponder(tv)
+        DispatchQueue.main.async { action(tv, pos) }
+    }
+
     private func showLinkDialogFromToolbar() {
         let tv = tvRef.value
-        // Capture cursor/selection now — before the dialog opens and takes focus
         savedInsertionPoint = tv?.lastKnownCursorPosition ?? NSRange(location: 0, length: 0)
-        let pos = savedInsertionPoint
-        linkDialogSelectedText = (pos.length > 0 ? tv.map { ($0.string as NSString).substring(with: pos) } : nil) ?? ""
+        linkDialogSelectedText = (savedInsertionPoint.length > 0 ? tv.map { ($0.string as NSString).substring(with: savedInsertionPoint) } : nil) ?? ""
         withAnimation { showLinkDialog = true }
     }
 

@@ -5,7 +5,6 @@
   "groups" : [
     {
       "blur-material" : 1,
-      "hidden" : false,
       "layers" : [
         {
           "blend-mode" : "normal",
@@ -30,7 +29,21 @@
               -27.855929004820155
             ]
           }
-        },
+        }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 1
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.17
+      }
+    },
+    {
+      "blur-material" : 1,
+      "hidden" : false,
+      "layers" : [
         {
           "blend-mode-specializations" : [
             {

@@ -16,7 +16,6 @@ Open `Buoy.xcodeproj` in Xcode and press ⌘R. No CLI build system. Code signing
 
 **Swift Package dependencies** (managed via Xcode SPM):
 - `GRDB.swift` (groue/GRDB) — SQLite ORM
-- `Sparkle` (sparkle-project/Sparkle) — auto-updater
 - `KeyboardShortcuts` (sindresorhus/KeyboardShortcuts) — global hotkey registration
 - `LaunchAtLogin-Modern` (sindresorhus/LaunchAtLogin-Modern) — login item management
 
@@ -58,8 +57,19 @@ AppDelegate → NSPanel
 - Stores/loads RTF via `NSAttributedString`
 - Handles all in-app keyboard shortcuts in `keyDown` (⌘N, ⌘⌫, ⌘⏎, ⌘←/→, ⌘K)
 - Auto-converts `- ` + Space → bullet `•`, `[] ` + Space → checkbox attachment
-- Bullets continue on Enter; empty bullet line removes bullet
+- Bullets and todos continue on Enter; empty list line removes the marker
+- Toolbar bullet/todo actions should also work on blank lines; `applyBullet(_:)` and `applyTodo(_:)` use `emptyCurrentLineContentRange(for:)` so the marker is inserted before the line break instead of silently no-oping
 - `TodoAttachment` is a custom `NSTextAttachment` subclass for checkboxes
+
+**Nested lists (Tab / Shift+Tab):**
+- Tab on any bullet/todo line indents one level (max 2 levels); Shift+Tab outdents
+- Level 0: `• ` / `☐` at `headIndent=0`; Level 1: `◦ ` / `☐` at `headIndent=20pt`; Level 2: `◦ ` / `☐` at `headIndent=40pt`
+- Tab beyond level 2 falls through to default (inserts a literal tab)
+- Indent level stored in `NSParagraphStyle.headIndent` — survives RTF round-trips
+- `ListIndent` private enum in `BuoyTextView`: `width=20`, `maxNestingLevel=2`
+- Key helpers: `indentLevel(at:)`, `setIndentLevel(_:lineStart:isBullet:)`, `handleTab(isShift:)`, `resetParagraphIndent(at:)`
+- **Critical bug pattern:** When removing an empty nested marker at end-of-document, always guard `lineStart < storage.length` before calling `resetParagraphIndent` — otherwise the clamp lands on the previous paragraph's `\n` and strips its indent
+- After escaping an empty nested line, reset `typingAttributes = normalizedTypingAttributes()` so subsequent typing doesn't inherit the indent
 
 **`EditorView`** wraps it as `NSViewRepresentable`; **`TextViewCoordinator`** relays delegate callbacks (`onHeightChange`, `onSelectionChange`, `onContentChange`).
 
@@ -86,6 +96,18 @@ Glass/vibrancy uses `#available(macOS 26, *)`:
 - **macOS 15:** `NSVisualEffectView` with `.menu` material via `VisualEffectBackground`
 
 The `View+Glass.swift` helper abstracts this behind `.buoyGlass()`.
+
+## Notes for Specific Agents
+
+- **Claude Code** — also reads `CLAUDE.md`; use `/help` for Claude Code-specific commands.
+- **OpenAI Codex CLI** — reads `AGENTS.md` automatically.
+- **Gemini CLI** — reads `GEMINI.md`; a symlink or copy of these instructions should be maintained there if Gemini CLI is used.
+
+## Wrap-Up Workflow
+
+- When the user says "wrap up", add any durable implementation details, bug patterns, workflow decisions, or other future-useful findings from the session to `AGENTS.md`.
+- Keep `CLAUDE.md` in lockstep with `AGENTS.md` whenever either file changes so Claude Code sees the same instructions and project memory.
+- Treat `AGENTS.md`, `CLAUDE.md`, and the `memory/` directory as the persistent repo-level memory for future agent sessions; avoid logging low-value or purely temporary details.
 
 ## Key Files
 
