@@ -11,6 +11,7 @@ struct EditorView: NSViewRepresentable {
     var fontSize: CGFloat
     var noteID: String
     var onHeightChange: ((CGFloat) -> Void)?
+    var onNoteSwitch: ((CGFloat) -> Void)?
     var onSelectionChange: ((NSRange) -> Void)?
     var onContentChange: ((Data) -> Void)?
     var textViewRef: ((BuoyTextView) -> Void)?
@@ -62,7 +63,7 @@ struct EditorView: NSViewRepresentable {
             textView.loadRTF(rtfData)
             context.coordinator.setLoadingContent(false)
             let h = textView.measureContentHeight()
-            onHeightChange?(h)
+            onNoteSwitch?(h)
         }
 
         context.coordinator.onHeightChange = onHeightChange
