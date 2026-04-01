@@ -1,8 +1,15 @@
 import SwiftUI
+import AppKit
 
 private enum BuoyGlassMetrics {
     static let windowCornerRadius: CGFloat = 20
-    static let liquidGlassBackdropOpacity: CGFloat = 0.7
+    static let enableWindowFocusPolish = true
+    static let liquidGlassBackdropActiveOpacity: CGFloat = 0.62
+    static let liquidGlassBackdropInactiveOpacity: CGFloat = 0.67
+    static let liquidGlassActiveTintOpacity: CGFloat = 0.05
+    static let liquidGlassInactiveTintOpacity: CGFloat = 0.045
+    static let inactiveFrostVeilOpacity: CGFloat = 0.015
+    static let windowFocusAnimation = Animation.easeInOut(duration: 0.22)
 }
 
 extension View {
@@ -10,9 +17,7 @@ extension View {
     /// Main window — includes edge depth border.
     @ViewBuilder
     func buoyGlass(material: NSVisualEffectView.Material = .menu) -> some View {
-        buoyRoundedGlass(
-            cornerRadius: BuoyGlassMetrics.windowCornerRadius
-        )
+        modifier(BuoyRoundedGlassModifier(cornerRadius: BuoyGlassMetrics.windowCornerRadius))
     }
 
     /// Rounded glass inset from the main window edge. Keeps corners aligned with the
@@ -23,47 +28,11 @@ extension View {
         cornerRadius: CGFloat? = nil,
         material: NSVisualEffectView.Material = .menu
     ) -> some View {
-        buoyRoundedGlass(
-            cornerRadius: cornerRadius ?? max(0, BuoyGlassMetrics.windowCornerRadius - inset)
+        modifier(
+            BuoyRoundedGlassModifier(
+                cornerRadius: cornerRadius ?? max(0, BuoyGlassMetrics.windowCornerRadius - inset)
+            )
         )
-    }
-
-    @ViewBuilder
-    private func buoyRoundedGlass(
-        cornerRadius: CGFloat
-    ) -> some View {
-        if #available(macOS 26, *) {
-            let shape = RoundedRectangle(cornerRadius: cornerRadius)
-
-            self.background(
-                ZStack {
-                    VisualEffectBackground(material: .underPageBackground, blendingMode: .behindWindow)
-                        .opacity(BuoyGlassMetrics.liquidGlassBackdropOpacity)
-                    shape
-                        .fill(Color.accentColor.opacity(0.05))
-                }
-                .clipShape(shape)
-            )
-                .glassEffect(.clear, in: shape)
-                .clipShape(shape)
-                .overlay(
-                    shape
-                        .strokeBorder(
-                            LinearGradient(
-                                colors: [.white.opacity(0.25), .clear, .white.opacity(0.08)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            lineWidth: 1
-                        )
-                )
-        } else {
-            self.background(
-                VisualEffectBackground(material: .sidebar, blendingMode: .behindWindow)
-                    .opacity(0.7)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
-        }
     }
 
     /// More opaque glass for overlay panels (Settings, Shortcuts, AllNotes).
@@ -144,5 +113,141 @@ extension View {
             )
             .shadow(color: .black.opacity(0.18), radius: 2, x: 0, y: 1)
         }
+    }
+}
+
+private struct BuoyRoundedGlassModifier: ViewModifier {
+    let cornerRadius: CGFloat
+    @State private var isWindowFocused = true
+
+    func body(content: Content) -> some View {
+        if #available(macOS 26, *) {
+            let shape = RoundedRectangle(cornerRadius: cornerRadius)
+            let focusPolishEnabled = BuoyGlassMetrics.enableWindowFocusPolish
+            let showsInactivePolish = focusPolishEnabled && !isWindowFocused
+            let backdropOpacity = showsInactivePolish
+                ? BuoyGlassMetrics.liquidGlassBackdropInactiveOpacity
+                : BuoyGlassMetrics.liquidGlassBackdropActiveOpacity
+            let tintOpacity = showsInactivePolish
+                ? BuoyGlassMetrics.liquidGlassInactiveTintOpacity
+                : BuoyGlassMetrics.liquidGlassActiveTintOpacity
+
+            content
+                .background(
+                    ZStack {
+                        VisualEffectBackground(material: .underPageBackground, blendingMode: .behindWindow)
+                            .opacity(backdropOpacity)
+                        shape
+                            .fill(Color.accentColor.opacity(tintOpacity))
+                        if showsInactivePolish {
+                            shape
+                                .fill(Color.white.opacity(BuoyGlassMetrics.inactiveFrostVeilOpacity))
+                        }
+                    }
+                    .clipShape(shape)
+                    .animation(BuoyGlassMetrics.windowFocusAnimation, value: isWindowFocused)
+                )
+                .background(
+                    Group {
+                        if focusPolishEnabled {
+                            BuoyWindowFocusObserver { isFocused in
+                                withAnimation(BuoyGlassMetrics.windowFocusAnimation) {
+                                    isWindowFocused = isFocused
+                                }
+                            }
+                            .frame(width: 0, height: 0)
+                        }
+                    }
+                )
+                .glassEffect(.clear, in: shape)
+                .clipShape(shape)
+                .overlay(
+                    shape
+                        .strokeBorder(
+                            LinearGradient(
+                                colors: [.white.opacity(0.25), .clear, .white.opacity(0.08)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 1
+                        )
+                )
+        } else {
+            content
+                .background(
+                    VisualEffectBackground(material: .sidebar, blendingMode: .behindWindow)
+                        .opacity(0.7)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+        }
+    }
+}
+
+private struct BuoyWindowFocusObserver: NSViewRepresentable {
+    var onChange: (Bool) -> Void
+
+    func makeNSView(context: Context) -> ObserverView {
+        let view = ObserverView()
+        view.onChange = onChange
+        return view
+    }
+
+    func updateNSView(_ nsView: ObserverView, context: Context) {
+        nsView.onChange = onChange
+        DispatchQueue.main.async {
+            nsView.refreshObservation()
+        }
+    }
+}
+
+private final class ObserverView: NSView {
+    var onChange: ((Bool) -> Void)?
+    private weak var observedWindow: NSWindow?
+    private var observers: [NSObjectProtocol] = []
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        refreshObservation()
+    }
+
+    deinit {
+        removeObservers()
+    }
+
+    func refreshObservation() {
+        guard window !== observedWindow else { return }
+
+        removeObservers()
+        observedWindow = window
+
+        guard let window else { return }
+
+        DispatchQueue.main.async { [weak self] in
+            self?.onChange?(window.isKeyWindow)
+        }
+
+        let center = NotificationCenter.default
+        observers = [
+            center.addObserver(
+                forName: NSWindow.didBecomeKeyNotification,
+                object: window,
+                queue: .main
+            ) { [weak self] _ in
+                self?.onChange?(true)
+            },
+            center.addObserver(
+                forName: NSWindow.didResignKeyNotification,
+                object: window,
+                queue: .main
+            ) { [weak self] _ in
+                self?.onChange?(false)
+            }
+        ]
+    }
+
+    private func removeObservers() {
+        let center = NotificationCenter.default
+        observers.forEach(center.removeObserver)
+        observers.removeAll()
     }
 }
