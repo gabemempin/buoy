@@ -5,6 +5,10 @@ enum PanelLayoutMetrics {
     static let stackSpacing: CGFloat = 4
     static let onboardingInset: CGFloat = 2
     static let onboardingCornerRadius: CGFloat = 15
+    static let overlayHorizontalInset: CGFloat = 8
+    static let allNotesTopInset: CGFloat = 43
+    static let allNotesBottomInset: CGFloat = 43
+    static let footerOverlayBottomInset: CGFloat = 43
 
     static let headerMinimumHeight: CGFloat = 70
     static let toolbarMinimumHeight: CGFloat = 36
@@ -36,4 +40,8 @@ enum PanelLayoutMetrics {
         + (stackSpacing * 3)
 
     static let maximumAutoHeight: CGFloat = 700
+
+    // Minimum window heights when overlay panels are open
+    static let settingsOverrideHeight: CGFloat = 420
+    static let shortcutsOverrideHeight: CGFloat = 440
 }

@@ -120,3 +120,22 @@ The `View+Glass.swift` helper abstracts this behind `.buoyGlass()`.
 | `Views/ContentView.swift` | Root SwiftUI layout and panel state |
 | `SWIFTUI_REWRITE.md` | Full feature specification (authoritative reference) |
 | `XCODE_SETUP.md` | Step-by-step Xcode configuration guide |
+| `Helpers/PanelLayoutMetrics.swift` | All window/panel sizing constants |
+
+## Developer Workflows
+
+### Reset Onboarding
+To trigger the onboarding flow again without reinstalling:
+```bash
+sed -i '' 's/"onboarded":true/"onboarded":false/' ~/.buoy/settings.json
+```
+Then relaunch the app. The phrases **"invoke onboarding"** or **"reset onboarding"** from the user mean run this command.
+
+### Overlay Panel Height Override
+Settings and Shortcuts panels (bottom-left overlays) animate the window taller when shown and restore when dismissed. The mechanism:
+- `PanelLayoutMetrics.settingsOverrideHeight` / `shortcutsOverrideHeight` — target heights when panels are open
+- `AppDelegate.overlayOverrideHeight` — active override value (0 = none)
+- `AppDelegate.applyOverrideHeight(_ height: CGFloat?)` — call with a value to expand, `nil` to restore; uses 0.25s easeInEaseOut
+- `ContentView` fires `onOverrideHeight` via `.onChange(of: showSettings/showShortcuts)` — catches all dismiss paths (x button, tap-outside, etc.)
+- `animateHeight` respects the override via `max(target, overlayOverrideHeight)` so content-driven resizes still work while a panel is open
+- Panel bottom offset from footer is controlled by `.padding(.bottom, N)` in `ContentView` (currently 43pt); decrease to move panel down, increase to move it up

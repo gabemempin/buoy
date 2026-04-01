@@ -15,7 +15,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let expandedHeight: CGFloat = 780
     private var isExpanded = false
     private var currentHeight: CGFloat = PanelLayoutMetrics.minimumWindowHeight
+    private var overlayOverrideHeight: CGFloat = 0
     private var hasPositioned = false
+
+    private func panelContentHeight(_ panel: NSPanel) -> CGFloat {
+        panel.contentRect(forFrameRect: panel.frame).height
+    }
 
     // MARK: - App Launch
 
@@ -60,10 +65,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.animateHeight(h, allowShrink: false)
             },
             onNoteSwitchHeight: { [weak self] h in
-                self?.animateHeight(h, allowShrink: true, duration: 0.50, timingName: .easeInEaseOut)
+                self?.animateNoteSwitchHeight(h)
             },
             onOnboardingComplete: { [weak self] in
                 self?.animateOnboardingDismiss()
+            },
+            onOverrideHeight: { [weak self] height in
+                self?.applyOverrideHeight(height)
             },
             onClose: { [weak self] in self?.hidePanel() },
             onMinimize: { [weak self] in self?.panel?.miniaturize(nil) },
@@ -200,13 +208,71 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         timingName: CAMediaTimingFunctionName = .easeOut
     ) {
         guard let p = panel else { return }
+        let liveHeight = panelContentHeight(p)
+        if overlayOverrideHeight == 0 {
+            currentHeight = max(PanelLayoutMetrics.minimumWindowHeight, liveHeight)
+        }
         let target = max(PanelLayoutMetrics.minimumWindowHeight, min(PanelLayoutMetrics.maximumAutoHeight, newHeight))
-        guard allowShrink || target > currentHeight else { return }
+        guard allowShrink || target > liveHeight else { return }
         currentHeight = target
+        let effectiveTarget = max(target, overlayOverrideHeight)
+        guard abs(liveHeight - effectiveTarget) > 0.5 else { return }
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = duration
             ctx.timingFunction = CAMediaTimingFunction(name: timingName)
-            p.animator().setContentSize(NSSize(width: p.frame.width, height: target))
+            p.animator().setContentSize(NSSize(width: p.frame.width, height: effectiveTarget))
+        }
+    }
+
+    private func animateNoteSwitchHeight(_ newHeight: CGFloat) {
+        guard let p = panel else { return }
+        let liveHeight = panelContentHeight(p)
+        if overlayOverrideHeight == 0 {
+            currentHeight = max(PanelLayoutMetrics.minimumWindowHeight, liveHeight)
+        }
+
+        let target = max(
+            PanelLayoutMetrics.minimumWindowHeight,
+            min(PanelLayoutMetrics.maximumAutoHeight, newHeight)
+        )
+        currentHeight = target
+
+        let effectiveTarget = max(target, overlayOverrideHeight)
+        guard abs(liveHeight - effectiveTarget) > 0.5 else { return }
+
+        let currentFrame = p.frame
+        let currentContentRect = p.contentRect(forFrameRect: currentFrame)
+        let targetContentRect = NSRect(
+            origin: currentContentRect.origin,
+            size: NSSize(width: currentContentRect.width, height: effectiveTarget)
+        )
+        var targetFrame = p.frameRect(forContentRect: targetContentRect)
+        targetFrame.origin.x = currentFrame.origin.x
+        targetFrame.origin.y = currentFrame.maxY - targetFrame.height
+
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.28
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            p.animator().setFrame(targetFrame, display: true)
+        }
+    }
+
+    func applyOverrideHeight(_ height: CGFloat?) {
+        guard let p = panel else { return }
+        let liveHeight = panelContentHeight(p)
+        if overlayOverrideHeight == 0, height != nil {
+            // When opening an overlay, honor the live panel height so a larger window
+            // doesn't get snapped down to the fixed overlay override.
+            currentHeight = max(PanelLayoutMetrics.minimumWindowHeight, liveHeight)
+        }
+        overlayOverrideHeight = height ?? 0
+        let target = max(currentHeight, overlayOverrideHeight)
+        let clampedTarget = max(PanelLayoutMetrics.minimumWindowHeight, target)
+        guard abs(liveHeight - clampedTarget) > 0.5 else { return }
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.25
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            p.animator().setContentSize(NSSize(width: p.frame.width, height: clampedTarget))
         }
     }
 
