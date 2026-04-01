@@ -10,6 +10,8 @@ struct ContentView: View {
     var noteStore: NoteStore
     @Binding var settings: AppSettings
     var onHeightChange: ((CGFloat) -> Void)?
+    var onNoteSwitchHeight: ((CGFloat) -> Void)?
+    var onOnboardingComplete: (() -> Void)?
     var onClose: () -> Void
     var onMinimize: () -> Void
     var onExpand: () -> Void
@@ -35,11 +37,14 @@ struct ContentView: View {
     // Cursor position captured before link dialog opens (avoids stale selection overwriting it)
     @State private var savedInsertionPoint: NSRange = NSRange(location: 0, length: 0)
     @State private var showOnboarding: Bool
+    @State private var showMainContent: Bool
 
     init(
         noteStore: NoteStore,
         settings: Binding<AppSettings>,
         onHeightChange: ((CGFloat) -> Void)?,
+        onNoteSwitchHeight: ((CGFloat) -> Void)? = nil,
+        onOnboardingComplete: (() -> Void)? = nil,
         onClose: @escaping () -> Void,
         onMinimize: @escaping () -> Void,
         onExpand: @escaping () -> Void
@@ -47,10 +52,13 @@ struct ContentView: View {
         self.noteStore = noteStore
         self._settings = settings
         self.onHeightChange = onHeightChange
+        self.onNoteSwitchHeight = onNoteSwitchHeight
+        self.onOnboardingComplete = onOnboardingComplete
         self.onClose = onClose
         self.onMinimize = onMinimize
         self.onExpand = onExpand
         self._showOnboarding = State(initialValue: !settings.wrappedValue.onboarded)
+        self._showMainContent = State(initialValue: settings.wrappedValue.onboarded)
     }
 
     var body: some View {
@@ -99,6 +107,11 @@ struct ContentView: View {
                                 onHeightChange?(h + 160)
                             }
                         },
+                        onNoteSwitch: { h in
+                            DispatchQueue.main.async {
+                                onNoteSwitchHeight?(h + 160)
+                            }
+                        },
                         onContentChange: { rtf in
                             noteStore.saveContent(rtf)
                         },
@@ -118,6 +131,7 @@ struct ContentView: View {
                     onCopy: copyToClipboard
                 )
             }
+            .opacity(showMainContent ? 1 : 0)
 
             ToastContainer(state: toastState)
 
@@ -195,9 +209,22 @@ struct ContentView: View {
                 OnboardingView(
                     settings: $settings,
                     onShortcutChanged: { s in HotkeyService.shared.register(shortcut: s) },
-                    onDismiss: { showOnboarding = false }
+                    onDismiss: {
+                        withAnimation(.easeInOut(duration: 1.0)) {
+                            showOnboarding = false
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                            onOnboardingComplete?()
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.55) {
+                            withAnimation(.easeIn(duration: 0.25)) {
+                                showMainContent = true
+                            }
+                        }
+                    }
                 )
                 .padding(2)
+                .transition(.opacity)
             }
         }
         .padding(6)

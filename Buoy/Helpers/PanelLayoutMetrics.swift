@@ -34,4 +34,6 @@ enum PanelLayoutMetrics {
         + editorMinimumHeight
         + footerMinimumHeight
         + (stackSpacing * 3)
+
+    static let maximumAutoHeight: CGFloat = 700
 }

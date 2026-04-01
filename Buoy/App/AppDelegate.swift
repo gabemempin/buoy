@@ -10,10 +10,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let noteStore = NoteStore()
     var settingsStore = SettingsStore()
 
-    private let compactHeight: CGFloat = 520
+    private let compactHeight: CGFloat = PanelLayoutMetrics.minimumWindowHeight
+    private let onboardingHeight: CGFloat = 520
     private let expandedHeight: CGFloat = 780
     private var isExpanded = false
-    private var currentHeight: CGFloat = 520
+    private var currentHeight: CGFloat = PanelLayoutMetrics.minimumWindowHeight
     private var hasPositioned = false
 
     // MARK: - App Launch
@@ -49,19 +50,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Panel Setup
 
     private func setupPanel() {
+        let isFirstRun = !settingsStore.value.onboarded
+        let initialHeight = isFirstRun ? onboardingHeight : compactHeight
+
         let contentView = ContentView(
             noteStore: noteStore,
             settings: settingsBinding(),
             onHeightChange: { [weak self] h in
                 self?.animateHeight(h, allowShrink: false)
             },
+            onNoteSwitchHeight: { [weak self] h in
+                self?.animateHeight(h, allowShrink: true, duration: 0.50, timingName: .easeInEaseOut)
+            },
+            onOnboardingComplete: { [weak self] in
+                self?.animateOnboardingDismiss()
+            },
             onClose: { [weak self] in self?.hidePanel() },
             onMinimize: { [weak self] in self?.panel?.miniaturize(nil) },
             onExpand: { [weak self] in self?.toggleExpand() }
         )
 
-        let initialWidth = max(380, PanelLayoutMetrics.minimumWindowWidth)
-        let initialRect = NSRect(x: 0, y: 0, width: initialWidth, height: compactHeight)
+        let initialWidth = PanelLayoutMetrics.minimumWindowWidth
+        let initialRect = NSRect(x: 0, y: 0, width: initialWidth, height: initialHeight)
 
         let hosting = NSHostingView(rootView: contentView)
         hosting.frame = initialRect
@@ -89,7 +99,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         panel = p
         hostingView = hosting
-        currentHeight = compactHeight
+        currentHeight = initialHeight
+    }
+
+    private func animateOnboardingDismiss() {
+        guard let p = panel else { return }
+        let targetWidth = PanelLayoutMetrics.minimumWindowWidth
+        let targetHeight = compactHeight
+        let currentFrame = p.frame
+        let widthDiff = currentFrame.width - targetWidth
+        let heightDiff = currentFrame.height - targetHeight
+        let newFrame = NSRect(
+            x: currentFrame.minX + widthDiff / 2,
+            y: currentFrame.minY + heightDiff / 2,
+            width: targetWidth,
+            height: targetHeight
+        )
+        currentHeight = targetHeight
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.55
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            p.animator().setFrame(newFrame, display: true)
+        }
     }
 
     // MARK: - Status Item
@@ -162,14 +193,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         animateHeight(isExpanded ? expandedHeight : compactHeight, allowShrink: true)
     }
 
-    func animateHeight(_ newHeight: CGFloat, allowShrink: Bool) {
+    func animateHeight(
+        _ newHeight: CGFloat,
+        allowShrink: Bool,
+        duration: CGFloat = 0.15,
+        timingName: CAMediaTimingFunctionName = .easeOut
+    ) {
         guard let p = panel else { return }
-        let target = max(PanelLayoutMetrics.minimumWindowHeight, min(700, newHeight))
+        let target = max(PanelLayoutMetrics.minimumWindowHeight, min(PanelLayoutMetrics.maximumAutoHeight, newHeight))
         guard allowShrink || target > currentHeight else { return }
         currentHeight = target
         NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.15
-            ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            ctx.duration = duration
+            ctx.timingFunction = CAMediaTimingFunction(name: timingName)
             p.animator().setContentSize(NSSize(width: p.frame.width, height: target))
         }
     }
