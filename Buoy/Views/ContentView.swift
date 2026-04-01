@@ -12,6 +12,7 @@ struct ContentView: View {
     var onHeightChange: ((CGFloat) -> Void)?
     var onNoteSwitchHeight: ((CGFloat) -> Void)?
     var onOnboardingComplete: (() -> Void)?
+    var onOverrideHeight: ((CGFloat?) -> Void)?
     var onClose: () -> Void
     var onMinimize: () -> Void
     var onExpand: () -> Void
@@ -45,6 +46,7 @@ struct ContentView: View {
         onHeightChange: ((CGFloat) -> Void)?,
         onNoteSwitchHeight: ((CGFloat) -> Void)? = nil,
         onOnboardingComplete: (() -> Void)? = nil,
+        onOverrideHeight: ((CGFloat?) -> Void)? = nil,
         onClose: @escaping () -> Void,
         onMinimize: @escaping () -> Void,
         onExpand: @escaping () -> Void
@@ -54,6 +56,7 @@ struct ContentView: View {
         self.onHeightChange = onHeightChange
         self.onNoteSwitchHeight = onNoteSwitchHeight
         self.onOnboardingComplete = onOnboardingComplete
+        self.onOverrideHeight = onOverrideHeight
         self.onClose = onClose
         self.onMinimize = onMinimize
         self.onExpand = onExpand
@@ -185,7 +188,7 @@ struct ContentView: View {
                         onQuit: { NSApp.terminate(nil) },
                         onShortcutChanged: { s in HotkeyService.shared.register(shortcut: s) }
                     )
-                    .padding(.bottom, 52)
+                    .padding(.bottom, 43)
                     .padding(.leading, 8)
                     .onDisappear { focusEditor() }
                 }
@@ -194,7 +197,7 @@ struct ContentView: View {
                         isShowing: $showShortcuts,
                         globalShortcut: electronToSymbols(settings.globalShortcut)
                     )
-                    .padding(.bottom, 52)
+                    .padding(.bottom, 43)
                     .padding(.leading, 8)
                     .onDisappear { focusEditor() }
                 }
@@ -259,6 +262,12 @@ struct ContentView: View {
                 let h = tv.measureContentHeight()
                 onHeightChange?(h + 160)
             }
+        }
+        .onChange(of: showSettings) { _, showing in
+            onOverrideHeight?(showing ? PanelLayoutMetrics.settingsOverrideHeight : nil)
+        }
+        .onChange(of: showShortcuts) { _, showing in
+            onOverrideHeight?(showing ? PanelLayoutMetrics.shortcutsOverrideHeight : nil)
         }
         .onAppear {
             showOnboarding = !settings.onboarded
