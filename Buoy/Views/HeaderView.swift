@@ -23,6 +23,7 @@ private struct TitleTextField: NSViewRepresentable {
     var placeholder: String
     var onSubmit: () -> Void
     var isFocused: Bool
+    @Environment(\.colorScheme) var colorScheme
 
     func makeNSView(context: Context) -> TitleNSTextField {
         let field = TitleNSTextField()
@@ -32,11 +33,7 @@ private struct TitleTextField: NSViewRepresentable {
         field.isEditable = true
         field.isSelectable = true
         field.placeholderString = placeholder
-        var descriptor = NSFont.systemFont(ofSize: 19, weight: .semibold).fontDescriptor
-        descriptor = descriptor.addingAttributes([
-            .traits: [NSFontDescriptor.TraitKey.width: 0.5]
-        ])
-        field.font = NSFont(descriptor: descriptor, size: 19)
+        field.font = NSFont.systemFont(ofSize: 19, weight: .semibold, width: .expanded)
         field.textColor = NSColor.controlAccentColor
         field.alignment = .center
         field.focusRingType = .none
@@ -50,6 +47,7 @@ private struct TitleTextField: NSViewRepresentable {
 
     func updateNSView(_ nsView: TitleNSTextField, context: Context) {
         if nsView.stringValue != text { nsView.stringValue = text }
+        nsView.textColor = colorScheme == .dark ? .white : .controlAccentColor
         if isFocused && nsView.window?.firstResponder !== nsView.currentEditor() {
             nsView.window?.makeFirstResponder(nsView)
         }

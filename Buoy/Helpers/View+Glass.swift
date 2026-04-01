@@ -2,6 +2,7 @@ import SwiftUI
 
 private enum BuoyGlassMetrics {
     static let windowCornerRadius: CGFloat = 20
+    static let liquidGlassBackdropOpacity: CGFloat = 0.7
 }
 
 extension View {
@@ -10,7 +11,6 @@ extension View {
     @ViewBuilder
     func buoyGlass(material: NSVisualEffectView.Material = .menu) -> some View {
         buoyRoundedGlass(
-            material: material,
             cornerRadius: BuoyGlassMetrics.windowCornerRadius
         )
     }
@@ -24,30 +24,30 @@ extension View {
         material: NSVisualEffectView.Material = .menu
     ) -> some View {
         buoyRoundedGlass(
-            material: material,
             cornerRadius: cornerRadius ?? max(0, BuoyGlassMetrics.windowCornerRadius - inset)
         )
     }
 
     @ViewBuilder
     private func buoyRoundedGlass(
-        material: NSVisualEffectView.Material,
         cornerRadius: CGFloat
     ) -> some View {
         if #available(macOS 26, *) {
+            let shape = RoundedRectangle(cornerRadius: cornerRadius)
+
             self.background(
-                    ZStack {
-                        VisualEffectBackground(material: .underPageBackground, blendingMode: .behindWindow)
-                            .opacity(0.85)
-                        RoundedRectangle(cornerRadius: cornerRadius)
-                            .fill(Color.accentColor.opacity(0.05))
-                    }
-                    .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
-                )
-                .glassEffect(.clear, in: RoundedRectangle(cornerRadius: cornerRadius))
-                .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+                ZStack {
+                    VisualEffectBackground(material: .underPageBackground, blendingMode: .behindWindow)
+                        .opacity(BuoyGlassMetrics.liquidGlassBackdropOpacity)
+                    shape
+                        .fill(Color.accentColor.opacity(0.05))
+                }
+                .clipShape(shape)
+            )
+                .glassEffect(.clear, in: shape)
+                .clipShape(shape)
                 .overlay(
-                    RoundedRectangle(cornerRadius: cornerRadius)
+                    shape
                         .strokeBorder(
                             LinearGradient(
                                 colors: [.white.opacity(0.25), .clear, .white.opacity(0.08)],
@@ -59,11 +59,8 @@ extension View {
                 )
         } else {
             self.background(
-                ZStack {
-                    VisualEffectBackground(material: material, blendingMode: .behindWindow)
-                    RoundedRectangle(cornerRadius: cornerRadius)
-                        .fill(Color.accentColor.opacity(0.20))
-                }
+                VisualEffectBackground(material: .sidebar, blendingMode: .behindWindow)
+                    .opacity(0.7)
             )
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
         }
