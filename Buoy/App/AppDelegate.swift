@@ -65,7 +65,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.animateHeight(h, allowShrink: false)
             },
             onNoteSwitchHeight: { [weak self] h in
-                self?.animateHeight(h, allowShrink: true, duration: 0.50, timingName: .easeInEaseOut)
+                self?.animateNoteSwitchHeight(h)
             },
             onOnboardingComplete: { [weak self] in
                 self?.animateOnboardingDismiss()
@@ -221,6 +221,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             ctx.duration = duration
             ctx.timingFunction = CAMediaTimingFunction(name: timingName)
             p.animator().setContentSize(NSSize(width: p.frame.width, height: effectiveTarget))
+        }
+    }
+
+    private func animateNoteSwitchHeight(_ newHeight: CGFloat) {
+        guard let p = panel else { return }
+        let liveHeight = panelContentHeight(p)
+        if overlayOverrideHeight == 0 {
+            currentHeight = max(PanelLayoutMetrics.minimumWindowHeight, liveHeight)
+        }
+
+        let target = max(
+            PanelLayoutMetrics.minimumWindowHeight,
+            min(PanelLayoutMetrics.maximumAutoHeight, newHeight)
+        )
+        currentHeight = target
+
+        let effectiveTarget = max(target, overlayOverrideHeight)
+        guard abs(liveHeight - effectiveTarget) > 0.5 else { return }
+
+        let currentFrame = p.frame
+        let currentContentRect = p.contentRect(forFrameRect: currentFrame)
+        let targetContentRect = NSRect(
+            origin: currentContentRect.origin,
+            size: NSSize(width: currentContentRect.width, height: effectiveTarget)
+        )
+        var targetFrame = p.frameRect(forContentRect: targetContentRect)
+        targetFrame.origin.x = currentFrame.origin.x
+        targetFrame.origin.y = currentFrame.maxY - targetFrame.height
+
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.28
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            p.animator().setFrame(targetFrame, display: true)
         }
     }
 
