@@ -932,12 +932,24 @@ final class BuoyTextView: NSTextView {
 
     func plainTextContent() -> String {
         guard let storage = textStorage else { return string }
+        let nsString = storage.string as NSString
         var result = ""
-        storage.enumerateAttributes(in: NSRange(location: 0, length: storage.length)) { attrs, range, _ in
+        var location = 0
+
+        while location < storage.length {
+            var effectiveRange = NSRange(location: 0, length: 0)
+            let attrs = storage.attributes(at: location, effectiveRange: &effectiveRange)
+
             if let todo = attrs[.attachment] as? TodoAttachment {
                 result += todo.isChecked ? "☑ " : "☐ "
+                location = NSMaxRange(effectiveRange)
+                if location < storage.length, nsString.character(at: location) == 32 {
+                    // Skip the built-in spacer stored after every TodoAttachment so exports stay stable.
+                    location += 1
+                }
             } else {
-                result += (storage.string as NSString).substring(with: range)
+                result += nsString.substring(with: effectiveRange)
+                location = NSMaxRange(effectiveRange)
             }
         }
         return result
@@ -989,6 +1001,7 @@ final class BuoyTextView: NSTextView {
     }
 
     /// Returns a mutable copy of `storage` with every TodoAttachment replaced using `makeReplacement`.
+    /// The attachment's built-in spacer is consumed too so repeated exports don't duplicate it.
     /// Replacements are applied in reverse order to preserve correct indices.
     private func mutableCopyReplacingTodoAttachments(
         in storage: NSTextStorage,
@@ -996,17 +1009,36 @@ final class BuoyTextView: NSTextView {
     ) -> NSMutableAttributedString {
         let mutable = NSMutableAttributedString(attributedString:
             storage.attributedSubstring(from: NSRange(location: 0, length: storage.length)))
+        let nsString = storage.string as NSString
 
         var attachments: [(NSRange, Bool)] = []
         storage.enumerateAttribute(.attachment, in: NSRange(location: 0, length: storage.length)) { val, range, _ in
             if let todo = val as? TodoAttachment {
-                attachments.append((range, todo.isChecked))
+                let replacementRange = rangeByConsumingFollowingTodoSpacer(
+                    in: nsString,
+                    startingWith: range,
+                    consumeAllFollowingSpaces: false
+                )
+                attachments.append((replacementRange, todo.isChecked))
             }
         }
         for (range, isChecked) in attachments.reversed() {
             mutable.replaceCharacters(in: range, with: makeReplacement(isChecked))
         }
         return mutable
+    }
+
+    private func rangeByConsumingFollowingTodoSpacer(
+        in string: NSString,
+        startingWith baseRange: NSRange,
+        consumeAllFollowingSpaces: Bool
+    ) -> NSRange {
+        var expanded = baseRange
+        while NSMaxRange(expanded) < string.length, string.character(at: NSMaxRange(expanded)) == 32 {
+            expanded.length += 1
+            if !consumeAllFollowingSpaces { break }
+        }
+        return expanded
     }
 
     func loadRTF(_ data: Data) {
@@ -1058,15 +1090,22 @@ final class BuoyTextView: NSTextView {
             mutable.addAttribute(.font, value: NSFont.systemFont(ofSize: fontSize), range: range)
         }
 
-        // Restore TodoAttachments from ☐/☑ markers written by rtfContent()
+        // Restore TodoAttachments from ☐/☑ markers written by rtfContent().
+        // Older builds wrote the marker and left the built-in spacer behind, so consume any
+        // following spaces here and canonicalize back to a single attachment + single spacer.
         for (marker, isChecked) in [("\u{2611}", true), ("\u{2610}", false)] as [(String, Bool)] {
             var searchRange = NSRange(location: 0, length: mutable.length)
             while searchRange.location < mutable.length {
                 let found = (mutable.string as NSString).range(of: marker, options: [], range: searchRange)
                 if found.location == NSNotFound { break }
                 let atStr = todoAttachmentAttributedString(isChecked: isChecked)
-                mutable.replaceCharacters(in: found, with: atStr)
-                let nextLoc = found.location + atStr.length
+                let replacementRange = rangeByConsumingFollowingTodoSpacer(
+                    in: mutable.string as NSString,
+                    startingWith: found,
+                    consumeAllFollowingSpaces: true
+                )
+                mutable.replaceCharacters(in: replacementRange, with: atStr)
+                let nextLoc = replacementRange.location + atStr.length
                 searchRange = NSRange(location: nextLoc, length: mutable.length - nextLoc)
             }
         }
