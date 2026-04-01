@@ -153,29 +153,40 @@ struct ContentView: View {
             }
 
             // All Notes panel — top-right
-            ZStack(alignment: .topTrailing) {
-                if showAllNotes {
-                    AllNotesPanel(
-                        isShowing: $showAllNotes,
-                        notes: noteStore.notes,
-                        currentNoteID: noteStore.currentNote?.id,
-                        onSelect: { note in
-                            noteStore.switchNote(to: note)
-                            focusEditor()
-                        },
-                        onDelete: { note in
-                            guard noteStore.notes.count > 1 else {
-                                toastState.show("Cannot delete the last note", isError: true)
-                                return
+            GeometryReader { proxy in
+                ZStack(alignment: .topTrailing) {
+                    if showAllNotes {
+                        AllNotesPanel(
+                            isShowing: $showAllNotes,
+                            notes: noteStore.notes,
+                            currentNoteID: noteStore.currentNote?.id,
+                            onSelect: { note in
+                                noteStore.switchNote(to: note)
+                                focusEditor()
+                            },
+                            onDelete: { note in
+                                guard noteStore.notes.count > 1 else {
+                                    toastState.show("Cannot delete the last note", isError: true)
+                                    return
+                                }
+                                noteStore.deleteNote(note)
                             }
-                            noteStore.deleteNote(note)
-                        }
-                    )
-                    .padding(.top, 36)
-                    .padding(.trailing, 8)
+                        )
+                        .frame(
+                            maxHeight: max(
+                                CGFloat.zero,
+                                proxy.size.height
+                                    - PanelLayoutMetrics.allNotesTopInset
+                                    - PanelLayoutMetrics.allNotesBottomInset
+                            ),
+                            alignment: .top
+                        )
+                        .padding(.top, PanelLayoutMetrics.allNotesTopInset)
+                        .padding(.trailing, PanelLayoutMetrics.overlayHorizontalInset)
+                    }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
             .animation(.easeOut(duration: 0.16), value: showAllNotes)
             .allowsHitTesting(showAllNotes)
 
@@ -188,8 +199,8 @@ struct ContentView: View {
                         onQuit: { NSApp.terminate(nil) },
                         onShortcutChanged: { s in HotkeyService.shared.register(shortcut: s) }
                     )
-                    .padding(.bottom, 43)
-                    .padding(.leading, 8)
+                    .padding(.bottom, PanelLayoutMetrics.footerOverlayBottomInset)
+                    .padding(.leading, PanelLayoutMetrics.overlayHorizontalInset)
                     .onDisappear { focusEditor() }
                 }
                 if showShortcuts {
@@ -197,8 +208,8 @@ struct ContentView: View {
                         isShowing: $showShortcuts,
                         globalShortcut: electronToSymbols(settings.globalShortcut)
                     )
-                    .padding(.bottom, 43)
-                    .padding(.leading, 8)
+                    .padding(.bottom, PanelLayoutMetrics.footerOverlayBottomInset)
+                    .padding(.leading, PanelLayoutMetrics.overlayHorizontalInset)
                     .onDisappear { focusEditor() }
                 }
             }
@@ -263,11 +274,8 @@ struct ContentView: View {
                 onHeightChange?(h + 160)
             }
         }
-        .onChange(of: showSettings) { _, showing in
-            onOverrideHeight?(showing ? PanelLayoutMetrics.settingsOverrideHeight : nil)
-        }
-        .onChange(of: showShortcuts) { _, showing in
-            onOverrideHeight?(showing ? PanelLayoutMetrics.shortcutsOverrideHeight : nil)
+        .onChange(of: activeFooterOverlayHeight) { _, height in
+            onOverrideHeight?(height)
         }
         .onAppear {
             showOnboarding = !settings.onboarded
@@ -281,6 +289,12 @@ struct ContentView: View {
             get: { noteStore.currentNote?.title ?? "" },
             set: { noteStore.saveTitle($0) }
         )
+    }
+
+    private var activeFooterOverlayHeight: CGFloat? {
+        if showSettings { return PanelLayoutMetrics.settingsOverrideHeight }
+        if showShortcuts { return PanelLayoutMetrics.shortcutsOverrideHeight }
+        return nil
     }
 
     // MARK: - Actions
