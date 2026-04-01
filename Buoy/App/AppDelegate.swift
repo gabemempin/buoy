@@ -18,6 +18,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var overlayOverrideHeight: CGFloat = 0
     private var hasPositioned = false
 
+    private func panelContentHeight(_ panel: NSPanel) -> CGFloat {
+        panel.contentRect(forFrameRect: panel.frame).height
+    }
+
     // MARK: - App Launch
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -204,10 +208,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         timingName: CAMediaTimingFunctionName = .easeOut
     ) {
         guard let p = panel else { return }
+        let liveHeight = panelContentHeight(p)
+        if overlayOverrideHeight == 0 {
+            currentHeight = max(PanelLayoutMetrics.minimumWindowHeight, liveHeight)
+        }
         let target = max(PanelLayoutMetrics.minimumWindowHeight, min(PanelLayoutMetrics.maximumAutoHeight, newHeight))
-        guard allowShrink || target > currentHeight else { return }
+        guard allowShrink || target > liveHeight else { return }
         currentHeight = target
         let effectiveTarget = max(target, overlayOverrideHeight)
+        guard abs(liveHeight - effectiveTarget) > 0.5 else { return }
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = duration
             ctx.timingFunction = CAMediaTimingFunction(name: timingName)
@@ -217,9 +226,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applyOverrideHeight(_ height: CGFloat?) {
         guard let p = panel else { return }
+        let liveHeight = panelContentHeight(p)
+        if overlayOverrideHeight == 0, height != nil {
+            // When opening an overlay, honor the live panel height so a larger window
+            // doesn't get snapped down to the fixed overlay override.
+            currentHeight = max(PanelLayoutMetrics.minimumWindowHeight, liveHeight)
+        }
         overlayOverrideHeight = height ?? 0
         let target = max(currentHeight, overlayOverrideHeight)
         let clampedTarget = max(PanelLayoutMetrics.minimumWindowHeight, target)
+        guard abs(liveHeight - clampedTarget) > 0.5 else { return }
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.25
             ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
