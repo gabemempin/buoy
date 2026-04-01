@@ -15,6 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let expandedHeight: CGFloat = 780
     private var isExpanded = false
     private var currentHeight: CGFloat = PanelLayoutMetrics.minimumWindowHeight
+    private var overlayOverrideHeight: CGFloat = 0
     private var hasPositioned = false
 
     // MARK: - App Launch
@@ -64,6 +65,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             },
             onOnboardingComplete: { [weak self] in
                 self?.animateOnboardingDismiss()
+            },
+            onOverrideHeight: { [weak self] height in
+                self?.applyOverrideHeight(height)
             },
             onClose: { [weak self] in self?.hidePanel() },
             onMinimize: { [weak self] in self?.panel?.miniaturize(nil) },
@@ -203,10 +207,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let target = max(PanelLayoutMetrics.minimumWindowHeight, min(PanelLayoutMetrics.maximumAutoHeight, newHeight))
         guard allowShrink || target > currentHeight else { return }
         currentHeight = target
+        let effectiveTarget = max(target, overlayOverrideHeight)
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = duration
             ctx.timingFunction = CAMediaTimingFunction(name: timingName)
-            p.animator().setContentSize(NSSize(width: p.frame.width, height: target))
+            p.animator().setContentSize(NSSize(width: p.frame.width, height: effectiveTarget))
+        }
+    }
+
+    func applyOverrideHeight(_ height: CGFloat?) {
+        guard let p = panel else { return }
+        overlayOverrideHeight = height ?? 0
+        let target = max(currentHeight, overlayOverrideHeight)
+        let clampedTarget = max(PanelLayoutMetrics.minimumWindowHeight, target)
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.25
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            p.animator().setContentSize(NSSize(width: p.frame.width, height: clampedTarget))
         }
     }
 

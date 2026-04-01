@@ -36,4 +36,8 @@ enum PanelLayoutMetrics {
         + (stackSpacing * 3)
 
     static let maximumAutoHeight: CGFloat = 700
+
+    // Minimum window heights when overlay panels are open
+    static let settingsOverrideHeight: CGFloat = 420
+    static let shortcutsOverrideHeight: CGFloat = 440
 }
