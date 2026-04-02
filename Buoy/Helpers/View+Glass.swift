@@ -9,6 +9,7 @@ private enum BuoyGlassMetrics {
     static let liquidGlassActiveTintOpacity: CGFloat = 0.05
     static let liquidGlassInactiveTintOpacity: CGFloat = 0.045
     static let inactiveFrostVeilOpacity: CGFloat = 0.015
+    static let inactiveFrostBorderOpacity: CGFloat = 0.18
     static let windowFocusAnimation = Animation.easeInOut(duration: 0.22)
 }
 
@@ -17,7 +18,12 @@ extension View {
     /// Main window — includes edge depth border.
     @ViewBuilder
     func buoyGlass(material: NSVisualEffectView.Material = .menu) -> some View {
-        modifier(BuoyRoundedGlassModifier(cornerRadius: BuoyGlassMetrics.windowCornerRadius))
+        modifier(
+            BuoyRegularGlassModifier(
+                shape: RoundedRectangle(cornerRadius: BuoyGlassMetrics.windowCornerRadius),
+                fallbackMaterial: material
+            )
+        )
     }
 
     /// Rounded glass inset from the main window edge. Keeps corners aligned with the
@@ -102,43 +108,43 @@ extension View {
     /// Applies a capsule Liquid Glass effect on macOS 26+, subtle filled capsule on macOS 15.
     @ViewBuilder
     func buoyGlassCapsule() -> some View {
-        modifier(BuoyCapsuleGlassModifier())
+        modifier(
+            BuoyRegularGlassModifier(
+                shape: Capsule(),
+                fallbackMaterial: .popover
+            )
+        )
     }
 }
 
-private struct BuoyCapsuleGlassModifier: ViewModifier {
+private struct BuoyRegularGlassModifier<S: Shape>: ViewModifier {
+    let shape: S
+    let fallbackMaterial: NSVisualEffectView.Material
+
     @State private var isWindowFocused = true
 
     func body(content: Content) -> some View {
         if #available(macOS 26, *) {
-            let shape = Capsule()
-            let focusPolishEnabled = BuoyGlassMetrics.enableWindowFocusPolish
-            let showsInactivePolish = focusPolishEnabled && !isWindowFocused
-            let backdropOpacity = showsInactivePolish
-                ? BuoyGlassMetrics.liquidGlassBackdropInactiveOpacity
-                : BuoyGlassMetrics.liquidGlassBackdropActiveOpacity
-            let tintOpacity = showsInactivePolish
-                ? BuoyGlassMetrics.liquidGlassInactiveTintOpacity
-                : BuoyGlassMetrics.liquidGlassActiveTintOpacity
-
             content
-                .background(
-                    ZStack {
-                        VisualEffectBackground(material: .underPageBackground, blendingMode: .behindWindow)
-                            .opacity(backdropOpacity)
+                .glassEffect(.regular, in: shape)
+                .clipShape(shape)
+                .overlay {
+                    if BuoyGlassMetrics.enableWindowFocusPolish && !isWindowFocused {
                         shape
-                            .fill(Color.accentColor.opacity(tintOpacity))
-                        if showsInactivePolish {
-                            shape
-                                .fill(Color.white.opacity(BuoyGlassMetrics.inactiveFrostVeilOpacity))
-                        }
+                            .fill(Color.white.opacity(BuoyGlassMetrics.inactiveFrostVeilOpacity))
+                            .overlay(
+                                shape.stroke(
+                                    Color.white.opacity(BuoyGlassMetrics.inactiveFrostBorderOpacity),
+                                    lineWidth: 0.5
+                                )
+                            )
+                            .allowsHitTesting(false)
+                            .animation(BuoyGlassMetrics.windowFocusAnimation, value: isWindowFocused)
                     }
-                    .clipShape(shape)
-                    .animation(BuoyGlassMetrics.windowFocusAnimation, value: isWindowFocused)
-                )
+                }
                 .background(
                     Group {
-                        if focusPolishEnabled {
+                        if BuoyGlassMetrics.enableWindowFocusPolish {
                             BuoyWindowFocusObserver { isFocused in
                                 withAnimation(BuoyGlassMetrics.windowFocusAnimation) {
                                     isWindowFocused = isFocused
@@ -148,26 +154,12 @@ private struct BuoyCapsuleGlassModifier: ViewModifier {
                         }
                     }
                 )
-                .glassEffect(.clear, in: shape)
-                .clipShape(shape)
-                .overlay(
-                    shape
-                        .strokeBorder(
-                            LinearGradient(
-                                colors: [.white.opacity(0.25), .clear, .white.opacity(0.08)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            lineWidth: 1
-                        )
-                )
         } else {
             content
                 .background(
-                    VisualEffectBackground(material: .underPageBackground, blendingMode: .behindWindow)
-                        .opacity(0.75)
+                    VisualEffectBackground(material: fallbackMaterial, blendingMode: .behindWindow)
                 )
-                .clipShape(Capsule())
+                .clipShape(shape)
         }
     }
 }
