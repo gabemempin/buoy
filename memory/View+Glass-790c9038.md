@@ -1,3 +1,8 @@
+# `View+Glass.swift` from `790c9038bdf2726a6069e6a4a4cfba9314235781`
+
+Copy-paste backup of [`Buoy/Helpers/View+Glass.swift`](/Users/gabemempin/Dev/Buoy/Buoy/Helpers/View+Glass.swift) as it existed in commit `790c9038bdf2726a6069e6a4a4cfba9314235781`.
+
+```swift
 import SwiftUI
 import AppKit
 
@@ -9,7 +14,6 @@ private enum BuoyGlassMetrics {
     static let liquidGlassActiveTintOpacity: CGFloat = 0.05
     static let liquidGlassInactiveTintOpacity: CGFloat = 0.045
     static let inactiveFrostVeilOpacity: CGFloat = 0.015
-    static let inactiveFrostBorderOpacity: CGFloat = 0.18
     static let windowFocusAnimation = Animation.easeInOut(duration: 0.22)
 }
 
@@ -18,12 +22,7 @@ extension View {
     /// Main window — includes edge depth border.
     @ViewBuilder
     func buoyGlass(material: NSVisualEffectView.Material = .menu) -> some View {
-        modifier(
-            BuoyRegularGlassModifier(
-                shape: RoundedRectangle(cornerRadius: BuoyGlassMetrics.windowCornerRadius),
-                fallbackMaterial: material
-            )
-        )
+        modifier(BuoyRoundedGlassModifier(cornerRadius: BuoyGlassMetrics.windowCornerRadius))
     }
 
     /// Rounded glass inset from the main window edge. Keeps corners aligned with the
@@ -108,56 +107,72 @@ extension View {
     /// Applies a capsule Liquid Glass effect on macOS 26+, subtle filled capsule on macOS 15.
     @ViewBuilder
     func buoyGlassCapsule() -> some View {
-        modifier(
-            BuoyRegularGlassModifier(
-                shape: Capsule(),
-                fallbackMaterial: .popover
-            )
-        )
+        modifier(BuoyCapsuleGlassModifier())
     }
 }
 
-private struct BuoyRegularGlassModifier<S: Shape>: ViewModifier {
-    let shape: S
-    let fallbackMaterial: NSVisualEffectView.Material
-
+private struct BuoyCapsuleGlassModifier: ViewModifier {
     @State private var isWindowFocused = true
 
     func body(content: Content) -> some View {
         if #available(macOS 26, *) {
+            let shape = Capsule()
+            let focusPolishEnabled = BuoyGlassMetrics.enableWindowFocusPolish
+            let showsInactivePolish = focusPolishEnabled && !isWindowFocused
+            let backdropOpacity = showsInactivePolish
+                ? BuoyGlassMetrics.liquidGlassBackdropInactiveOpacity
+                : BuoyGlassMetrics.liquidGlassBackdropActiveOpacity
+            let tintOpacity = showsInactivePolish
+                ? BuoyGlassMetrics.liquidGlassInactiveTintOpacity
+                : BuoyGlassMetrics.liquidGlassActiveTintOpacity
+
             content
-                .glassEffect(.regular, in: shape)
-                .clipShape(shape)
-                .overlay {
-                    if BuoyGlassMetrics.enableWindowFocusPolish && !isWindowFocused {
+                .background(
+                    ZStack {
+                        VisualEffectBackground(material: .underPageBackground, blendingMode: .behindWindow)
+                            .opacity(backdropOpacity)
                         shape
-                            .fill(Color.white.opacity(BuoyGlassMetrics.inactiveFrostVeilOpacity))
-                            .overlay(
-                                shape.stroke(
-                                    Color.white.opacity(BuoyGlassMetrics.inactiveFrostBorderOpacity),
-                                    lineWidth: 0.5
-                                )
-                            )
-                            .allowsHitTesting(false)
-                            .animation(BuoyGlassMetrics.windowFocusAnimation, value: isWindowFocused)
-                    }
-                }
-                .background {
-                    if BuoyGlassMetrics.enableWindowFocusPolish {
-                        BuoyWindowFocusObserver { isFocused in
-                            withAnimation(BuoyGlassMetrics.windowFocusAnimation) {
-                                isWindowFocused = isFocused
-                            }
+                            .fill(Color.accentColor.opacity(tintOpacity))
+                        if showsInactivePolish {
+                            shape
+                                .fill(Color.white.opacity(BuoyGlassMetrics.inactiveFrostVeilOpacity))
                         }
-                        .frame(width: 0, height: 0)
                     }
-                }
+                    .clipShape(shape)
+                    .animation(BuoyGlassMetrics.windowFocusAnimation, value: isWindowFocused)
+                )
+                .background(
+                    Group {
+                        if focusPolishEnabled {
+                            BuoyWindowFocusObserver { isFocused in
+                                withAnimation(BuoyGlassMetrics.windowFocusAnimation) {
+                                    isWindowFocused = isFocused
+                                }
+                            }
+                            .frame(width: 0, height: 0)
+                        }
+                    }
+                )
+                .glassEffect(.clear, in: shape)
+                .clipShape(shape)
+                .overlay(
+                    shape
+                        .strokeBorder(
+                            LinearGradient(
+                                colors: [.white.opacity(0.25), .clear, .white.opacity(0.08)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 1
+                        )
+                )
         } else {
             content
                 .background(
-                    VisualEffectBackground(material: fallbackMaterial, blendingMode: .behindWindow)
+                    VisualEffectBackground(material: .underPageBackground, blendingMode: .behindWindow)
+                        .opacity(0.75)
                 )
-                .clipShape(shape)
+                .clipShape(Capsule())
         }
     }
 }
@@ -297,3 +312,4 @@ private final class ObserverView: NSView {
         observers.removeAll()
     }
 }
+```
