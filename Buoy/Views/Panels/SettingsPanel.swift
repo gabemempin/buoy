@@ -81,7 +81,6 @@ struct SettingsPanel: View {
                     .controlSize(.small)
                     .frame(width: 130)
                     .onChange(of: settings.theme) { _, val in
-                        applyTheme(val)
                         settings.save()
                     }
                 }
@@ -133,18 +132,6 @@ struct SettingsPanel: View {
         .buoyGlassPanel(cornerRadius: 20)
         .shadow(radius: 8)
         .transition(.scale(scale: 0.92, anchor: .bottomLeading).combined(with: .opacity))
-    }
-
-    private func applyTheme(_ theme: AppTheme) {
-        let app = NSApplication.shared
-        switch theme {
-        case .light:
-            app.windows.forEach { $0.appearance = NSAppearance(named: .aqua) }
-        case .dark:
-            app.windows.forEach { $0.appearance = NSAppearance(named: .darkAqua) }
-        case .system:
-            app.windows.forEach { $0.appearance = nil }
-        }
     }
 
     private func checkForUpdates() {
