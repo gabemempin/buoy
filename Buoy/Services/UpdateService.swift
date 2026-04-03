@@ -2,7 +2,7 @@ import Foundation
 
 actor UpdateService {
     static let shared = UpdateService()
-    private let feedURL = URL(string: "https://raw.githubusercontent.com/kristofbernal/buoy/main/version.json")!
+    private let feedURL = URL(string: "https://raw.githubusercontent.com/gabemempin/buoy/main/version.json")!
 
     enum UpdateResult {
         case upToDate(version: String)

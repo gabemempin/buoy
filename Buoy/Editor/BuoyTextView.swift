@@ -959,7 +959,7 @@ final class BuoyTextView: NSTextView {
 
     func htmlContent() -> String {
         guard let storage = textStorage else { return plainTextContent() }
-        let mutable = mutableCopyReplacingTodoAttachments(in: storage) { isChecked in
+        let mutable = mutableCopyReplacingTodoAttachments(in: storage) { isChecked, _ in
             let symbol = isChecked ? "☑" : "☐"
             return NSAttributedString(string: symbol, attributes: [
                 .font: NSFont.systemFont(ofSize: fontSize),
@@ -986,12 +986,12 @@ final class BuoyTextView: NSTextView {
 
     func rtfContent() -> Data? {
         guard let storage = textStorage else { return nil }
-        let mutable = mutableCopyReplacingTodoAttachments(in: storage) { isChecked in
+        let mutable = mutableCopyReplacingTodoAttachments(in: storage) { isChecked, paraStyle in
             let marker = isChecked ? "\u{2611}" : "\u{2610}"
             return NSAttributedString(string: marker, attributes: [
                 .font: NSFont.systemFont(ofSize: fontSize),
                 .foregroundColor: NSColor.textColor,
-                .paragraphStyle: paragraphStyle(isTodoParagraph: true)
+                .paragraphStyle: paragraphStyle(basedOn: paraStyle, isTodoParagraph: true)
             ])
         }
         return try? mutable.data(
@@ -1005,25 +1005,26 @@ final class BuoyTextView: NSTextView {
     /// Replacements are applied in reverse order to preserve correct indices.
     private func mutableCopyReplacingTodoAttachments(
         in storage: NSTextStorage,
-        makeReplacement: (Bool) -> NSAttributedString
+        makeReplacement: (Bool, NSParagraphStyle?) -> NSAttributedString
     ) -> NSMutableAttributedString {
         let mutable = NSMutableAttributedString(attributedString:
             storage.attributedSubstring(from: NSRange(location: 0, length: storage.length)))
         let nsString = storage.string as NSString
 
-        var attachments: [(NSRange, Bool)] = []
+        var attachments: [(NSRange, Bool, NSParagraphStyle?)] = []
         storage.enumerateAttribute(.attachment, in: NSRange(location: 0, length: storage.length)) { val, range, _ in
             if let todo = val as? TodoAttachment {
+                let paraStyle = storage.attribute(.paragraphStyle, at: range.location, effectiveRange: nil) as? NSParagraphStyle
                 let replacementRange = rangeByConsumingFollowingTodoSpacer(
                     in: nsString,
                     startingWith: range,
                     consumeAllFollowingSpaces: false
                 )
-                attachments.append((replacementRange, todo.isChecked))
+                attachments.append((replacementRange, todo.isChecked, paraStyle))
             }
         }
-        for (range, isChecked) in attachments.reversed() {
-            mutable.replaceCharacters(in: range, with: makeReplacement(isChecked))
+        for (range, isChecked, paraStyle) in attachments.reversed() {
+            mutable.replaceCharacters(in: range, with: makeReplacement(isChecked, paraStyle))
         }
         return mutable
     }
@@ -1098,7 +1099,9 @@ final class BuoyTextView: NSTextView {
             while searchRange.location < mutable.length {
                 let found = (mutable.string as NSString).range(of: marker, options: [], range: searchRange)
                 if found.location == NSNotFound { break }
-                let atStr = todoAttachmentAttributedString(isChecked: isChecked)
+                let markerParaStyle = mutable.attribute(.paragraphStyle, at: found.location, effectiveRange: nil) as? NSParagraphStyle
+                let nestLevel = Int((markerParaStyle?.headIndent ?? 0) / ListIndent.width)
+                let atStr = todoAttachmentAttributedString(isChecked: isChecked, indentLevel: nestLevel)
                 let replacementRange = rangeByConsumingFollowingTodoSpacer(
                     in: mutable.string as NSString,
                     startingWith: found,
