@@ -64,16 +64,7 @@ struct FooterView: View {
                     }
                     .buttonStyle(.plain)
                     .help("Cancel bug report")
-                    .background(Color.red.opacity(0.85), in: Capsule())
-                    .overlay(
-                        LinearGradient(
-                            colors: [.white.opacity(0.28), .clear],
-                            startPoint: .top, endPoint: .center
-                        )
-                        .clipShape(Capsule())
-                        .allowsHitTesting(false)
-                    )
-                    .shadow(color: Color.red.opacity(0.4), radius: 4, x: 0, y: 2)
+                    .buoyAccentCapsule(color: .red)
                 } else {
                     Button(action: onShortcuts) {
                         Image(systemName: "keyboard")
@@ -115,7 +106,7 @@ struct FooterView: View {
                     }
                     .buttonStyle(.plain)
                     .help("Send bug report via Mail")
-                    .buoyAccentCapsule()
+                    .buoyAccentCapsule(color: .blue)
                 } else {
                     HStack(spacing: 0) {
                         Button {

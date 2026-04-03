@@ -107,8 +107,8 @@ struct SettingsPanel: View {
                             .font(.system(size: 12))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 6)
-                            .glassEffect(.regular.tint(.orange.opacity(0.08)).interactive(), in: RoundedRectangle(cornerRadius: 10))
-                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.orange.opacity(0.3), lineWidth: 0.5))
+                            .glassEffect(.regular.tint(.orange.opacity(0.18)).interactive(), in: RoundedRectangle(cornerRadius: 10))
+                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.orange.opacity(0.6), lineWidth: 0.5))
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.orange.opacity(0.9))
@@ -130,8 +130,8 @@ struct SettingsPanel: View {
                         .font(.system(size: 12))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6)
-                        .glassEffect(.regular.tint(.red.opacity(0.08)).interactive(), in: RoundedRectangle(cornerRadius: 10))
-                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.red.opacity(0.3), lineWidth: 0.5))
+                        .glassEffect(.regular.tint(.red.opacity(0.18)).interactive(), in: RoundedRectangle(cornerRadius: 10))
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.red.opacity(0.6), lineWidth: 0.5))
                         .foregroundStyle(.red)
                         .buttonStyle(.plain)
                 }
