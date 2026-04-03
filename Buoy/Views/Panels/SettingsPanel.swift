@@ -7,6 +7,7 @@ struct SettingsPanel: View {
     @Binding var settings: AppSettings
     var onQuit: () -> Void
     var onShortcutChanged: (String) -> Void
+    var onReportBug: () -> Void
 
     @State private var updateStatus: String? = nil
     @State private var updateStatusTask: Task<Void, Never>? = nil
@@ -101,6 +102,17 @@ struct SettingsPanel: View {
                 Divider().padding(.horizontal, 10).padding(.vertical, 4)
 
                 VStack(spacing: 6) {
+                    Button { onReportBug() } label: {
+                        Label("Report a Bug", systemImage: "ladybug")
+                            .font(.system(size: 12))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 6)
+                            .glassEffect(.regular.tint(.orange.opacity(0.08)).interactive(), in: RoundedRectangle(cornerRadius: 10))
+                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.orange.opacity(0.3), lineWidth: 0.5))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.orange.opacity(0.9))
+
                     Button { checkForUpdates() } label: {
                         Group {
                             if let status = updateStatus { Text(status) }

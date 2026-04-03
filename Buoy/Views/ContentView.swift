@@ -25,6 +25,9 @@ struct ContentView: View {
     @State private var showSettings = false
     @State private var showShortcuts = false
 
+    // Bug report mode — tracks the ID of the ephemeral bug report note
+    @State private var bugReportNoteID: Note.ID? = nil
+
     // Link dialog
     @State private var showLinkDialog = false
     @State private var linkDialogSelectedText = ""
@@ -210,7 +213,10 @@ struct ContentView: View {
                     onShortcuts: toggleShortcuts,
                     onSettings:  toggleSettings,
                     onTransferToAppleNotes: transferToAppleNotes,
-                    onCopy: copyToClipboard
+                    onCopy: copyToClipboard,
+                    isBugReport: isBugReport,
+                    onSendBugReport: sendBugReport,
+                    onCancelBugReport: cancelBugReport
                 )
             }
             .opacity(showMainContent ? 1 : 0)
@@ -273,7 +279,8 @@ struct ContentView: View {
                         isShowing: $showSettings,
                         settings: $settings,
                         onQuit: { NSApp.terminate(nil) },
-                        onShortcutChanged: { s in HotkeyService.shared.register(shortcut: s) }
+                        onShortcutChanged: { s in HotkeyService.shared.register(shortcut: s) },
+                        onReportBug: { createBugReportNote() }
                     )
                     .padding(.bottom, PanelLayoutMetrics.footerOverlayBottomInset)
                     .padding(.leading, PanelLayoutMetrics.overlayHorizontalInset)
@@ -348,6 +355,10 @@ struct ContentView: View {
         if showSettings { return PanelLayoutMetrics.settingsOverrideHeight }
         if showShortcuts { return PanelLayoutMetrics.shortcutsOverrideHeight }
         return nil
+    }
+
+    private var isBugReport: Bool {
+        bugReportNoteID != nil && bugReportNoteID == noteStore.currentNote?.id
     }
 
     // MARK: - Actions
@@ -448,6 +459,68 @@ struct ContentView: View {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
         toastState.show("Copied to clipboard")
+    }
+
+    private func cancelBugReport() {
+        guard let note = noteStore.currentNote, isBugReport else { return }
+        bugReportNoteID = nil
+        noteStore.deleteNote(note)
+        focusEditor()
+    }
+
+    private func createBugReportNote() {
+        withAnimation(.easeOut(duration: 0.16)) { showSettings = false }
+        noteStore.createNote()
+        noteStore.saveTitle("Bug Report")
+        bugReportNoteID = noteStore.currentNote?.id
+        focusEditor()
+    }
+
+    private func sendBugReport() {
+        guard let note = noteStore.currentNote, isBugReport else { return }
+        let text: String
+        if let tv = tvRef.value {
+            text = tv.plainTextContent()
+        } else if let atStr = try? NSAttributedString(
+            data: note.contentRTF,
+            options: [.documentType: NSAttributedString.DocumentType.rtf],
+            documentAttributes: nil) {
+            text = atStr.string
+        } else {
+            text = ""
+        }
+        bugReportNoteID = nil
+        noteStore.deleteNote(note)
+
+        guard let mailURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Mail") else {
+            toastState.show("Mail.app not found on this Mac", isError: true)
+            return
+        }
+        let config = NSWorkspace.OpenConfiguration()
+        config.activates = true
+        NSWorkspace.shared.openApplication(at: mailURL, configuration: config) { _, error in
+            guard error == nil else { return }
+            DispatchQueue.global(qos: .userInitiated).async {
+                let bodyExpr = Self.buildMailASString(text)
+                let source = """
+tell application "Mail"
+    set newMsg to make new outgoing message with properties {subject:"[Buoy Beta] Bug Report", content:\(bodyExpr), visible:true}
+    tell newMsg
+        make new to recipient at end of to recipients with properties {address:"gmempin@icloud.com"}
+    end tell
+end tell
+"""
+                var errorDict: NSDictionary?
+                NSAppleScript(source: source)?.executeAndReturnError(&errorDict)
+            }
+        }
+    }
+
+    private static func buildMailASString(_ text: String) -> String {
+        if text.isEmpty { return "\"\"" }
+        return text.components(separatedBy: "\n").map { line in
+            line.components(separatedBy: "\"").map { "\"\($0)\"" }.joined(separator: " & quote & ")
+        }.joined(separator: " & return & ")
     }
 
     private func transferToAppleNotes() {
