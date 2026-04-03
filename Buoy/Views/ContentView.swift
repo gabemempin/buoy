@@ -8,19 +8,25 @@ private final class TextViewRef {
 
 struct ContentView: View {
     var noteStore: NoteStore
+    var panelPresentation: PanelPresentationModel
     @Binding var settings: AppSettings
     var onHeightChange: ((CGFloat) -> Void)?
     var onNoteSwitchHeight: ((CGFloat) -> Void)?
     var onOnboardingComplete: (() -> Void)?
     var onOverrideHeight: ((CGFloat?) -> Void)?
+    var onMinimizedWidthChange: ((CGFloat) -> Void)?
     var onClose: () -> Void
     var onMinimize: () -> Void
     var onExpand: () -> Void
+    var onRestoreFromMinimized: () -> Void
 
     // Panel visibility
     @State private var showAllNotes = false
     @State private var showSettings = false
     @State private var showShortcuts = false
+
+    // Bug report mode — tracks the ID of the ephemeral bug report note
+    @State private var bugReportNoteID: Note.ID? = nil
 
     // Link dialog
     @State private var showLinkDialog = false
@@ -42,29 +48,105 @@ struct ContentView: View {
 
     init(
         noteStore: NoteStore,
+        panelPresentation: PanelPresentationModel,
         settings: Binding<AppSettings>,
         onHeightChange: ((CGFloat) -> Void)?,
         onNoteSwitchHeight: ((CGFloat) -> Void)? = nil,
         onOnboardingComplete: (() -> Void)? = nil,
         onOverrideHeight: ((CGFloat?) -> Void)? = nil,
+        onMinimizedWidthChange: ((CGFloat) -> Void)? = nil,
         onClose: @escaping () -> Void,
         onMinimize: @escaping () -> Void,
-        onExpand: @escaping () -> Void
+        onExpand: @escaping () -> Void,
+        onRestoreFromMinimized: @escaping () -> Void
     ) {
         self.noteStore = noteStore
+        self.panelPresentation = panelPresentation
         self._settings = settings
         self.onHeightChange = onHeightChange
         self.onNoteSwitchHeight = onNoteSwitchHeight
         self.onOnboardingComplete = onOnboardingComplete
         self.onOverrideHeight = onOverrideHeight
+        self.onMinimizedWidthChange = onMinimizedWidthChange
         self.onClose = onClose
         self.onMinimize = onMinimize
         self.onExpand = onExpand
+        self.onRestoreFromMinimized = onRestoreFromMinimized
         self._showOnboarding = State(initialValue: !settings.wrappedValue.onboarded)
         self._showMainContent = State(initialValue: settings.wrappedValue.onboarded)
     }
 
     var body: some View {
+        Group {
+            if panelPresentation.isMinimized {
+                minimizedContent
+                    .padding(PanelLayoutMetrics.windowPadding)
+                    .frame(
+                        minWidth: PanelLayoutMetrics.minimizedWindowMinimumWidth,
+                        minHeight: PanelLayoutMetrics.minimizedWindowHeight,
+                        maxHeight: PanelLayoutMetrics.minimizedWindowHeight
+                    )
+                    .background(WindowDragBlocker())
+                    .transition(.scale(scale: 0.92).combined(with: .opacity))
+            } else {
+                fullContent
+                    .padding(PanelLayoutMetrics.windowPadding)
+                    .frame(
+                        minWidth: PanelLayoutMetrics.minimumContentWidth,
+                        minHeight: PanelLayoutMetrics.minimumWindowHeight
+                    )
+                    .background(WindowDragBlocker())
+                    .buoyGlass()
+                    .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
+            }
+        }
+        .animation(.easeInOut(duration: PanelLayoutMetrics.minimizedTransitionDuration), value: panelPresentation.isMinimized)
+        // App-level shortcut notifications from BuoyTextView
+        .onReceive(NotificationCenter.default.publisher(for: .buoyNewNote))         { _ in createNote() }
+        .onReceive(NotificationCenter.default.publisher(for: .buoyDeleteNote))      { _ in deleteCurrentNote() }
+        .onReceive(NotificationCenter.default.publisher(for: .buoyCopyToClipboard)) { _ in copyToClipboard() }
+        .onReceive(NotificationCenter.default.publisher(for: .buoyPreviousNote))    { _ in noteStore.previousNote(); focusEditor() }
+        .onReceive(NotificationCenter.default.publisher(for: .buoyNextNote))        { _ in noteStore.nextNote(); focusEditor() }
+        .onReceive(NotificationCenter.default.publisher(for: .showLinkDialog)) { notif in
+            guard !panelPresentation.isMinimized else { return }
+            linkDialogSelectedText = notif.object as? String ?? ""
+            withAnimation { showLinkDialog = true }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .openSettings)) { _ in
+            withAnimation(.easeOut(duration: 0.16)) { showSettings = true }
+        }
+        // Block window dragging whenever any overlay panel is open
+        .onChange(of: showSettings || showShortcuts || showAllNotes) { _, panelOpen in
+            NSApp.windows.compactMap { $0 as? NSPanel }.forEach {
+                $0.isMovable = !panelOpen
+            }
+        }
+        .onChange(of: panelPresentation.isMinimized) { _, isMinimized in
+            if isMinimized {
+                dismissTransientUI()
+            }
+        }
+        .onChange(of: displayTitle) { _, _ in
+            onMinimizedWidthChange?(minimizedWidth)
+        }
+        // Re-measure height when font size changes
+        .onChange(of: settings.fontSize) { _, _ in
+            guard !panelPresentation.isMinimized else { return }
+            if let tv = tvRef.value {
+                let h = tv.measureContentHeight()
+                onHeightChange?(h + 160)
+            }
+        }
+        .onChange(of: activeFooterOverlayHeight) { _, height in
+            onOverrideHeight?(height)
+        }
+        .onAppear {
+            showOnboarding = !settings.onboarded
+            onMinimizedWidthChange?(minimizedWidth)
+        }
+    }
+
+    private var fullContent: some View {
         ZStack(alignment: .topLeading) {
             VStack(spacing: 4) {
                 HeaderView(
@@ -83,8 +165,8 @@ struct ContentView: View {
                     onBold:      { applyEditorFormat { $0.applyBold() } },
                     onItalic:    { applyEditorFormat { $0.applyItalic() } },
                     onUnderline: { applyEditorFormat { $0.applyUnderline() } },
-                    onBullet: { applyEditorCursorAction { $0.applyBullet($1) } },
-                    onTodo:   { applyEditorCursorAction { $0.applyTodo($1) } },
+                    onBullet:    { applyEditorCursorAction { $0.applyBullet($1) } },
+                    onTodo:      { applyEditorCursorAction { $0.applyTodo($1) } },
                     onLink:      { showLinkDialogFromToolbar() }
                 )
 
@@ -131,14 +213,16 @@ struct ContentView: View {
                     onShortcuts: toggleShortcuts,
                     onSettings:  toggleSettings,
                     onTransferToAppleNotes: transferToAppleNotes,
-                    onCopy: copyToClipboard
+                    onCopy: copyToClipboard,
+                    isBugReport: isBugReport,
+                    onSendBugReport: sendBugReport,
+                    onCancelBugReport: cancelBugReport
                 )
             }
             .opacity(showMainContent ? 1 : 0)
 
             ToastContainer(state: toastState)
 
-            // Dismiss overlay — tapping outside a panel closes it
             if showAllNotes || showSettings || showShortcuts {
                 Color.clear
                     .contentShape(Rectangle())
@@ -152,7 +236,6 @@ struct ContentView: View {
                     }
             }
 
-            // All Notes panel — top-right
             GeometryReader { proxy in
                 ZStack(alignment: .topTrailing) {
                     if showAllNotes {
@@ -190,14 +273,14 @@ struct ContentView: View {
             .animation(.easeOut(duration: 0.16), value: showAllNotes)
             .allowsHitTesting(showAllNotes)
 
-            // Settings / Shortcuts panels — bottom-left
             ZStack(alignment: .bottomLeading) {
                 if showSettings {
                     SettingsPanel(
                         isShowing: $showSettings,
                         settings: $settings,
                         onQuit: { NSApp.terminate(nil) },
-                        onShortcutChanged: { s in HotkeyService.shared.register(shortcut: s) }
+                        onShortcutChanged: { s in HotkeyService.shared.register(shortcut: s) },
+                        onReportBug: { createBugReportNote() }
                     )
                     .padding(.bottom, PanelLayoutMetrics.footerOverlayBottomInset)
                     .padding(.leading, PanelLayoutMetrics.overlayHorizontalInset)
@@ -218,7 +301,6 @@ struct ContentView: View {
             .animation(.easeOut(duration: 0.16), value: showShortcuts)
             .allowsHitTesting(showSettings || showShortcuts)
 
-            // Onboarding overlay
             if showOnboarding {
                 OnboardingView(
                     settings: $settings,
@@ -241,45 +323,15 @@ struct ContentView: View {
                 .transition(.opacity)
             }
         }
-        .padding(6)
-        .frame(
-            minWidth: PanelLayoutMetrics.minimumContentWidth,
-            minHeight: PanelLayoutMetrics.minimumWindowHeight
+    }
+
+    private var minimizedContent: some View {
+        MinimizedNotePillView(
+            title: displayTitle,
+            theme: settings.theme,
+            onRestore: onRestoreFromMinimized
         )
-        .background(WindowDragBlocker())
-        .buoyGlass()
-        // App-level shortcut notifications from BuoyTextView
-        .onReceive(NotificationCenter.default.publisher(for: .buoyNewNote))         { _ in createNote() }
-        .onReceive(NotificationCenter.default.publisher(for: .buoyDeleteNote))      { _ in deleteCurrentNote() }
-        .onReceive(NotificationCenter.default.publisher(for: .buoyCopyToClipboard)) { _ in copyToClipboard() }
-        .onReceive(NotificationCenter.default.publisher(for: .buoyPreviousNote))    { _ in noteStore.previousNote(); focusEditor() }
-        .onReceive(NotificationCenter.default.publisher(for: .buoyNextNote))        { _ in noteStore.nextNote(); focusEditor() }
-        .onReceive(NotificationCenter.default.publisher(for: .showLinkDialog)) { notif in
-            linkDialogSelectedText = notif.object as? String ?? ""
-            withAnimation { showLinkDialog = true }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .openSettings)) { _ in
-            withAnimation(.easeOut(duration: 0.16)) { showSettings = true }
-        }
-        // Block window dragging whenever any overlay panel is open
-        .onChange(of: showSettings || showShortcuts || showAllNotes) { _, panelOpen in
-            NSApp.windows.compactMap { $0 as? NSPanel }.forEach {
-                $0.isMovable = !panelOpen
-            }
-        }
-        // Re-measure height when font size changes
-        .onChange(of: settings.fontSize) { _, _ in
-            if let tv = tvRef.value {
-                let h = tv.measureContentHeight()
-                onHeightChange?(h + 160)
-            }
-        }
-        .onChange(of: activeFooterOverlayHeight) { _, height in
-            onOverrideHeight?(height)
-        }
-        .onAppear {
-            showOnboarding = !settings.onboarded
-        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
     }
 
     // MARK: - Bindings
@@ -291,10 +343,22 @@ struct ContentView: View {
         )
     }
 
+    private var displayTitle: String {
+        PanelLayoutMetrics.minimizedDisplayTitle(noteStore.currentNote?.title ?? "")
+    }
+
+    private var minimizedWidth: CGFloat {
+        PanelLayoutMetrics.minimizedWindowWidth(forTitle: noteStore.currentNote?.title ?? "")
+    }
+
     private var activeFooterOverlayHeight: CGFloat? {
         if showSettings { return PanelLayoutMetrics.settingsOverrideHeight }
         if showShortcuts { return PanelLayoutMetrics.shortcutsOverrideHeight }
         return nil
+    }
+
+    private var isBugReport: Bool {
+        bugReportNoteID != nil && bugReportNoteID == noteStore.currentNote?.id
     }
 
     // MARK: - Actions
@@ -303,6 +367,15 @@ struct ContentView: View {
         noteStore.createNote()
         // Signal HeaderView to focus + select the title field
         focusTitleTrigger.toggle()
+    }
+
+    private func dismissTransientUI() {
+        withAnimation(.easeOut(duration: 0.16)) {
+            showAllNotes = false
+            showSettings = false
+            showShortcuts = false
+            showLinkDialog = false
+        }
     }
 
     private func toggleAllNotes() {
@@ -386,6 +459,68 @@ struct ContentView: View {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
         toastState.show("Copied to clipboard")
+    }
+
+    private func cancelBugReport() {
+        guard let note = noteStore.currentNote, isBugReport else { return }
+        bugReportNoteID = nil
+        noteStore.deleteNote(note)
+        focusEditor()
+    }
+
+    private func createBugReportNote() {
+        withAnimation(.easeOut(duration: 0.16)) { showSettings = false }
+        noteStore.createNote()
+        noteStore.saveTitle("Bug Report")
+        bugReportNoteID = noteStore.currentNote?.id
+        focusEditor()
+    }
+
+    private func sendBugReport() {
+        guard let note = noteStore.currentNote, isBugReport else { return }
+        let text: String
+        if let tv = tvRef.value {
+            text = tv.plainTextContent()
+        } else if let atStr = try? NSAttributedString(
+            data: note.contentRTF,
+            options: [.documentType: NSAttributedString.DocumentType.rtf],
+            documentAttributes: nil) {
+            text = atStr.string
+        } else {
+            text = ""
+        }
+        bugReportNoteID = nil
+        noteStore.deleteNote(note)
+
+        guard let mailURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Mail") else {
+            toastState.show("Mail.app not found on this Mac", isError: true)
+            return
+        }
+        let config = NSWorkspace.OpenConfiguration()
+        config.activates = true
+        NSWorkspace.shared.openApplication(at: mailURL, configuration: config) { _, error in
+            guard error == nil else { return }
+            DispatchQueue.global(qos: .userInitiated).async {
+                let bodyExpr = Self.buildMailASString(text)
+                let source = """
+tell application "Mail"
+    set newMsg to make new outgoing message with properties {subject:"[Buoy Beta] Bug Report", content:\(bodyExpr), visible:true}
+    tell newMsg
+        make new to recipient at end of to recipients with properties {address:"gmempin@icloud.com"}
+    end tell
+end tell
+"""
+                var errorDict: NSDictionary?
+                NSAppleScript(source: source)?.executeAndReturnError(&errorDict)
+            }
+        }
+    }
+
+    private static func buildMailASString(_ text: String) -> String {
+        if text.isEmpty { return "\"\"" }
+        return text.components(separatedBy: "\n").map { line in
+            line.components(separatedBy: "\"").map { "\"\($0)\"" }.joined(separator: " & quote & ")
+        }.joined(separator: " & return & ")
     }
 
     private func transferToAppleNotes() {

@@ -7,6 +7,9 @@ struct FooterView: View {
     var onSettings: () -> Void
     var onTransferToAppleNotes: () -> Void
     var onCopy: () -> Void
+    var isBugReport: Bool = false
+    var onSendBugReport: (() -> Void)? = nil
+    var onCancelBugReport: (() -> Void)? = nil
 
     @State private var showTransfer = false
     @State private var showCreated = true
@@ -31,7 +34,7 @@ struct FooterView: View {
             .padding(.bottom, 4)
             .onChange(of: createdAt) { _, _ in showCreated = true }
 
-            if showTransfer {
+            if showTransfer && !isBugReport {
                 HStack {
                     Spacer()
                     Button(action: onTransferToAppleNotes) {
@@ -50,64 +53,105 @@ struct FooterView: View {
             }
 
             HStack(spacing: 6) {
-                Button(action: onShortcuts) {
-                    Image(systemName: "keyboard")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.white.opacity(0.85))
-                        .frame(width: 28, height: 28)
-                        .contentShape(Circle())
-                        .buoyAccentCircle()
-                }
-                .buttonStyle(.plain)
-                .help("Keyboard Shortcuts")
-
-                Button(action: onSettings) {
-                    Image(systemName: "gearshape")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.white.opacity(0.85))
-                        .frame(width: 28, height: 28)
-                        .contentShape(Circle())
-                        .buoyAccentCircle()
-                }
-                .buttonStyle(.plain)
-                .help("Settings")
-
-                Spacer()
-
-                HStack(spacing: 0) {
-                    Button {
-                        withAnimation(.easeOut(duration: 0.16)) { showTransfer.toggle() }
-                    } label: {
-                        Image(systemName: showTransfer ? "chevron.up" : "chevron.down")
-                            .font(.system(size: 9, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.75))
-                            .frame(width: 28, height: 28)
+                if isBugReport {
+                    Button(action: { onCancelBugReport?() }) {
+                        Text("Cancel Report")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 7)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .help("More actions")
+                    .help("Cancel bug report")
+                    .background(Color.red.opacity(0.85), in: Capsule())
+                    .overlay(
+                        LinearGradient(
+                            colors: [.white.opacity(0.28), .clear],
+                            startPoint: .top, endPoint: .center
+                        )
+                        .clipShape(Capsule())
+                        .allowsHitTesting(false)
+                    )
+                    .shadow(color: Color.red.opacity(0.4), radius: 4, x: 0, y: 2)
+                } else {
+                    Button(action: onShortcuts) {
+                        Image(systemName: "keyboard")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.white.opacity(0.85))
+                            .frame(width: 28, height: 28)
+                            .contentShape(Circle())
+                            .buoyAccentCircle()
+                    }
+                    .buttonStyle(.plain)
+                    .help("Keyboard Shortcuts")
 
-                    Rectangle()
-                        .fill(Color.white.opacity(0.3))
-                        .frame(width: 1, height: 16)
+                    Button(action: onSettings) {
+                        Image(systemName: "gearshape")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.white.opacity(0.85))
+                            .frame(width: 28, height: 28)
+                            .contentShape(Circle())
+                            .buoyAccentCircle()
+                    }
+                    .buttonStyle(.plain)
+                    .help("Settings")
+                }
 
-                    Button(action: onCopy) {
-                        HStack(spacing: 3) {
-                            Text("Copy")
+                Spacer()
+
+                if isBugReport {
+                    Button(action: { onSendBugReport?() }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "envelope")
+                                .font(.system(size: 11))
+                            Text("Send to Mail")
                                 .font(.system(size: 11, weight: .medium))
-                            Text("⌘⏎")
-                                .font(.system(size: 10))
-                                .opacity(0.8)
                         }
                         .foregroundStyle(.white)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 7)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .help("Copy to clipboard (⌘Return)")
+                    .help("Send bug report via Mail")
+                    .buoyAccentCapsule()
+                } else {
+                    HStack(spacing: 0) {
+                        Button {
+                            withAnimation(.easeOut(duration: 0.16)) { showTransfer.toggle() }
+                        } label: {
+                            Image(systemName: showTransfer ? "chevron.up" : "chevron.down")
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.75))
+                                .frame(width: 28, height: 28)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .help("More actions")
+
+                        Rectangle()
+                            .fill(Color.white.opacity(0.3))
+                            .frame(width: 1, height: 16)
+
+                        Button(action: onCopy) {
+                            HStack(spacing: 3) {
+                                Text("Copy")
+                                    .font(.system(size: 11, weight: .medium))
+                                Text("⌘⏎")
+                                    .font(.system(size: 10))
+                                    .opacity(0.8)
+                            }
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .help("Copy to clipboard (⌘Return)")
+                    }
+                    .buoyAccentCapsule()
                 }
-                .buoyAccentCapsule()
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 6)

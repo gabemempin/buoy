@@ -11,4 +11,22 @@ final class BuoyPanel: NSPanel {
     /// finds no undo manager and ⌘Z silently does nothing.
     private let _undoManager = UndoManager()
     override var undoManager: UndoManager? { _undoManager }
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        let modifiers = event.modifierFlags
+            .intersection(.deviceIndependentFlagsMask)
+            .subtracting([.numericPad, .function, .help, .capsLock])
+
+        // Non-activating panels do not reliably participate in the normal Window
+        // menu key-equivalent routing, so handle ⌘M at the panel level.
+        if modifiers == .command, event.charactersIgnoringModifiers?.lowercased() == "m" {
+            return NSApp.sendAction(
+                #selector(AppDelegate.toggleMinimizedMode(_:)),
+                to: NSApp.delegate,
+                from: self
+            )
+        }
+
+        return super.performKeyEquivalent(with: event)
+    }
 }
