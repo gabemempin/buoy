@@ -8,6 +8,7 @@ struct ToolbarView: View {
     var onBullet: () -> Void
     var onTodo: () -> Void
     var onLink: () -> Void
+    var isBugReport: Bool = false
 
     var body: some View {
         HStack(spacing: 0) {
@@ -23,7 +24,7 @@ struct ToolbarView: View {
             pillDivider
             ToolbarPillButton(systemImage: "link",        tooltip: "Insert Link (⌘K)", action: onLink)
         }
-        .buoyAccentCapsule()
+        .buoyAccentCapsule(color: isBugReport ? .blue : .accentColor)
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
     }

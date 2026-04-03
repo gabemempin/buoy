@@ -158,7 +158,8 @@ struct ContentView: View {
                     onAllNotes: toggleAllNotes,
                     onNewNote: createNote,
                     focusEditor: focusEditor,
-                    dragEnabled: !showSettings && !showShortcuts && !showAllNotes
+                    dragEnabled: !showSettings && !showShortcuts && !showAllNotes,
+                    isBugReport: isBugReport
                 )
 
                 ToolbarView(
@@ -167,7 +168,8 @@ struct ContentView: View {
                     onUnderline: { applyEditorFormat { $0.applyUnderline() } },
                     onBullet:    { applyEditorCursorAction { $0.applyBullet($1) } },
                     onTodo:      { applyEditorCursorAction { $0.applyTodo($1) } },
-                    onLink:      { showLinkDialogFromToolbar() }
+                    onLink:      { showLinkDialogFromToolbar() },
+                    isBugReport: isBugReport
                 )
 
                 if showLinkDialog {
@@ -187,6 +189,9 @@ struct ContentView: View {
                         rtfData: note.contentRTF,
                         fontSize: settings.fontSize,
                         noteID: note.id,
+                        placeholder: isBugReport
+                            ? "Tell me what you want fixed or improved. If something went wrong, detail how to reproduce the bug.\n\nThank you for making Buoy better!"
+                            : "Start typing… (⌘← ⌘→ to navigate notes)",
                         onHeightChange: { h in
                             DispatchQueue.main.async {
                                 onHeightChange?(h + 160)

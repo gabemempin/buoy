@@ -23,6 +23,7 @@ private struct TitleTextField: NSViewRepresentable {
     var placeholder: String
     var onSubmit: () -> Void
     var isFocused: Bool
+    var isBugReport: Bool = false
     @Environment(\.colorScheme) var colorScheme
 
     func makeNSView(context: Context) -> TitleNSTextField {
@@ -47,7 +48,7 @@ private struct TitleTextField: NSViewRepresentable {
 
     func updateNSView(_ nsView: TitleNSTextField, context: Context) {
         if nsView.stringValue != text { nsView.stringValue = text }
-        nsView.textColor = colorScheme == .dark ? .white : .controlAccentColor
+        nsView.textColor = isBugReport ? .clear : (colorScheme == .dark ? .white : .controlAccentColor)
         if isFocused && nsView.window?.firstResponder !== nsView.currentEditor() {
             nsView.window?.makeFirstResponder(nsView)
         }
@@ -82,6 +83,7 @@ struct HeaderView: View {
     var onNewNote: () -> Void
     var focusEditor: () -> Void
     var dragEnabled: Bool = true
+    var isBugReport: Bool = false
 
     @FocusState private var titleFocused: Bool
 
@@ -93,23 +95,35 @@ struct HeaderView: View {
 
                 Spacer()
 
-                HStack(spacing: 10) {
-                    HeaderButton(systemImage: "line.horizontal.3", tooltip: "All Notes", action: onAllNotes)
-                    HeaderButton(systemImage: "plus",              tooltip: "New Note",  action: onNewNote)
+                if !isBugReport {
+                    HStack(spacing: 10) {
+                        HeaderButton(systemImage: "line.horizontal.3", tooltip: "All Notes", action: onAllNotes)
+                        HeaderButton(systemImage: "plus",              tooltip: "New Note",  action: onNewNote)
+                    }
+                    .padding(.trailing, 8)
                 }
-                .padding(.trailing, 8)
             }
             .frame(height: 28)
             .padding(.top, 6)
 
-            TitleTextField(
-                text: $title,
-                placeholder: "Untitled",
-                onSubmit: focusEditor,
-                isFocused: titleFocused
-            )
-            .frame(maxWidth: .infinity, minHeight: 26)
-            .padding(.horizontal, 12)
+            ZStack {
+                TitleTextField(
+                    text: $title,
+                    placeholder: "Untitled",
+                    onSubmit: focusEditor,
+                    isFocused: titleFocused,
+                    isBugReport: isBugReport
+                )
+                .frame(maxWidth: .infinity, minHeight: 26)
+                .padding(.horizontal, 12)
+
+                if isBugReport {
+                    AnimatedBugTitle(title: title)
+                        .frame(maxWidth: .infinity, minHeight: 26)
+                        .padding(.horizontal, 12)
+                        .allowsHitTesting(false)
+                }
+            }
             .padding(.bottom, 4)
         }
         .background(dragEnabled ? WindowDragHandle() : nil)
@@ -121,6 +135,54 @@ struct HeaderView: View {
         }
     }
 }
+
+// MARK: - Animated Bug Report Title
+
+private struct AnimatedBugTitle: View {
+    let title: String
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { timeline in
+            frame(phase: Self.phase(for: timeline.date))
+        }
+    }
+
+    private static func phase(for date: Date) -> CGFloat {
+        CGFloat(date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 2.5) / 2.5)
+    }
+
+    private func frame(phase: CGFloat) -> some View {
+        let displayTitle = title.isEmpty ? "Untitled" : title
+        let font = Font(NSFont.systemFont(ofSize: 19, weight: .semibold, width: .expanded))
+
+        return ZStack {
+            // Base layer: blue text
+            Text(displayTitle)
+                .font(font)
+                .lineLimit(1)
+                .foregroundStyle(Color.blue)
+
+            // Top layer: yellow text revealed by moving glow
+            Text(displayTitle)
+                .font(font)
+                .lineLimit(1)
+                .foregroundStyle(Color(red: 1, green: 0.85, blue: 0))
+                .mask(
+                    GeometryReader { geo in
+                        Ellipse()
+                            .fill(Color.white)
+                            .frame(width: 100, height: geo.size.height + 12)
+                            .blur(radius: 15)
+                            .offset(x: phase * (geo.size.width + 200) - 100)
+                    }
+                )
+        }
+        .frame(maxWidth: .infinity)
+        .multilineTextAlignment(.center)
+    }
+}
+
+// MARK: - Header Button
 
 private struct HeaderButton: View {
     let systemImage: String

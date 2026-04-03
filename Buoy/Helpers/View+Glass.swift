@@ -76,8 +76,8 @@ extension View {
     }
 
     /// Solid accent-colored circle button with specular highlight and shadow.
-    func buoyAccentCircle() -> some View {
-        self.background(Color.accentColor, in: Circle())
+    func buoyAccentCircle(color: Color = .accentColor) -> some View {
+        self.background(color, in: Circle())
             .overlay(
                 LinearGradient(
                     colors: [.white.opacity(0.28), .clear],
@@ -87,12 +87,12 @@ extension View {
                 .clipShape(Circle())
                 .allowsHitTesting(false)
             )
-            .shadow(color: Color.accentColor.opacity(0.4), radius: 4, x: 0, y: 2)
+            .shadow(color: color.opacity(0.4), radius: 4, x: 0, y: 2)
     }
 
     /// Solid accent-colored capsule with specular highlight and shadow.
-    func buoyAccentCapsule() -> some View {
-        self.background(Color.accentColor, in: Capsule())
+    func buoyAccentCapsule(color: Color = .accentColor) -> some View {
+        self.background(color, in: Capsule())
             .overlay(
                 LinearGradient(
                     colors: [.white.opacity(0.28), .clear],
@@ -102,7 +102,7 @@ extension View {
                 .clipShape(Capsule())
                 .allowsHitTesting(false)
             )
-            .shadow(color: Color.accentColor.opacity(0.4), radius: 4, x: 0, y: 2)
+            .shadow(color: color.opacity(0.4), radius: 4, x: 0, y: 2)
     }
 
     /// Applies a capsule Liquid Glass effect on macOS 26+, subtle filled capsule on macOS 15.

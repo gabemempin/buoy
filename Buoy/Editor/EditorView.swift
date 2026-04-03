@@ -10,6 +10,7 @@ struct EditorView: NSViewRepresentable {
     var rtfData: Data
     var fontSize: CGFloat
     var noteID: String
+    var placeholder: String = "Start typing… (⌘← ⌘→ to navigate notes)"
     var onHeightChange: ((CGFloat) -> Void)?
     var onNoteSwitch: ((CGFloat) -> Void)?
     var onSelectionChange: ((NSRange) -> Void)?
@@ -55,6 +56,10 @@ struct EditorView: NSViewRepresentable {
 
         if textView.fontSize != fontSize {
             textView.fontSize = fontSize
+        }
+
+        if textView.placeholderString != placeholder {
+            textView.placeholderString = placeholder
         }
 
         if context.coordinator.currentNoteID != noteID {

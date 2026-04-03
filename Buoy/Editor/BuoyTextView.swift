@@ -245,8 +245,8 @@ final class BuoyTextView: NSTextView {
         guard string.isEmpty else { return }
         let padding = textContainerInset.width + (textContainer?.lineFragmentPadding ?? 0)
         let rect = NSRect(
-            x: padding + 4,
-            y: textContainerInset.height + 2,
+            x: padding,
+            y: textContainerInset.height,
             width: bounds.width - padding * 2,
             height: bounds.height
         )
