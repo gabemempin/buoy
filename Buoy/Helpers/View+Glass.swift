@@ -9,6 +9,7 @@ private enum BuoyGlassMetrics {
     static let liquidGlassActiveTintOpacity: CGFloat = 0.05
     static let liquidGlassInactiveTintOpacity: CGFloat = 0.045
     static let inactiveFrostVeilOpacity: CGFloat = 0.015
+    static let inactiveFrostBorderOpacity: CGFloat = 0.18
     static let windowFocusAnimation = Animation.easeInOut(duration: 0.22)
 }
 
@@ -17,7 +18,12 @@ extension View {
     /// Main window — includes edge depth border.
     @ViewBuilder
     func buoyGlass(material: NSVisualEffectView.Material = .menu) -> some View {
-        modifier(BuoyRoundedGlassModifier(cornerRadius: BuoyGlassMetrics.windowCornerRadius))
+        modifier(
+            BuoyRegularGlassModifier(
+                shape: RoundedRectangle(cornerRadius: BuoyGlassMetrics.windowCornerRadius),
+                fallbackMaterial: material
+            )
+        )
     }
 
     /// Rounded glass inset from the main window edge. Keeps corners aligned with the
@@ -102,16 +108,58 @@ extension View {
     /// Applies a capsule Liquid Glass effect on macOS 26+, subtle filled capsule on macOS 15.
     @ViewBuilder
     func buoyGlassCapsule() -> some View {
-        if #available(macOS 26, *) {
-            self.glassEffect(in: Capsule())
-                .shadow(color: .black.opacity(0.18), radius: 2, x: 0, y: 1)
-        } else {
-            self.background(
-                Capsule()
-                    .fill(Color.primary.opacity(0.12))
-                    .overlay(Capsule().stroke(Color.primary.opacity(0.25), lineWidth: 0.5))
+        modifier(
+            BuoyRegularGlassModifier(
+                shape: Capsule(),
+                fallbackMaterial: .popover
             )
-            .shadow(color: .black.opacity(0.18), radius: 2, x: 0, y: 1)
+        )
+    }
+}
+
+private struct BuoyRegularGlassModifier<S: Shape>: ViewModifier {
+    let shape: S
+    let fallbackMaterial: NSVisualEffectView.Material
+
+    @State private var isWindowFocused = true
+
+    func body(content: Content) -> some View {
+        if #available(macOS 26, *) {
+            content
+                .glassEffect(.regular, in: shape)
+                .clipShape(shape)
+                .overlay {
+                    if BuoyGlassMetrics.enableWindowFocusPolish && !isWindowFocused {
+                        shape
+                            .fill(Color.white.opacity(BuoyGlassMetrics.inactiveFrostVeilOpacity))
+                            .overlay(
+                                shape.stroke(
+                                    Color.white.opacity(BuoyGlassMetrics.inactiveFrostBorderOpacity),
+                                    lineWidth: 0.5
+                                )
+                            )
+                            .allowsHitTesting(false)
+                            .animation(BuoyGlassMetrics.windowFocusAnimation, value: isWindowFocused)
+                    }
+                }
+                .background(
+                    Group {
+                        if BuoyGlassMetrics.enableWindowFocusPolish {
+                            BuoyWindowFocusObserver { isFocused in
+                                withAnimation(BuoyGlassMetrics.windowFocusAnimation) {
+                                    isWindowFocused = isFocused
+                                }
+                            }
+                            .frame(width: 0, height: 0)
+                        }
+                    }
+                )
+        } else {
+            content
+                .background(
+                    VisualEffectBackground(material: fallbackMaterial, blendingMode: .behindWindow)
+                )
+                .clipShape(shape)
         }
     }
 }
