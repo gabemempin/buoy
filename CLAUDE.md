@@ -89,6 +89,19 @@ GRDB migrations are defined in `NoteStore.swift` (`v1_initial`, `v2_contentRTF`)
 - **`HotkeyService`** — singleton wrapping `KeyboardShortcuts`. Parses Electron-style shortcut strings (`"Option+Cmd+N"`) into `KeyboardShortcuts.Shortcut`.
 - **`AppleNotesService`** — writes plain text to a temp file, then runs AppleScript via `osascript` (background queue) to create a new note in Apple Notes.
 
+### Bug Report Mode
+
+Clicking "Report a Bug" in `SettingsPanel` creates an ephemeral note titled "Bug Report" and sets `bugReportNoteID` in `ContentView`. While active:
+
+- `isBugReport: Bool` is a computed property: `bugReportNoteID != nil && bugReportNoteID == noteStore.currentNote?.id` — navigating away passively exits bug report mode with no cleanup needed
+- **HeaderView**: animated title overlay (`AnimatedBugTitle`) sweeps a blurred yellow ellipse over blue text using dual `Text` layers + `.mask` (avoids RGB green blending); the two header buttons (hamburger + plus) are hidden via `if !isBugReport`; underlying `TitleTextField` text color is set to `.clear` so the animated overlay shows through
+- **ToolbarView**: capsule uses `.buoyAccentCapsule(color: isBugReport ? .blue : .accentColor)`
+- **FooterView**: left slot shows "Cancel Report" red capsule; right slot shows "Send to Mail" blue capsule; both use `buoyAccentCapsule(color:)` — tapping Send runs AppleScript directly targeting `com.apple.Mail` (same pattern as `AppleNotesService`), then deletes the note
+- **EditorView**: accepts `placeholder: String` (default = normal hint); `ContentView` passes the bug report prompt when `isBugReport` is true
+- **`buoyAccentCircle(color:)` / `buoyAccentCapsule(color:)`** in `View+Glass.swift` both accept `color: Color = .accentColor` — backward compatible; pass `.red` or `.blue` as needed
+
+**BuoyTextView placeholder alignment:** draw rect uses `x: padding` and `y: textContainerInset.height` (no extra offsets) so it aligns precisely with the cursor.
+
 ### macOS Version Conditionals
 
 Glass/vibrancy uses `#available(macOS 26, *)`:
