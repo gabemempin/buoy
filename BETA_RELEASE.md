@@ -9,10 +9,10 @@ A linear, top-to-bottom guide for shipping the first beta. Work through each pha
 
 ## What You Still Need to Do
 - [x] Fix nested todo indent bug (Phase 1)
-- [ ] Archive in Xcode + zip the `.app` (Phase 3)
-- [ ] Create GitHub release with `gh` CLI (Phase 4)
-- [ ] Build `/download` page + `install.sh` on website (Phase 5)
-- [ ] Test locally and deploy to Netlify (Phases 6–7)
+- [x] Archive in Xcode + zip the `.app` (Phase 3)
+- [x] Create GitHub release with `gh` CLI (Phase 4)
+- [x] Build `/download` page + `install.sh` on website (Phase 5)
+- [x] Test locally and deploy to Netlify (Phases 6–7)
 - [ ] Push Buoy app repo (Phase 8)
 - [ ] Design + send beta email, post on Instagram (Phases 9–11)
 
@@ -29,44 +29,44 @@ A linear, top-to-bottom guide for shipping the first beta. Work through each pha
 - [x] **`UpdateService.swift`** — Updated feed URL to `gabemempin/buoy` (was `kristofbernal/buoy`)
 - [x] **`version.json`** — Updated `url` field to `/download` (was `/install`)
 - [x] **`RELEASING.md`** — Fixed all repo references to `gabemempin/buoy`
-- [ ] Commit all changes
+- [x] Commit all changes
 
 ---
 
-## Phase 3 — Build & Export
-- [ ] Confirm version is `1.0`: Xcode → Buoy target → General → Version
-- [ ] Product → Archive → Distribute App → Copy App → save `.app` to Desktop
-- [ ] Zip:
+## Phase 3 — Build & Export ✅
+- [x] Confirm version is `1.0`: Xcode → Buoy target → General → Version
+- [x] Product → Archive → Distribute App → Copy App → save `.app` (Xcode creates a dated subfolder, e.g. `Buoy 2026-04-04 12-22-04/`)
+- [x] Zip:
   ```bash
-  cd ~/Desktop
+  cd "/Users/gabemempin/Dev/Buoy/Buoy 2026-04-04 12-22-04"
   zip -r Buoy-1.0.zip Buoy.app
   ```
 
 ---
 
-## Phase 4 — GitHub Release
-- [ ] Create the release (requires `gh` CLI — run `brew install gh` if missing):
+## Phase 4 — GitHub Release ✅
+- [x] Create the release (requires `gh` CLI — run `brew install gh` if missing):
   ```bash
-  gh release create v1.0 ~/Desktop/Buoy-1.0.zip \
+  gh release create v1.0 "/Users/gabemempin/Dev/Buoy/Buoy 2026-04-04 12-22-04/Buoy-1.0.zip" \
     --repo gabemempin/buoy \
     --title "Buoy 1.0 Beta" \
     --notes "First beta release. Requires macOS 15.0 or later."
   ```
-- [ ] Note the permanent download URL:
+- [x] Note the permanent download URL:
   ```
   https://github.com/gabemempin/buoy/releases/download/v1.0/Buoy-1.0.zip
   ```
 
 ---
 
-## Phase 5 — Website Assets & Download Page
+## Phase 5 — Website Assets & Download Page ✅
 
 ### 5.1 — Take Screenshots
 Take these in the app (⌘⇧4 → Space → click window):
-- [ ] Light mode — empty note (clean slate)
-- [ ] Dark mode — note with some bullet/todo content
-- [ ] AllNotes panel open
-- [ ] SettingsPanel open
+- [x] Light mode — empty note (clean slate)
+- [x] Dark mode — note with some bullet/todo content
+- [x] AllNotes panel open
+- [x] SettingsPanel open
 
 Save them to `buoy-website/public/screenshots/` as:
 `hero-light.png`, `hero-dark.png`, `all-notes.png`, `settings.png`
@@ -81,7 +81,7 @@ Copy-paste this into the page:
 - Liquid Glass design (macOS 26) / vibrancy (macOS 15)
 - Free beta — no account required
 
-### 5.3 — Create `install.sh`
+### 5.3 — Create `install.sh` ✅
 Create `buoy-website/public/install.sh`:
 ```sh
 #!/bin/sh
@@ -102,25 +102,25 @@ echo "Done. Launch Buoy from /Applications or Spotlight."
 > xattr -rd com.apple.quarantine /Applications/Buoy.app
 > ```
 
-### 5.4 — Create the `/download` Page
+### 5.4 — Create the `/download` Page ✅
 Create `buoy-website/app/download/page.tsx` with:
-- [ ] Hero screenshot (light/dark toggle)
-- [ ] Feature list (from 5.2)
-- [ ] Install command in a copyable code block:
+- [x] Hero screenshot (light/dark toggle)
+- [x] Feature list (from 5.2)
+- [x] Install command in a copyable code block:
   ```
   curl -fsSL https://buoy.gabemempin.me/install.sh | sh
   ```
-- [ ] System requirement: macOS 15.0+
-- [ ] Beta disclaimer: "This is an early beta. Expect rough edges."
-- [ ] Gatekeeper troubleshooting note (collapsed/small text)
+- [x] System requirement: macOS 15.0+
+- [x] Beta disclaimer: "This is an early beta. Expect rough edges."
+- [x] Gatekeeper troubleshooting note (collapsed/small text)
 
 ---
 
-## Phase 6 — Test Locally
+## Phase 6 — Test Locally ✅
 
-- [ ] `cd ~/Dev/buoy-website && npm run dev`
-- [ ] Visit `http://localhost:3000/download` — verify layout, copy button, screenshots load
-- [ ] Test install script against the GitHub release URL directly:
+- [x] `cd ~/Dev/buoy-website && npm run dev`
+- [x] Visit `http://localhost:3000/download` — verify layout, copy button, screenshots load
+- [x] Test install script against the GitHub release URL directly:
   ```bash
   curl -fsSL https://github.com/gabemempin/buoy/releases/download/v1.0/Buoy-1.0.zip \
     -o /tmp/Buoy-test.zip && unzip -qo /tmp/Buoy-test.zip -d /tmp/BuoyTest/
