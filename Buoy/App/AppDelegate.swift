@@ -7,6 +7,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var hostingView: NSHostingView<ContentView>?
     private var statusItem: NSStatusItem?
     private var minimizeRestoreMenuItem: NSMenuItem?
+    private var globalMouseMonitor: Any?
+    private var localMouseMonitor: Any?
 
     let noteStore = NoteStore()
     var settingsStore = SettingsStore()
@@ -120,6 +122,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(settingsStore.value.showInDock ? .regular : .accessory)
         setupPanel()
+        installOutsideClickMonitor()
         applyTheme(settingsStore.value.theme)
         setupStatusItem()
         HotkeyService.shared.register(shortcut: settingsStore.value.globalShortcut)
@@ -143,6 +146,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         noteStore.flushPendingSaves()
+        removeOutsideClickMonitor()
     }
 
     // MARK: - Panel Setup
@@ -195,6 +199,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         p.backgroundColor = .clear
         p.isFloatingPanel = true
         p.hidesOnDeactivate = false
+        // Only become key when a clicked view explicitly needs keyboard focus.
+        // This makes text inputs inside Buoy focusable while reducing accidental
+        // key capture when the user is interacting with another app's dialogs.
+        p.becomesKeyOnlyIfNeeded = true
         p.isMovableByWindowBackground = false
         p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         p.minSize = NSSize(
@@ -288,11 +296,65 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 lastFullSizeFrame = p.frame
             }
         }
+        p.allowsKeyFocus = true
         p.makeKeyAndOrderFront(nil)
     }
 
     func hidePanel() {
         panel?.orderOut(nil)
+    }
+
+    private func installOutsideClickMonitor() {
+        guard globalMouseMonitor == nil, localMouseMonitor == nil else { return }
+
+        let mask: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .otherMouseDown]
+
+        localMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak self] event in
+            self?.handleMonitoredMouseDown(screenPoint: event.window?.convertPoint(toScreen: event.locationInWindow) ?? NSEvent.mouseLocation)
+            return event
+        }
+
+        globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: mask) { [weak self] _ in
+            self?.handleMonitoredMouseDown(screenPoint: NSEvent.mouseLocation)
+        }
+    }
+
+    private func removeOutsideClickMonitor() {
+        if let localMouseMonitor {
+            NSEvent.removeMonitor(localMouseMonitor)
+            self.localMouseMonitor = nil
+        }
+        if let globalMouseMonitor {
+            NSEvent.removeMonitor(globalMouseMonitor)
+            self.globalMouseMonitor = nil
+        }
+    }
+
+    private func handleMonitoredMouseDown(screenPoint: NSPoint) {
+        if Thread.isMainThread {
+            handleOutsideMouseDownOnMainThread(screenPoint: screenPoint)
+        } else {
+            DispatchQueue.main.async { [weak self] in
+                self?.handleOutsideMouseDownOnMainThread(screenPoint: screenPoint)
+            }
+        }
+    }
+
+    private func handleOutsideMouseDownOnMainThread(screenPoint: NSPoint) {
+        guard let p = panel, p.isVisible else { return }
+        guard !p.frame.contains(screenPoint) else { return }
+
+        p.allowsKeyFocus = false
+        p.endEditing(for: nil)
+        p.makeFirstResponder(nil)
+
+        if p.isKeyWindow {
+            p.resignKey()
+        }
+
+        if p.isMainWindow {
+            p.resignMain()
+        }
     }
 
     func toggleExpand() {
