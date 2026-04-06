@@ -11,6 +11,12 @@ private enum BuoyGlassMetrics {
     static let inactiveFrostVeilOpacity: CGFloat = 0.015
     static let inactiveFrostBorderOpacity: CGFloat = 0.18
     static let windowFocusAnimation = Animation.easeInOut(duration: 0.22)
+    static let hoverAnimation = Animation.easeInOut(duration: 0.14)
+    static let accentHoverGlowOpacity: CGFloat = 0.58
+    static let accentHoverHighlightOpacity: CGFloat = 0.2
+    static let accentHoverBorderOpacity: CGFloat = 0.24
+    static let glassButtonHoverBoost: Double = 0.08
+    static let glassButtonHoverStrokeBoost: Double = 0.18
 }
 
 extension View {
@@ -76,49 +82,100 @@ extension View {
     }
 
     /// Solid accent-colored circle button with specular highlight and shadow.
-    func buoyAccentCircle(color: Color = .accentColor) -> some View {
-        self.background(color, in: Circle())
+    func buoyAccentCircle(color: Color = .accentColor, isHovering: Bool = false) -> some View {
+        self.background(color.opacity(isHovering ? 1 : 0.96), in: Circle())
             .overlay(
                 LinearGradient(
-                    colors: [.white.opacity(0.28), .clear],
+                    colors: [.white.opacity(isHovering ? 0.4 : 0.28), .clear],
                     startPoint: .top,
                     endPoint: .center
                 )
                 .clipShape(Circle())
                 .allowsHitTesting(false)
             )
-            .shadow(color: color.opacity(0.4), radius: 4, x: 0, y: 2)
+            .overlay(
+                Circle()
+                    .stroke(Color.white.opacity(isHovering ? BuoyGlassMetrics.accentHoverBorderOpacity : 0.08), lineWidth: 0.7)
+                    .padding(0.5)
+                    .allowsHitTesting(false)
+            )
+            .shadow(color: color.opacity(isHovering ? BuoyGlassMetrics.accentHoverGlowOpacity : 0.4), radius: isHovering ? 8 : 4, x: 0, y: isHovering ? 3 : 2)
+            .overlay(
+                Circle()
+                    .fill(Color.white.opacity(isHovering ? BuoyGlassMetrics.accentHoverHighlightOpacity : 0))
+                    .blur(radius: isHovering ? 5 : 0)
+                    .allowsHitTesting(false)
+            )
+            .animation(BuoyGlassMetrics.hoverAnimation, value: isHovering)
     }
 
     /// Solid accent-colored capsule with specular highlight and shadow.
-    func buoyAccentCapsule(color: Color = .accentColor) -> some View {
-        self.background(color, in: Capsule())
+    func buoyAccentCapsule(color: Color = .accentColor, isHovering: Bool = false) -> some View {
+        self.background(color.opacity(isHovering ? 1 : 0.96), in: Capsule())
             .overlay(
                 LinearGradient(
-                    colors: [.white.opacity(0.28), .clear],
+                    colors: [.white.opacity(isHovering ? 0.38 : 0.28), .clear],
                     startPoint: .top,
                     endPoint: .center
                 )
                 .clipShape(Capsule())
                 .allowsHitTesting(false)
             )
-            .shadow(color: color.opacity(0.4), radius: 4, x: 0, y: 2)
+            .overlay(
+                Capsule()
+                    .stroke(Color.white.opacity(isHovering ? BuoyGlassMetrics.accentHoverBorderOpacity : 0.08), lineWidth: 0.7)
+                    .padding(0.5)
+                    .allowsHitTesting(false)
+            )
+            .shadow(color: color.opacity(isHovering ? BuoyGlassMetrics.accentHoverGlowOpacity : 0.4), radius: isHovering ? 9 : 4, x: 0, y: isHovering ? 3 : 2)
+            .overlay(
+                Capsule()
+                    .fill(Color.white.opacity(isHovering ? BuoyGlassMetrics.accentHoverHighlightOpacity : 0))
+                    .blur(radius: isHovering ? 5 : 0)
+                    .allowsHitTesting(false)
+            )
+            .animation(BuoyGlassMetrics.hoverAnimation, value: isHovering)
     }
 
     /// Tinted interactive glass rounded rect on macOS 26+, filled tint on macOS 15.
     /// Used for action buttons (Report Bug, Check for Updates, Quit).
     @ViewBuilder
-    func buoyGlassButton(tint: Color, tintOpacity: Double = 0.18, stroke: Color? = nil, strokeOpacity: Double = 0.3, cornerRadius: CGFloat = 10) -> some View {
+    func buoyGlassButton(tint: Color, tintOpacity: Double = 0.18, stroke: Color? = nil, strokeOpacity: Double = 0.3, cornerRadius: CGFloat = 10, isHovering: Bool = false) -> some View {
         let strokeColor = stroke ?? tint
+        let fillOpacity = tintOpacity + (isHovering ? BuoyGlassMetrics.glassButtonHoverBoost : 0)
+        let effectiveStrokeOpacity = strokeOpacity + (isHovering ? BuoyGlassMetrics.glassButtonHoverStrokeBoost : 0)
         if #available(macOS 26, *) {
             self
-                .glassEffect(.regular.tint(tint.opacity(tintOpacity)).interactive(), in: RoundedRectangle(cornerRadius: cornerRadius))
-                .overlay(RoundedRectangle(cornerRadius: cornerRadius).stroke(strokeColor.opacity(strokeOpacity), lineWidth: 0.5))
+                .glassEffect(.regular.tint(tint.opacity(fillOpacity)).interactive(), in: RoundedRectangle(cornerRadius: cornerRadius))
+                .overlay(
+                    RoundedRectangle(cornerRadius: cornerRadius)
+                        .stroke(strokeColor.opacity(effectiveStrokeOpacity), lineWidth: isHovering ? 0.8 : 0.5)
+                )
+                .shadow(color: tint.opacity(isHovering ? 0.22 : 0.08), radius: isHovering ? 8 : 3, x: 0, y: 2)
+                .animation(BuoyGlassMetrics.hoverAnimation, value: isHovering)
         } else {
             self
-                .background(tint.opacity(tintOpacity * 0.7), in: RoundedRectangle(cornerRadius: cornerRadius))
-                .overlay(RoundedRectangle(cornerRadius: cornerRadius).stroke(strokeColor.opacity(strokeOpacity), lineWidth: 0.5))
+                .background(tint.opacity(fillOpacity * 0.7), in: RoundedRectangle(cornerRadius: cornerRadius))
+                .overlay(
+                    RoundedRectangle(cornerRadius: cornerRadius)
+                        .stroke(strokeColor.opacity(effectiveStrokeOpacity), lineWidth: isHovering ? 0.8 : 0.5)
+                )
+                .shadow(color: tint.opacity(isHovering ? 0.18 : 0.08), radius: isHovering ? 7 : 2, x: 0, y: 2)
+                .animation(BuoyGlassMetrics.hoverAnimation, value: isHovering)
         }
+    }
+
+    func buoyAccentHoverPlate(isHovering: Bool, cornerRadius: CGFloat = 8) -> some View {
+        self.background(
+            RoundedRectangle(cornerRadius: cornerRadius)
+                .fill(Color.white.opacity(isHovering ? 0.16 : 0))
+                .overlay(
+                    RoundedRectangle(cornerRadius: cornerRadius)
+                        .stroke(Color.white.opacity(isHovering ? 0.16 : 0), lineWidth: 0.6)
+                )
+                .shadow(color: Color.accentColor.opacity(isHovering ? 0.28 : 0), radius: isHovering ? 6 : 0, x: 0, y: 2)
+                .animation(BuoyGlassMetrics.hoverAnimation, value: isHovering)
+        )
     }
 
     /// Applies a capsule Liquid Glass effect on macOS 26+, subtle filled capsule on macOS 15.

@@ -4,6 +4,7 @@ struct MinimizedNotePillView: View {
     let title: String
     let theme: AppTheme
     var onRestore: () -> Void
+    @State private var isRestoreHovering = false
 
     var body: some View {
         GeometryReader { proxy in
@@ -16,16 +17,17 @@ struct MinimizedNotePillView: View {
                 Button(action: onRestore) {
                     Image(systemName: "chevron.down")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.9))
+                        .foregroundStyle(isRestoreHovering ? .white : .white.opacity(0.9))
                         .frame(
                             width: PanelLayoutMetrics.minimizedRestoreButtonSize,
                             height: PanelLayoutMetrics.minimizedRestoreButtonSize
                         )
                         .contentShape(Circle())
-                        .buoyAccentCircle()
+                        .buoyAccentCircle(isHovering: isRestoreHovering)
                 }
                 .buttonStyle(.plain)
                 .help("Restore note")
+                .onHover { isRestoreHovering = $0 }
             }
             .padding(.leading, PanelLayoutMetrics.minimizedPillLeadingPadding)
             .padding(.trailing, PanelLayoutMetrics.minimizedPillTrailingPadding)

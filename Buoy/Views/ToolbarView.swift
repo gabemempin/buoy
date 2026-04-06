@@ -24,6 +24,7 @@ struct ToolbarView: View {
             pillDivider
             ToolbarPillButton(systemImage: "link",        tooltip: "Insert Link (⌘K)", action: onLink)
         }
+        .clipShape(Capsule())
         .buoyAccentCapsule(color: isBugReport ? .blue : .accentColor)
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
@@ -51,6 +52,7 @@ private struct ToolbarPillButton: View {
                 .foregroundStyle(isHovering ? Color.white : Color.white.opacity(0.85))
                 .frame(width: 30, height: 28)
                 .contentShape(Rectangle())
+                .buoyAccentHoverPlate(isHovering: isHovering, cornerRadius: 7)
         }
         .buttonStyle(.plain)
         .help(tooltip)
