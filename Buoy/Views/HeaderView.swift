@@ -198,7 +198,7 @@ private struct HeaderButton: View {
                 .foregroundStyle(isHovering ? Color.white : Color.white.opacity(0.85))
                 .frame(width: 28, height: 28)
                 .contentShape(Circle())
-                .buoyAccentCircle()
+                .buoyAccentCircle(isHovering: isHovering)
         }
         .buttonStyle(.plain)
         .help(tooltip)

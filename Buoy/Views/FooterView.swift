@@ -13,6 +13,12 @@ struct FooterView: View {
 
     @State private var showTransfer = false
     @State private var showCreated = true
+    @State private var isCancelHovering = false
+    @State private var isShortcutsHovering = false
+    @State private var isSettingsHovering = false
+    @State private var isSendHovering = false
+    @State private var isMoreHovering = false
+    @State private var isCopyHovering = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -64,29 +70,32 @@ struct FooterView: View {
                     }
                     .buttonStyle(.plain)
                     .help("Cancel bug report")
-                    .buoyAccentCapsule(color: .red)
+                    .buoyAccentCapsule(color: .red, isHovering: isCancelHovering)
+                    .onHover { isCancelHovering = $0 }
                 } else {
                     Button(action: onShortcuts) {
                         Image(systemName: "keyboard")
                             .font(.system(size: 12))
-                            .foregroundStyle(.white.opacity(0.85))
+                            .foregroundStyle(isShortcutsHovering ? .white : .white.opacity(0.85))
                             .frame(width: 28, height: 28)
                             .contentShape(Circle())
-                            .buoyAccentCircle()
+                            .buoyAccentCircle(isHovering: isShortcutsHovering)
                     }
                     .buttonStyle(.plain)
                     .help("Keyboard Shortcuts")
+                    .onHover { isShortcutsHovering = $0 }
 
                     Button(action: onSettings) {
                         Image(systemName: "gearshape")
                             .font(.system(size: 12))
-                            .foregroundStyle(.white.opacity(0.85))
+                            .foregroundStyle(isSettingsHovering ? .white : .white.opacity(0.85))
                             .frame(width: 28, height: 28)
                             .contentShape(Circle())
-                            .buoyAccentCircle()
+                            .buoyAccentCircle(isHovering: isSettingsHovering)
                     }
                     .buttonStyle(.plain)
                     .help("Settings")
+                    .onHover { isSettingsHovering = $0 }
                 }
 
                 Spacer()
@@ -106,7 +115,8 @@ struct FooterView: View {
                     }
                     .buttonStyle(.plain)
                     .help("Send bug report via Mail")
-                    .buoyAccentCapsule(color: .blue)
+                    .buoyAccentCapsule(color: .blue, isHovering: isSendHovering)
+                    .onHover { isSendHovering = $0 }
                 } else {
                     HStack(spacing: 0) {
                         Button {
@@ -114,12 +124,13 @@ struct FooterView: View {
                         } label: {
                             Image(systemName: showTransfer ? "chevron.up" : "chevron.down")
                                 .font(.system(size: 9, weight: .semibold))
-                                .foregroundStyle(.white.opacity(0.75))
+                                .foregroundStyle(isMoreHovering ? .white : .white.opacity(0.75))
                                 .frame(width: 28, height: 28)
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .help("More actions")
+                        .onHover { isMoreHovering = $0 }
 
                         Rectangle()
                             .fill(Color.white.opacity(0.3))
@@ -133,15 +144,16 @@ struct FooterView: View {
                                     .font(.system(size: 10))
                                     .opacity(0.8)
                             }
-                            .foregroundStyle(.white)
+                            .foregroundStyle(isCopyHovering ? .white : .white.opacity(0.92))
                             .padding(.horizontal, 10)
                             .padding(.vertical, 5)
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .help("Copy to clipboard (⌘Return)")
+                        .onHover { isCopyHovering = $0 }
                     }
-                    .buoyAccentCapsule()
+                    .buoyAccentCapsule(isHovering: isMoreHovering || isCopyHovering)
                 }
             }
             .padding(.horizontal, 8)

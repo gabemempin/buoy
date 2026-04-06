@@ -11,6 +11,9 @@ struct SettingsPanel: View {
 
     @State private var updateStatus: String? = nil
     @State private var updateStatusTask: Task<Void, Never>? = nil
+    @State private var isReportBugHovering = false
+    @State private var isCheckUpdatesHovering = false
+    @State private var isQuitHovering = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -107,10 +110,11 @@ struct SettingsPanel: View {
                             .font(.system(size: 12))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 6)
-                            .buoyGlassButton(tint: .orange, strokeOpacity: 0.6)
+                            .buoyGlassButton(tint: .orange, strokeOpacity: 0.6, isHovering: isReportBugHovering)
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.orange.opacity(0.9))
+                    .onHover { isReportBugHovering = $0 }
 
                     Button { checkForUpdates() } label: {
                         Group {
@@ -120,17 +124,19 @@ struct SettingsPanel: View {
                         .font(.system(size: 12))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6)
-                        .buoyGlassButton(tint: .primary, tintOpacity: 0.08, strokeOpacity: 0.15)
+                        .buoyGlassButton(tint: .primary, tintOpacity: 0.08, strokeOpacity: 0.15, isHovering: isCheckUpdatesHovering)
                     }
                     .buttonStyle(.plain)
+                    .onHover { isCheckUpdatesHovering = $0 }
 
                     Button("Quit Buoy") { onQuit() }
                         .font(.system(size: 12))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6)
-                        .buoyGlassButton(tint: .red, strokeOpacity: 0.6)
+                        .buoyGlassButton(tint: .red, strokeOpacity: 0.6, isHovering: isQuitHovering)
                         .foregroundStyle(.red)
                         .buttonStyle(.plain)
+                        .onHover { isQuitHovering = $0 }
                 }
                 .padding(.horizontal, 10)
                 .padding(.bottom, 10)
