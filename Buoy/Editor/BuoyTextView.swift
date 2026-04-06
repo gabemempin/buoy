@@ -9,6 +9,7 @@ extension Notification.Name {
     static let buoyPreviousNote    = Notification.Name("BuoyPreviousNote")
     static let buoyNextNote        = Notification.Name("BuoyNextNote")
     static let buoyFocusTitle      = Notification.Name("BuoyFocusTitle")
+    static let buoyPanelBecameKey  = Notification.Name("BuoyPanelBecameKey")
 }
 
 // MARK: - Delegate Protocol
@@ -1184,8 +1185,8 @@ final class BuoyTextView: NSTextView {
             #selector(NSResponder.makeBaseWritingDirectionLeftToRight(_:)),
             #selector(NSResponder.makeBaseWritingDirectionRightToLeft(_:))
         ]
-        return sub.items.contains { writingDirectionActions.contains($0.action ?? Selector("")) }
-            || sub.items.contains { $0.action == Selector(("changeLayoutOrientation:")) }
+        return sub.items.contains { $0.action.map { writingDirectionActions.contains($0) } ?? false }
+            || sub.items.contains { $0.action == NSSelectorFromString("changeLayoutOrientation:") }
     }
 
     override func validateMenuItem(_ item: NSMenuItem) -> Bool {
@@ -1194,7 +1195,7 @@ final class BuoyTextView: NSTextView {
             #selector(italicAction(_:)),
             #selector(underlineAction(_:))
         ]
-        if formattingActions.contains(item.action ?? Selector("")) {
+        if let action = item.action, formattingActions.contains(action) {
             return selectedRange().length > 0
         }
         return super.validateMenuItem(item)

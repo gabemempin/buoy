@@ -101,6 +101,16 @@ struct ContentView: View {
             }
         }
         .animation(.easeInOut(duration: PanelLayoutMetrics.minimizedTransitionDuration), value: panelPresentation.isMinimized)
+        // Auto-focus the editor when the panel becomes key (fixes macOS 15 where
+        // NSHostingView doesn't automatically route keyboard events to the text view).
+        .onReceive(NotificationCenter.default.publisher(for: .buoyPanelBecameKey)) { _ in
+            guard !panelPresentation.isMinimized else { return }
+            let fr = tvRef.value?.window?.firstResponder
+            // Only steal focus if nothing meaningful is already focused
+            if !(fr is BuoyTextView || fr is NSTextField) {
+                focusEditor()
+            }
+        }
         // App-level shortcut notifications from BuoyTextView
         .onReceive(NotificationCenter.default.publisher(for: .buoyNewNote))         { _ in createNote() }
         .onReceive(NotificationCenter.default.publisher(for: .buoyDeleteNote))      { _ in deleteCurrentNote() }

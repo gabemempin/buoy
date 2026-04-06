@@ -540,6 +540,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         minimizeRestoreMenuItem?.title = panelPresentation.isMinimized ? "Restore" : "Minimize"
     }
 
+    func windowDidBecomeKey(_ notification: Notification) {
+        // On macOS 15, NSHostingView doesn't automatically route keyboard events
+        // to embedded NSViewRepresentable text views. Post a notification so
+        // ContentView can focus the editor if nothing else is already focused.
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: .buoyPanelBecameKey, object: nil)
+        }
+    }
+
     func windowDidMove(_ notification: Notification) {
         recordCurrentFullSizeFrame()
     }

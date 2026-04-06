@@ -90,14 +90,14 @@ final class NoteStore {
         guard let db else { return }
         let count = notes.count
         let now = Note.currentTimestamp()
-        var newNote = Note(
+        let newNote = Note(
             id: Note.newID(),
             title: "Note \(count + 1)",
             contentRTF: Data(),
             createdAt: now,
             updatedAt: now
         )
-        try? db.write { db in
+        _ = try? db.write { db in
             try newNote.insert(db)
         }
         loadNoteList()

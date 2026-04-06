@@ -105,6 +105,22 @@ extension View {
             .shadow(color: color.opacity(0.4), radius: 4, x: 0, y: 2)
     }
 
+    /// Tinted interactive glass rounded rect on macOS 26+, filled tint on macOS 15.
+    /// Used for action buttons (Report Bug, Check for Updates, Quit).
+    @ViewBuilder
+    func buoyGlassButton(tint: Color, tintOpacity: Double = 0.18, stroke: Color? = nil, strokeOpacity: Double = 0.3, cornerRadius: CGFloat = 10) -> some View {
+        let strokeColor = stroke ?? tint
+        if #available(macOS 26, *) {
+            self
+                .glassEffect(.regular.tint(tint.opacity(tintOpacity)).interactive(), in: RoundedRectangle(cornerRadius: cornerRadius))
+                .overlay(RoundedRectangle(cornerRadius: cornerRadius).stroke(strokeColor.opacity(strokeOpacity), lineWidth: 0.5))
+        } else {
+            self
+                .background(tint.opacity(tintOpacity * 0.7), in: RoundedRectangle(cornerRadius: cornerRadius))
+                .overlay(RoundedRectangle(cornerRadius: cornerRadius).stroke(strokeColor.opacity(strokeOpacity), lineWidth: 0.5))
+        }
+    }
+
     /// Applies a capsule Liquid Glass effect on macOS 26+, subtle filled capsule on macOS 15.
     @ViewBuilder
     func buoyGlassCapsule() -> some View {

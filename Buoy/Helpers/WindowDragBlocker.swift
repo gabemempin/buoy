@@ -20,20 +20,20 @@ struct WindowDragHandle: NSViewRepresentable {
 
 final class DragEnablingNSView: NSView {
     override var mouseDownCanMoveWindow: Bool { false }
-    private var dragOrigin: NSPoint = .zero
+    private var dragStartMouse: NSPoint = .zero
+    private var dragStartWindowOrigin: NSPoint = .zero
 
     override func mouseDown(with event: NSEvent) {
-        dragOrigin = NSEvent.mouseLocation
+        dragStartMouse = NSEvent.mouseLocation
+        dragStartWindowOrigin = window?.frame.origin ?? .zero
     }
 
     override func mouseDragged(with event: NSEvent) {
         guard let window = window else { return }
         let loc = NSEvent.mouseLocation
-        let newOrigin = NSPoint(
-            x: window.frame.origin.x + loc.x - dragOrigin.x,
-            y: window.frame.origin.y + loc.y - dragOrigin.y
-        )
-        window.setFrameOrigin(newOrigin)
-        dragOrigin = loc
+        window.setFrameOrigin(NSPoint(
+            x: dragStartWindowOrigin.x + loc.x - dragStartMouse.x,
+            y: dragStartWindowOrigin.y + loc.y - dragStartMouse.y
+        ))
     }
 }

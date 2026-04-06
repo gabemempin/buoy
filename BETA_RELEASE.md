@@ -13,8 +13,8 @@ A linear, top-to-bottom guide for shipping the first beta. Work through each pha
 - [x] Create GitHub release with `gh` CLI (Phase 4)
 - [x] Build `/download` page + `install.sh` on website (Phase 5)
 - [x] Test locally and deploy to Netlify (Phases 6–7)
-- [x] Push Buoy app repo (Phase 8)
-- [x] Design + send beta email, post on Instagram (Phases 9–11)
+- [ ] Push Buoy app repo (Phase 8)
+- [ ] Design + send beta email, post on Instagram (Phases 9–11)
 
 ---
 
@@ -129,39 +129,39 @@ Create `buoy-website/app/download/page.tsx` with:
 
 ---
 
-## Phase 7 — Deploy to Netlify ✅
+## Phase 7 — Deploy to Netlify
 
-- [x] Commit all website changes:
+- [ ] Commit all website changes:
   ```bash
   cd ~/Dev/buoy-website
   git add .
   git commit -m "Add download page and install script for v1.0 beta"
   git push
   ```
-- [x] Wait for Netlify deploy (check dashboard or watch the build log)
-- [x] Test the live end-to-end install:
+- [ ] Wait for Netlify deploy (check dashboard or watch the build log)
+- [ ] Test the live end-to-end install:
   ```bash
   curl -fsSL https://buoy.gabemempin.me/install.sh | sh
   ```
   Confirm Buoy appears in `/Applications` and launches correctly.
-- [x] Visit `https://buoy.gabemempin.me/download` and verify everything looks right
+- [ ] Visit `https://buoy.gabemempin.me/download` and verify everything looks right
 
 ---
 
-## Phase 8 — Push the Buoy App Repo ✅
+## Phase 8 — Push the Buoy App Repo
 
 > ⚠️ **Do this after Phase 7 is confirmed live.** Pushing `version.json` immediately tells the auto-updater a new version exists — the download link must be working first.
 
-- [x] Push all commits (bug fix, UpdateService fix, version.json, RELEASING.md):
+- [ ] Push all commits (bug fix, UpdateService fix, version.json, RELEASING.md):
   ```bash
   cd ~/Dev/Buoy
   git push
   ```
-- [x] Verify auto-update: launch Buoy → Settings → Check for Updates → should show "Up to date"
+- [ ] Verify auto-update: launch Buoy → Settings → Check for Updates → should show "Up to date"
 
 ---
 
-## Phase 9 — Design Beta Email (Canva) ✅
+## Phase 9 — Design Beta Email (Canva)
 
 - [x] Open Canva, create a new email design (recommended size: 600×800px)
 - [x] Include:
@@ -176,22 +176,22 @@ Create `buoy-website/app/download/page.tsx` with:
 
 ---
 
-## Phase 10 — Send Beta Email (Loops) ✅
+## Phase 10 — Send Beta Email (Loops)
 
-- [x] Log into [Loops dashboard](https://app.loops.so)
-- [x] Create a new Campaign
-- [x] Target audience: `waitlist` group
-- [x] Subject: `Buoy beta is here — try it now`
-- [x] Embed/paste the Canva design or build the email in Loops directly
-- [x] Send a test to yourself first — verify links work, install command displays correctly
-- [x] Send to full list
+- [ ] Log into [Loops dashboard](https://app.loops.so)
+- [ ] Create a new Campaign
+- [ ] Target audience: `waitlist` group
+- [ ] Subject: `Buoy beta is here — try it now`
+- [ ] Embed/paste the Canva design or build the email in Loops directly
+- [ ] Send a test to yourself first — verify links work, install command displays correctly
+- [ ] Send to full list
 
 ---
 
-## Phase 11 — Instagram Announcement ✅
+## Phase 11 — Instagram Announcement
 
-- [x] Pick your best screenshot (or use `buoy-website/public/promo.png`)
-- [x] Draft caption — suggested structure:
+- [ ] Pick your best screenshot (or use `buoy-website/public/promo.png`)
+- [ ] Draft caption — suggested structure:
   ```
   Buoy beta is live. 🌊
 
@@ -202,8 +202,8 @@ Create `buoy-website/app/download/page.tsx` with:
   Download link in bio (macOS 15+ required).
   This is a beta — feedback welcome.
   ```
-- [x] Update link in bio to `buoy.gabemempin.me/download`
-- [x] Post
+- [ ] Update link in bio to `buoy.gabemempin.me/download`
+- [ ] Post
 
 ---
 
