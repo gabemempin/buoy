@@ -13,6 +13,7 @@ struct AppSettings: Codable {
     var theme: AppTheme = .system
     var globalShortcut: String = "Option+Cmd+N"
     var onboarded: Bool = false
+    var hasSeenHarborModeTip: Bool = false
 
     private static var fileURL: URL {
         let home = FileManager.default.homeDirectoryForCurrentUser
