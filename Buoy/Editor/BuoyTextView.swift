@@ -699,12 +699,6 @@ final class BuoyTextView: NSTextView {
                 continue
             }
 
-            let previewLength = min(2, attributedString.length - paragraphStart)
-            let preview = previewLength > 0
-                ? currentNSString.substring(with: NSRange(location: paragraphStart, length: previewLength))
-                : ""
-            guard !preview.hasPrefix("• "), !preview.hasPrefix("◦ ") else { continue }
-
             let indentLevel = min(
                 max(existingStyle.textLists.count - 1, 0),
                 ListIndent.maxNestingLevel
@@ -720,7 +714,23 @@ final class BuoyTextView: NSTextView {
                 basedOn: attributedString.attributes(at: paragraphStart, effectiveRange: nil)
             )
             markerAttributes[.paragraphStyle] = normalizedStyle
-            attributedString.insert(NSAttributedString(string: marker, attributes: markerAttributes), at: paragraphStart)
+
+            let lineWithoutNewlines = currentNSString.substring(with: paragraphRange).trimmingCharacters(in: .newlines)
+            let fullLineRange = NSRange(location: paragraphStart, length: lineWithoutNewlines.utf16.count)
+
+            if let regex = try? NSRegularExpression(pattern: #"^[\t ]*[•◦]\h+"#) {
+                let existingMarkerRange = regex.firstMatch(in: attributedString.string, options: [], range: fullLineRange)?.range
+                if let existingMarkerRange {
+                    attributedString.replaceCharacters(
+                        in: existingMarkerRange,
+                        with: NSAttributedString(string: marker, attributes: markerAttributes)
+                    )
+                } else {
+                    attributedString.insert(NSAttributedString(string: marker, attributes: markerAttributes), at: paragraphStart)
+                }
+            } else {
+                attributedString.insert(NSAttributedString(string: marker, attributes: markerAttributes), at: paragraphStart)
+            }
 
             let updatedParagraphRange = (attributedString.string as NSString).paragraphRange(
                 for: NSRange(location: paragraphStart, length: 0)
