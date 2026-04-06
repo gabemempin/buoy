@@ -127,6 +127,7 @@ struct FooterView: View {
                                 .foregroundStyle(isMoreHovering ? .white : .white.opacity(0.75))
                                 .frame(width: 28, height: 28)
                                 .contentShape(Rectangle())
+                                .buoyAccentChevronHoverPlate(isHovering: isMoreHovering)
                         }
                         .buttonStyle(.plain)
                         .help("More actions")
