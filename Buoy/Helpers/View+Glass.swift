@@ -178,6 +178,29 @@ extension View {
         )
     }
 
+    func buoyAccentChevronHoverPlate(isHovering: Bool, cornerRadius: CGFloat = 999) -> some View {
+        self.background(
+            UnevenRoundedRectangle(
+                topLeadingRadius: cornerRadius,
+                bottomLeadingRadius: cornerRadius,
+                bottomTrailingRadius: 8,
+                topTrailingRadius: 8
+            )
+            .fill(Color.white.opacity(isHovering ? 0.16 : 0))
+            .overlay(
+                UnevenRoundedRectangle(
+                    topLeadingRadius: cornerRadius,
+                    bottomLeadingRadius: cornerRadius,
+                    bottomTrailingRadius: 8,
+                    topTrailingRadius: 8
+                )
+                .stroke(Color.white.opacity(isHovering ? 0.16 : 0), lineWidth: 0.6)
+            )
+            .shadow(color: Color.accentColor.opacity(isHovering ? 0.28 : 0), radius: isHovering ? 6 : 0, x: 0, y: 2)
+            .animation(BuoyGlassMetrics.hoverAnimation, value: isHovering)
+        )
+    }
+
     /// Applies a capsule Liquid Glass effect on macOS 26+, subtle filled capsule on macOS 15.
     @ViewBuilder
     func buoyGlassCapsule() -> some View {
