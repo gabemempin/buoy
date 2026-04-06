@@ -18,6 +18,9 @@ final class BuoyPanel: NSPanel {
         switch event.type {
         case .leftMouseDown, .rightMouseDown, .otherMouseDown:
             allowsKeyFocus = true
+            if !isKeyWindow {
+                makeKey()
+            }
         default:
             break
         }
