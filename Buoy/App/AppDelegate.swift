@@ -21,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var overlayOverrideHeight: CGFloat = 0
     private var hasPositioned = false
     private var lastFullSizeFrame: NSRect?
+    private var isMinimizeAnimating = false
 
     private func panelContentHeight(_ panel: NSPanel) -> CGFloat {
         panel.contentRect(forFrameRect: panel.frame).height
@@ -383,7 +384,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func enterMinimizedMode() {
         guard let p = panel, !panelPresentation.isMinimized else { return }
 
-        if overlayOverrideHeight == 0 {
+        // Only capture the full-size frame when no minimize transition is in flight.
+        // If a restore animation is mid-way, p.frame is an intermediate value and
+        // would corrupt lastFullSizeFrame, causing the panel to restore as a square.
+        if overlayOverrideHeight == 0 && !isMinimizeAnimating {
             lastFullSizeFrame = p.frame
         }
 
@@ -401,11 +405,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             panelPresentation.isMinimized = true
         }
         refreshMinimizeMenuItem()
+        isMinimizeAnimating = true
         animatePanel(
             to: targetFrame,
             duration: PanelLayoutMetrics.minimizedFrameAnimationDuration,
             timingName: .easeInEaseOut
         )
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + PanelLayoutMetrics.minimizedFrameAnimationDuration + 0.05
+        ) { [weak self] in
+            self?.isMinimizeAnimating = false
+        }
     }
 
     private func exitMinimizedMode() {
@@ -418,11 +428,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             panelPresentation.isMinimized = false
         }
         refreshMinimizeMenuItem()
+        isMinimizeAnimating = true
         animatePanel(
             to: targetFrame,
             duration: PanelLayoutMetrics.minimizedFrameAnimationDuration,
             timingName: .easeInEaseOut
         )
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + PanelLayoutMetrics.minimizedFrameAnimationDuration + 0.05
+        ) { [weak self] in
+            self?.isMinimizeAnimating = false
+        }
     }
 
     private func updateMinimizedWidth(_ width: CGFloat) {

@@ -28,6 +28,8 @@ struct SettingsPanel: View {
                     Image(systemName: "xmark")
                         .font(.system(size: 9, weight: .bold))
                         .foregroundStyle(.secondary)
+                        .frame(width: 18, height: 18)
+                        .background(Circle().fill(Color.primary.opacity(0.08)))
                 }
                 .buttonStyle(.plain)
             }
@@ -144,6 +146,7 @@ struct SettingsPanel: View {
         }
         .frame(width: 260)
         .background(WindowDragBlocker())
+        .overlay(ArrowCursorOverlay().allowsHitTesting(false))
         .buoyGlassPanel(cornerRadius: 20)
         .shadow(radius: 8)
         .transition(.scale(scale: 0.92, anchor: .bottomLeading).combined(with: .opacity))
