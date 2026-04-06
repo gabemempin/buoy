@@ -655,8 +655,78 @@ final class BuoyTextView: NSTextView {
         }
         storage.addAttribute(.foregroundColor, value: NSColor.textColor, range: range)
         storage.removeAttribute(.backgroundColor, range: range)
+        canonicalizeExternalBulletLists(in: storage, range: range)
         storage.endEditing()
         notifyChange()
+    }
+
+    /// Converts native AppKit text lists from pasted rich text into Buoy's literal bullet markers
+    /// so they survive editor teardown/rebuild cycles like Harbor Mode.
+    private func canonicalizeExternalBulletLists(
+        in attributedString: NSMutableAttributedString,
+        range: NSRange
+    ) {
+        guard attributedString.length > 0, range.length > 0 else { return }
+
+        let clampedStart = min(max(range.location, 0), max(attributedString.length - 1, 0))
+        let clampedEnd = min(NSMaxRange(range), attributedString.length)
+        guard clampedStart < clampedEnd else { return }
+
+        let nsString = attributedString.string as NSString
+        var paragraphStarts: [Int] = []
+        var position = clampedStart
+
+        while position < clampedEnd {
+            let paragraphRange = nsString.paragraphRange(for: NSRange(location: position, length: 0))
+            paragraphStarts.append(paragraphRange.location)
+            let next = NSMaxRange(paragraphRange)
+            guard next > position else { break }
+            position = next
+        }
+
+        for paragraphStart in paragraphStarts.reversed() {
+            guard paragraphStart < attributedString.length else { continue }
+
+            let currentNSString = attributedString.string as NSString
+            let paragraphRange = currentNSString.paragraphRange(for: NSRange(location: paragraphStart, length: 0))
+            let existingStyle = attributedString.attribute(.paragraphStyle, at: paragraphStart, effectiveRange: nil) as? NSParagraphStyle
+            guard let existingStyle, !existingStyle.textLists.isEmpty else { continue }
+
+            let lineText = currentNSString.substring(with: paragraphRange).trimmingCharacters(in: .newlines)
+            guard !lineText.trimmingCharacters(in: .whitespaces).isEmpty else { continue }
+
+            if attributedString.attribute(.attachment, at: paragraphStart, effectiveRange: nil) is TodoAttachment {
+                continue
+            }
+
+            let previewLength = min(2, attributedString.length - paragraphStart)
+            let preview = previewLength > 0
+                ? currentNSString.substring(with: NSRange(location: paragraphStart, length: previewLength))
+                : ""
+            guard !preview.hasPrefix("• "), !preview.hasPrefix("◦ ") else { continue }
+
+            let indentLevel = min(
+                max(existingStyle.textLists.count - 1, 0),
+                ListIndent.maxNestingLevel
+            )
+            let marker = indentLevel == 0 ? "• " : "◦ "
+
+            let normalizedStyle = paragraphStyle(basedOn: existingStyle)
+            normalizedStyle.textLists = []
+            normalizedStyle.headIndent = CGFloat(indentLevel) * ListIndent.width
+            normalizedStyle.firstLineHeadIndent = CGFloat(indentLevel) * ListIndent.width
+
+            var markerAttributes = normalizedTypingAttributes(
+                basedOn: attributedString.attributes(at: paragraphStart, effectiveRange: nil)
+            )
+            markerAttributes[.paragraphStyle] = normalizedStyle
+            attributedString.insert(NSAttributedString(string: marker, attributes: markerAttributes), at: paragraphStart)
+
+            let updatedParagraphRange = (attributedString.string as NSString).paragraphRange(
+                for: NSRange(location: paragraphStart, length: 0)
+            )
+            attributedString.addAttribute(.paragraphStyle, value: normalizedStyle, range: updatedParagraphRange)
+        }
     }
 
     // MARK: - Formatting Actions
@@ -1132,6 +1202,7 @@ final class BuoyTextView: NSTextView {
             paragraphStart = NSMaxRange(paragraphRange)
         }
 
+        canonicalizeExternalBulletLists(in: mutable, range: NSRange(location: 0, length: mutable.length))
         textStorage?.setAttributedString(mutable)
         updateDefaultTypingAttributes()
         needsDisplay = true
