@@ -107,8 +107,7 @@ struct SettingsPanel: View {
                             .font(.system(size: 12))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 6)
-                            .glassEffect(.regular.tint(.orange.opacity(0.18)).interactive(), in: RoundedRectangle(cornerRadius: 10))
-                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.orange.opacity(0.6), lineWidth: 0.5))
+                            .buoyGlassButton(tint: .orange, strokeOpacity: 0.6)
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.orange.opacity(0.9))
@@ -121,8 +120,7 @@ struct SettingsPanel: View {
                         .font(.system(size: 12))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6)
-                        .glassEffect(.regular.tint(.primary.opacity(0.08)).interactive(), in: RoundedRectangle(cornerRadius: 10))
-                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.primary.opacity(0.15), lineWidth: 0.5))
+                        .buoyGlassButton(tint: .primary, tintOpacity: 0.08, strokeOpacity: 0.15)
                     }
                     .buttonStyle(.plain)
 
@@ -130,8 +128,7 @@ struct SettingsPanel: View {
                         .font(.system(size: 12))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6)
-                        .glassEffect(.regular.tint(.red.opacity(0.18)).interactive(), in: RoundedRectangle(cornerRadius: 10))
-                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.red.opacity(0.6), lineWidth: 0.5))
+                        .buoyGlassButton(tint: .red, strokeOpacity: 0.6)
                         .foregroundStyle(.red)
                         .buttonStyle(.plain)
                 }
