@@ -20,6 +20,8 @@ struct AllNotesPanel: View {
                     Image(systemName: "xmark")
                         .font(.system(size: 9, weight: .bold))
                         .foregroundStyle(.secondary)
+                        .frame(width: 18, height: 18)
+                        .background(Circle().fill(Color.primary.opacity(0.08)))
                 }
                 .buttonStyle(.plain)
             }
@@ -47,6 +49,7 @@ struct AllNotesPanel: View {
         }
         .frame(width: 214)
         .background(WindowDragBlocker())
+        .overlay(ArrowCursorOverlay().allowsHitTesting(false))
         .buoyGlassPanel(cornerRadius: 14)
         .shadow(radius: 8)
         .transition(.scale(scale: 0.92, anchor: .topTrailing).combined(with: .opacity))
@@ -74,6 +77,8 @@ private struct NoteRow: View {
                     Image(systemName: "xmark")
                         .font(.system(size: 9))
                         .foregroundStyle(.secondary)
+                        .frame(width: 18, height: 18)
+                        .background(Circle().fill(Color.primary.opacity(0.08)))
                 }
                 .buttonStyle(.plain)
                 .transition(.opacity)

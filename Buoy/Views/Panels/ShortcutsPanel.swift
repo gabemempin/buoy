@@ -14,8 +14,7 @@ struct ShortcutsPanel: View {
         ("⌘⏎", "Copy to Clipboard"),
         ("⌘←", "Previous Note"),
         ("⌘→", "Next Note"),
-        ("- Space", "Auto-bullet •"),
-        ("[] Space", "Auto to-do ☐"),
+        ("⌘M", "Harbor Mode"),
     ]
 
     var body: some View {
@@ -30,6 +29,8 @@ struct ShortcutsPanel: View {
                     Image(systemName: "xmark")
                         .font(.system(size: 9, weight: .bold))
                         .foregroundStyle(.secondary)
+                        .frame(width: 18, height: 18)
+                        .background(Circle().fill(Color.primary.opacity(0.08)))
                 }
                 .buttonStyle(.plain)
             }
