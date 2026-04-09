@@ -15,6 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     let panelPresentation = PanelPresentationModel()
 
     private let compactHeight: CGFloat = PanelLayoutMetrics.minimumWindowHeight
+    private let onboardingWidth: CGFloat = 360
     private let onboardingHeight: CGFloat = 520
     private let expandedHeight: CGFloat = 780
     private var currentHeight: CGFloat = PanelLayoutMetrics.minimumWindowHeight
@@ -181,7 +182,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             onRestoreFromMinimized: { [weak self] in self?.exitMinimizedMode() }
         )
 
-        let initialWidth = PanelLayoutMetrics.minimumWindowWidth
+        let initialWidth = isFirstRun ? onboardingWidth : PanelLayoutMetrics.minimumWindowWidth
         let initialRect = NSRect(x: 0, y: 0, width: initialWidth, height: initialHeight)
 
         let hosting = NSHostingView(rootView: contentView)

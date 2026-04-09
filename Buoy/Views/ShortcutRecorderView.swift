@@ -27,6 +27,14 @@ struct ShortcutRecorderView: View {
                 .frame(minWidth: 80, alignment: .center)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 5)
+                .background(
+                    Group {
+                        if #unavailable(macOS 26) {
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(Color.primary.opacity(0.07))
+                        }
+                    }
+                )
                 .overlay(
                     RoundedRectangle(cornerRadius: 6)
                         .stroke(isRecording ? Color.accentColor : Color.primary.opacity(0.2), lineWidth: isRecording ? 2 : 1)

@@ -157,7 +157,7 @@ struct FooterView: View {
                     .buoyAccentCapsule(isHovering: isMoreHovering || isCopyHovering)
                 }
             }
-            .padding(.horizontal, 8)
+            .padding(.horizontal, 7)
             .padding(.vertical, 6)
             .background(WindowDragHandle())
         }
