@@ -20,10 +20,10 @@ private enum BuoyGlassMetrics {
 }
 
 extension View {
-    /// Applies Liquid Glass on macOS 26+, NSVisualEffectView on macOS 15.
+    /// Applies Liquid Glass on macOS 26+, static glass fallback on earlier macOS.
     /// Main window — includes edge depth border.
     @ViewBuilder
-    func buoyGlass(material: NSVisualEffectView.Material = .menu) -> some View {
+    func buoyGlass(material: NSVisualEffectView.Material = .sidebar) -> some View {
         modifier(
             BuoyRegularGlassModifier(
                 shape: RoundedRectangle(cornerRadius: BuoyGlassMetrics.windowCornerRadius),
@@ -42,7 +42,8 @@ extension View {
     ) -> some View {
         modifier(
             BuoyRoundedGlassModifier(
-                cornerRadius: cornerRadius ?? max(0, BuoyGlassMetrics.windowCornerRadius - inset)
+                cornerRadius: cornerRadius ?? max(0, BuoyGlassMetrics.windowCornerRadius - inset),
+                fallbackMaterial: material
             )
         )
     }
@@ -59,13 +60,16 @@ extension View {
                 )
         } else {
             self.background(
-                VisualEffectBackground(material: .popover, blendingMode: .behindWindow)
+                Pre26StaticGlassBackground(
+                    shape: RoundedRectangle(cornerRadius: cornerRadius),
+                    surface: .panel
+                )
             )
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
         }
     }
 
-    /// Applies a circular Liquid Glass effect on macOS 26+, subtle filled circle on macOS 15.
+    /// Applies a circular Liquid Glass effect on macOS 26+, subtle filled circle on earlier macOS.
     @ViewBuilder
     func buoyGlassCircle() -> some View {
         if #available(macOS 26, *) {
@@ -137,7 +141,7 @@ extension View {
             .animation(BuoyGlassMetrics.hoverAnimation, value: isHovering)
     }
 
-    /// Tinted interactive glass rounded rect on macOS 26+, filled tint on macOS 15.
+    /// Tinted interactive glass rounded rect on macOS 26+, filled tint on earlier macOS.
     /// Used for action buttons (Report Bug, Check for Updates, Quit).
     @ViewBuilder
     func buoyGlassButton(tint: Color, tintOpacity: Double = 0.18, stroke: Color? = nil, strokeOpacity: Double = 0.3, cornerRadius: CGFloat = 10, isHovering: Bool = false) -> some View {
@@ -201,7 +205,7 @@ extension View {
         )
     }
 
-    /// Applies a capsule Liquid Glass effect on macOS 26+, subtle filled capsule on macOS 15.
+    /// Applies a capsule Liquid Glass effect on macOS 26+, static capsule fallback on earlier macOS.
     @ViewBuilder
     func buoyGlassCapsule() -> some View {
         modifier(
@@ -210,6 +214,176 @@ extension View {
                 fallbackMaterial: .popover
             )
         )
+    }
+}
+
+private enum Pre26GlassSurface {
+    case window
+    case popover
+    case panel
+    case inset
+
+    static func regularSurface(for material: NSVisualEffectView.Material) -> Self {
+        switch material {
+        case .menu, .popover:
+            return .popover
+        default:
+            return .window
+        }
+    }
+}
+
+private struct Pre26StaticGlassBackground<S: Shape>: View {
+    let shape: S
+    let surface: Pre26GlassSurface
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var isDark: Bool {
+        colorScheme == .dark
+    }
+
+    private var fillOpacity: Double {
+        switch surface {
+        case .window:
+            return isDark ? 0.82 : 0.94
+        case .popover:
+            return isDark ? 0.86 : 0.96
+        case .panel:
+            return isDark ? 0.9 : 0.985
+        case .inset:
+            return isDark ? 0.84 : 0.93
+        }
+    }
+
+    private var highlightOpacity: Double {
+        switch surface {
+        case .window:
+            return isDark ? 0.12 : 0.34
+        case .popover:
+            return isDark ? 0.15 : 0.38
+        case .panel:
+            return isDark ? 0.14 : 0.3
+        case .inset:
+            return isDark ? 0.1 : 0.26
+        }
+    }
+
+    private var tintOpacity: Double {
+        switch surface {
+        case .window:
+            return isDark ? 0.04 : 0.028
+        case .popover:
+            return isDark ? 0.05 : 0.038
+        case .panel:
+            return isDark ? 0.03 : 0.022
+        case .inset:
+            return isDark ? 0.045 : 0.032
+        }
+    }
+
+    private var borderOpacity: Double {
+        switch surface {
+        case .window:
+            return isDark ? 0.16 : 0.24
+        case .popover:
+            return isDark ? 0.18 : 0.28
+        case .panel:
+            return isDark ? 0.18 : 0.22
+        case .inset:
+            return isDark ? 0.14 : 0.22
+        }
+    }
+
+    private var shadowOpacity: Double {
+        switch surface {
+        case .window:
+            return 0.08
+        case .popover:
+            return 0.12
+        case .panel:
+            return 0.1
+        case .inset:
+            return 0.07
+        }
+    }
+
+    private var baseTopColor: Color {
+        Color(nsColor: isDark ? .controlBackgroundColor : .windowBackgroundColor)
+    }
+
+    private var baseBottomColor: Color {
+        Color(nsColor: isDark ? .underPageBackgroundColor : .controlBackgroundColor)
+    }
+
+    var body: some View {
+        ZStack {
+            shape
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            baseTopColor.opacity(fillOpacity),
+                            baseBottomColor.opacity(fillOpacity - 0.08)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+
+            shape
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(highlightOpacity),
+                            Color.white.opacity(highlightOpacity * 0.45),
+                            .clear
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+
+            shape
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color.accentColor.opacity(tintOpacity),
+                            .clear,
+                            Color.white.opacity(isDark ? 0.02 : 0.04)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+
+            shape
+                .fill(
+                    RadialGradient(
+                        colors: [
+                            Color.white.opacity(highlightOpacity * 0.65),
+                            .clear
+                        ],
+                        center: .topLeading,
+                        startRadius: 2,
+                        endRadius: 180
+                    )
+                )
+        }
+        .overlay(
+            shape.stroke(
+                LinearGradient(
+                    colors: [
+                        Color.white.opacity(borderOpacity),
+                        Color.white.opacity(borderOpacity * 0.55),
+                        Color.black.opacity(isDark ? 0.16 : 0.05)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                lineWidth: 0.8
+            )
+        )
+        .shadow(color: .black.opacity(shadowOpacity), radius: 8, x: 0, y: 2)
     }
 }
 
@@ -253,7 +427,10 @@ private struct BuoyRegularGlassModifier<S: Shape>: ViewModifier {
         } else {
             content
                 .background(
-                    VisualEffectBackground(material: fallbackMaterial, blendingMode: .behindWindow)
+                    Pre26StaticGlassBackground(
+                        shape: shape,
+                        surface: .regularSurface(for: fallbackMaterial)
+                    )
                 )
                 .clipShape(shape)
         }
@@ -262,6 +439,7 @@ private struct BuoyRegularGlassModifier<S: Shape>: ViewModifier {
 
 private struct BuoyRoundedGlassModifier: ViewModifier {
     let cornerRadius: CGFloat
+    let fallbackMaterial: NSVisualEffectView.Material
     @State private var isWindowFocused = true
 
     func body(content: Content) -> some View {
@@ -319,8 +497,10 @@ private struct BuoyRoundedGlassModifier: ViewModifier {
         } else {
             content
                 .background(
-                    VisualEffectBackground(material: .sidebar, blendingMode: .behindWindow)
-                        .opacity(0.7)
+                    Pre26StaticGlassBackground(
+                        shape: RoundedRectangle(cornerRadius: cornerRadius),
+                        surface: fallbackMaterial == .popover ? .panel : .inset
+                    )
                 )
                 .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
         }

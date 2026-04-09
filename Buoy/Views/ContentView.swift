@@ -10,6 +10,7 @@ struct ContentView: View {
     var noteStore: NoteStore
     var panelPresentation: PanelPresentationModel
     @Binding var settings: AppSettings
+    @Environment(\.colorScheme) private var colorScheme
     var onHeightChange: ((CGFloat) -> Void)?
     var onNoteSwitchHeight: ((CGFloat) -> Void)?
     var onOnboardingComplete: (() -> Void)?
@@ -202,6 +203,7 @@ struct ContentView: View {
                     EditorView(
                         rtfData: note.contentRTF,
                         fontSize: settings.fontSize,
+                        usesDarkAppearance: usesDarkAppearance,
                         noteID: note.id,
                         placeholder: isBugReport
                             ? "Tell me what you want fixed or improved. If something went wrong, detail how to reproduce the bug.\n\nThank you for making Buoy better!"
@@ -226,7 +228,11 @@ struct ContentView: View {
                             tvRef.value = tv
                         }
                     )
-                    .frame(minHeight: PanelLayoutMetrics.editorMinimumHeight)
+                    .frame(
+                        maxWidth: .infinity,
+                        minHeight: PanelLayoutMetrics.editorMinimumHeight,
+                        alignment: .leading
+                    )
                 }
 
                 FooterView(
@@ -360,6 +366,17 @@ struct ContentView: View {
                 .padding(2)
                 .transition(.opacity)
             }
+        }
+    }
+
+    private var usesDarkAppearance: Bool {
+        switch settings.theme {
+        case .light:
+            return false
+        case .dark:
+            return true
+        case .system:
+            return colorScheme == .dark
         }
     }
 

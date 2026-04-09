@@ -51,6 +51,13 @@ final class BuoyTextView: NSTextView {
         }
     }
 
+    var usesDarkAppearance = false {
+        didSet {
+            guard usesDarkAppearance != oldValue else { return }
+            refreshResolvedEditorColors()
+        }
+    }
+
     var placeholderString = "Start typing… (⌘← ⌘→ to navigate notes)"
 
     private(set) var measuredHeight: CGFloat = 200
@@ -78,6 +85,8 @@ final class BuoyTextView: NSTextView {
 
     private func commonInit() {
         isRichText = true
+        isEditable = true
+        isSelectable = true
         allowsUndo = true
         isAutomaticSpellingCorrectionEnabled = false
         isAutomaticQuoteSubstitutionEnabled = false
@@ -103,7 +112,58 @@ final class BuoyTextView: NSTextView {
             .underlineStyle: NSUnderlineStyle.single.rawValue,
             .cursor: NSCursor.pointingHand
         ]
+        insertionPointColor = editorTextColor
         updateDefaultTypingAttributes()
+    }
+
+    private var editorTextColor: NSColor {
+        if #available(macOS 26, *) {
+            return NSColor.textColor
+        } else {
+            return usesDarkAppearance ? .white : .black
+        }
+    }
+
+    private var editorPlaceholderColor: NSColor {
+        if #available(macOS 26, *) {
+            return NSColor.placeholderTextColor
+        } else {
+            return usesDarkAppearance
+                ? NSColor.white.withAlphaComponent(0.45)
+                : NSColor.black.withAlphaComponent(0.35)
+        }
+    }
+
+    private func refreshResolvedEditorColors() {
+        guard let storage = textStorage else {
+            insertionPointColor = editorTextColor
+            typingAttributes = normalizedTypingAttributes(basedOn: typingAttributes)
+            needsDisplay = true
+            return
+        }
+
+        if storage.length > 0 {
+            let fullRange = NSRange(location: 0, length: storage.length)
+            storage.beginEditing()
+            storage.removeAttribute(.foregroundColor, range: fullRange)
+            storage.addAttribute(.foregroundColor, value: editorTextColor, range: fullRange)
+            storage.enumerateAttribute(.link, in: fullRange) { val, range, _ in
+                if val != nil {
+                    storage.addAttribute(.foregroundColor, value: NSColor.linkColor, range: range)
+                }
+            }
+            storage.endEditing()
+        }
+
+        insertionPointColor = editorTextColor
+        typingAttributes = normalizedTypingAttributes(basedOn: typingAttributes)
+        needsDisplay = true
+    }
+
+    override var needsPanelToBecomeKey: Bool { true }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        true
     }
 
     private func updateDefaultTypingAttributes() {
@@ -134,7 +194,7 @@ final class BuoyTextView: NSTextView {
                            range: NSRange(location: 0, length: atStr.length))
         let spacer = NSAttributedString(string: " ", attributes: [
             .font: NSFont.systemFont(ofSize: fontSize),
-            .foregroundColor: NSColor.textColor,
+            .foregroundColor: editorTextColor,
             .paragraphStyle: para
         ])
         atStr.append(spacer)
@@ -153,7 +213,7 @@ final class BuoyTextView: NSTextView {
 
         var attrs = source ?? [:]
         attrs[.font] = font
-        attrs[.foregroundColor] = NSColor.textColor
+        attrs[.foregroundColor] = editorTextColor
         attrs[.paragraphStyle] = style
         attrs.removeValue(forKey: .attachment)
         attrs.removeValue(forKey: .backgroundColor)
@@ -253,7 +313,7 @@ final class BuoyTextView: NSTextView {
         )
         (placeholderString as NSString).draw(in: rect, withAttributes: [
             .font: NSFont.systemFont(ofSize: fontSize),
-            .foregroundColor: NSColor.placeholderTextColor
+            .foregroundColor: editorPlaceholderColor
         ])
     }
 
@@ -653,7 +713,7 @@ final class BuoyTextView: NSTextView {
             let newFont = NSFont(descriptor: desc, size: fontSize) ?? NSFont.systemFont(ofSize: fontSize)
             storage.addAttribute(.font, value: newFont, range: attrRange)
         }
-        storage.addAttribute(.foregroundColor, value: NSColor.textColor, range: range)
+        storage.addAttribute(.foregroundColor, value: editorTextColor, range: range)
         storage.removeAttribute(.backgroundColor, range: range)
         canonicalizeExternalBulletLists(in: storage, range: range)
         storage.endEditing()
@@ -1054,7 +1114,7 @@ final class BuoyTextView: NSTextView {
             let symbol = isChecked ? "☑" : "☐"
             return NSAttributedString(string: symbol, attributes: [
                 .font: NSFont.systemFont(ofSize: fontSize),
-                .foregroundColor: NSColor.textColor
+                .foregroundColor: editorTextColor
             ])
         }
         let documentAttributes: [NSAttributedString.DocumentAttributeKey: Any] = [
@@ -1081,7 +1141,7 @@ final class BuoyTextView: NSTextView {
             let marker = isChecked ? "\u{2611}" : "\u{2610}"
             return NSAttributedString(string: marker, attributes: [
                 .font: NSFont.systemFont(ofSize: fontSize),
-                .foregroundColor: NSColor.textColor,
+                .foregroundColor: editorTextColor,
                 .paragraphStyle: paragraphStyle(basedOn: paraStyle, isTodoParagraph: true)
             ])
         }
@@ -1159,7 +1219,7 @@ final class BuoyTextView: NSTextView {
 
         // Normalize foreground colors to adaptive textColor; re-apply linkColor to link ranges
         mutable.removeAttribute(.foregroundColor, range: fullRange)
-        mutable.addAttribute(.foregroundColor, value: NSColor.textColor, range: fullRange)
+        mutable.addAttribute(.foregroundColor, value: editorTextColor, range: fullRange)
         mutable.enumerateAttribute(.link, in: fullRange) { val, range, _ in
             if val != nil {
                 mutable.addAttribute(.foregroundColor, value: NSColor.linkColor, range: range)
