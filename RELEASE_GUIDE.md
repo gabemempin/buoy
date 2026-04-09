@@ -3,10 +3,11 @@
 
 ## Releasing Guide
 
-For each new beta version (e.g. `1.1`, `1.2`):
-
+User will do the following:
 - [ ] Bump version in Xcode: Buoy target → General → **Version**
 - [ ] Product → Archive → Distribute App → Copy App → save `.app`
+
+Then Claude will automate the following:
 - [ ] Zip the app:
   ```bash
   cd "/path/to/export/folder"
@@ -24,7 +25,6 @@ For each new beta version (e.g. `1.1`, `1.2`):
   git commit -m "Bump install.sh to vX.X"
   git push
   ```
-- [ ] Wait for Netlify to deploy, then test: `curl -fsSL https://buoy.gabemempin.me/install.sh | sh`
 - [ ] Bump `version.json` in the Buoy repo:
   ```json
   { "version": "X.X", "url": "https://buoy.gabemempin.me/download" }

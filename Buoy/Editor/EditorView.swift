@@ -4,11 +4,55 @@ import AppKit
 /// NSScrollView that never initiates window drag, so text selection works without moving the window.
 private final class DragBlockingScrollView: NSScrollView {
     override var mouseDownCanMoveWindow: Bool { false }
+    override var needsPanelToBecomeKey: Bool { true }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        true
+    }
+
+    override var intrinsicContentSize: NSSize {
+        NSSize(width: NSView.noIntrinsicMetric, height: NSView.noIntrinsicMetric)
+    }
+
+    override func layout() {
+        super.layout()
+        syncDocumentViewGeometry()
+    }
+
+    override func tile() {
+        super.tile()
+        syncDocumentViewGeometry()
+    }
+
+    private func syncDocumentViewGeometry() {
+        guard let textView = documentView as? BuoyTextView else { return }
+
+        let contentSize = self.contentSize
+        guard contentSize.width > 0, contentSize.height > 0 else { return }
+
+        let targetHeight = max(textView.frame.height, contentSize.height)
+        if abs(textView.frame.width - contentSize.width) > 0.5
+            || abs(textView.frame.height - targetHeight) > 0.5 {
+            textView.frame = NSRect(origin: .zero, size: NSSize(width: contentSize.width, height: targetHeight))
+        }
+
+        let targetMinSize = NSSize(width: 0, height: contentSize.height)
+        if textView.minSize != targetMinSize {
+            textView.minSize = targetMinSize
+        }
+
+        let targetContainerSize = NSSize(width: contentSize.width, height: CGFloat.greatestFiniteMagnitude)
+        if textView.textContainer?.containerSize != targetContainerSize {
+            textView.textContainer?.containerSize = targetContainerSize
+        }
+        textView.textContainer?.widthTracksTextView = true
+    }
 }
 
 struct EditorView: NSViewRepresentable {
     var rtfData: Data
     var fontSize: CGFloat
+    var usesDarkAppearance: Bool
     var noteID: String
     var placeholder: String = "Start typing… (⌘← ⌘→ to navigate notes)"
     var onHeightChange: ((CGFloat) -> Void)?
@@ -27,18 +71,39 @@ struct EditorView: NSViewRepresentable {
 
     func makeNSView(context: Context) -> NSScrollView {
         let scrollView = DragBlockingScrollView()
+        scrollView.borderType = .noBorder
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
+        scrollView.autoresizesSubviews = true
         scrollView.backgroundColor = .clear
         scrollView.drawsBackground = false
 
-        let textView = BuoyTextView(frame: .zero)
+        let contentSize = scrollView.contentSize
+        let initialWidth = max(
+            contentSize.width,
+            PanelLayoutMetrics.minimumContentWidth - (PanelLayoutMetrics.windowPadding * 2)
+        )
+        let initialHeight = max(contentSize.height, PanelLayoutMetrics.editorMinimumHeight)
+
+        let textView = BuoyTextView(
+            frame: NSRect(x: 0, y: 0, width: initialWidth, height: initialHeight)
+        )
         textView.fontSize = fontSize
+        textView.usesDarkAppearance = usesDarkAppearance
+        textView.minSize = NSSize(width: 0, height: initialHeight)
+        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        textView.autoresizingMask = [.width]
+        textView.textContainer?.containerSize = NSSize(
+            width: initialWidth,
+            height: CGFloat.greatestFiniteMagnitude
+        )
+        textView.textContainer?.widthTracksTextView = true
         textView.delegate = context.coordinator
         textView.buoyDelegate = context.coordinator
 
         scrollView.documentView = textView
+        scrollView.layoutSubtreeIfNeeded()
         context.coordinator.currentNoteID = noteID
         textViewRef?(textView)
 
@@ -52,10 +117,15 @@ struct EditorView: NSViewRepresentable {
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = scrollView.documentView as? BuoyTextView else { return }
 
+        scrollView.layoutSubtreeIfNeeded()
         textViewRef?(textView)
 
         if textView.fontSize != fontSize {
             textView.fontSize = fontSize
+        }
+
+        if textView.usesDarkAppearance != usesDarkAppearance {
+            textView.usesDarkAppearance = usesDarkAppearance
         }
 
         if textView.placeholderString != placeholder {
