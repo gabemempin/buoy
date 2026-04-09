@@ -35,7 +35,7 @@ private struct TitleTextField: NSViewRepresentable {
         field.isSelectable = true
         field.placeholderString = placeholder
         field.font = NSFont.systemFont(ofSize: 19, weight: .semibold, width: .expanded)
-        field.textColor = NSColor.controlAccentColor
+        field.textColor = colorScheme == .dark ? .white : .controlAccentColor
         field.alignment = .center
         field.focusRingType = .none
         field.cell?.wraps = false
