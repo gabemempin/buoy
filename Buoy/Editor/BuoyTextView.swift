@@ -745,9 +745,19 @@ final class BuoyTextView: NSTextView {
     func applyItalic() { toggleFontTrait(.italic) }
 
     func applyUnderline() {
-        var sel = selectedRange()
-        if sel.length == 0 { sel = lastKnownSelection }
-        guard sel.length > 0, let storage = textStorage else { return }
+        let sel = selectedRange()
+        guard sel.length > 0, let storage = textStorage else {
+            // No selection — toggle underline in typingAttributes for future typing
+            var attrs = typingAttributes
+            if let existing = attrs[.underlineStyle] as? Int,
+               existing == NSUnderlineStyle.single.rawValue {
+                attrs.removeValue(forKey: .underlineStyle)
+            } else {
+                attrs[.underlineStyle] = NSUnderlineStyle.single.rawValue
+            }
+            typingAttributes = attrs
+            return
+        }
         var allUnderlined = true
         storage.enumerateAttribute(.underlineStyle, in: sel) { val, _, _ in
             if val == nil { allUnderlined = false }
