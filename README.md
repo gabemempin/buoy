@@ -10,14 +10,23 @@
 
 <p align="center">A native macOS menu bar sticky-note app by Gabe Mempin.</p>
 
-Buoy lives in your menu bar and opens in a lightweight floating panel, so your
-notes stay close without taking over your desktop.
+Buoy is a lightweight, always-on-top floating notepad for macOS. It lives in
+your menu bar, stays close without taking over your desktop, and makes it easy
+to capture notes from anywhere on your Mac.
+
+## Features
+
+- Always-on-top floating notes that stay above your other windows
+- Menu bar access with a global hotkey for quick toggling
+- Auto-saved notes so your writing is preserved as you type
+- Rich text editing with support for bullets and checkbox todos
 
 ## Beta Testing
 
-Want to try Buoy? Download the latest beta here:
+Interested in trying the beta? Visit the Buoy website to join the waitlist and
+get the current beta download link:
 
-[buoy.gabemempin.me/download](https://buoy.gabemempin.me/download)
+[buoy.gabemempin.me](https://buoy.gabemempin.me)
 
 ## License
 
