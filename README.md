@@ -23,8 +23,7 @@ to capture notes from anywhere on your Mac.
 
 ## Beta Testing
 
-Interested in trying the beta? Visit the Buoy website to join the waitlist and
-get the current beta download link:
+Interested in trying the beta? Visit the Buoy website to join the waitlist:
 
 [buoy.gabemempin.me](https://buoy.gabemempin.me)
 
