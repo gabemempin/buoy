@@ -107,7 +107,7 @@ final class NoteStore {
     func deleteNote(_ note: Note) {
         guard notes.count > 1 else { return }
         guard let db else { return }
-        try? db.write { db in
+        _ = try? db.write { db in
             try Note.deleteOne(db, key: note.id)
         }
         let deletedID = note.id
@@ -149,7 +149,7 @@ final class NoteStore {
     private func persistContent(_ rtfData: Data) {
         guard let db, let note = currentNote else { return }
         let now = Note.currentTimestamp()
-        try? db.write { db in
+        _ = try? db.write { db in
             try db.execute(
                 sql: "UPDATE notes SET contentRTF = ?, updatedAt = ? WHERE id = ?",
                 arguments: [rtfData, now, note.id]
@@ -160,7 +160,7 @@ final class NoteStore {
     private func persistTitle(_ title: String) {
         guard let db, let note = currentNote else { return }
         let now = Note.currentTimestamp()
-        try? db.write { db in
+        _ = try? db.write { db in
             try db.execute(
                 sql: "UPDATE notes SET title = ?, updatedAt = ? WHERE id = ?",
                 arguments: [title, now, note.id]

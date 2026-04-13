@@ -4,7 +4,6 @@ import KeyboardShortcuts
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var panel: BuoyPanel?
-    private var hostingView: NSHostingView<ContentView>?
     private var statusItem: NSStatusItem?
     private var minimizeRestoreMenuItem: NSMenuItem?
     private var globalMouseMonitor: Any?
@@ -215,7 +214,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         p.contentView = hosting
 
         panel = p
-        hostingView = hosting
         currentHeight = initialHeight
         panelPresentation.minimizedContentWidth = minimizedContentWidth()
     }
@@ -374,12 +372,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         } else {
             enterMinimizedMode()
         }
-    }
-
-    @objc private func minimizePanel(_ sender: Any?) {
-        guard let p = panel, p.isVisible else { return }
-        guard !panelPresentation.isMinimized else { return }
-        enterMinimizedMode()
     }
 
     private func enterMinimizedMode() {
