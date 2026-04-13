@@ -7,6 +7,29 @@ struct AllNotesPanel: View {
     var onSelect: (Note) -> Void
     var onDelete: (Note) -> Void
 
+    @State private var searchText = ""
+
+    private var filteredNotes: [Note] {
+        if searchText.isEmpty { return notes }
+        return notes.filter {
+            $0.title.localizedCaseInsensitiveContains(searchText)
+                || Self.plainTextContent(from: $0.contentRTF)
+                .localizedCaseInsensitiveContains(searchText)
+        }
+    }
+
+    private static func plainTextContent(from rtfData: Data) -> String {
+        guard !rtfData.isEmpty else { return "" }
+        guard let attributed = try? NSAttributedString(
+            data: rtfData,
+            options: [.documentType: NSAttributedString.DocumentType.rtf],
+            documentAttributes: nil
+        ) else {
+            return ""
+        }
+        return attributed.string.replacingOccurrences(of: "\u{FFFC}", with: "")
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // Header
@@ -30,9 +53,23 @@ struct AllNotesPanel: View {
 
             Divider()
 
+            //Search bar
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                TextField("Search notes...", text: $searchText)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 12))
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+
+            Divider()
+
             ScrollView {
                 LazyVStack(spacing: 0) {
-                    ForEach(notes) { note in
+                    ForEach(filteredNotes) { note in
                         NoteRow(
                             note: note,
                             isActive: note.id == currentNoteID,
@@ -44,6 +81,14 @@ struct AllNotesPanel: View {
                         )
                     }
                 }
+                if filteredNotes.isEmpty {
+                    Text("No matching notes")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.tertiary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 20)
+                }
+
             }
             .frame(maxHeight: 300)
         }
@@ -53,6 +98,9 @@ struct AllNotesPanel: View {
         .buoyGlassPanel(cornerRadius: 14)
         .shadow(radius: 8)
         .transition(.scale(scale: 0.92, anchor: .topTrailing).combined(with: .opacity))
+        .onChange(of: isShowing) { _, showing in
+            if !showing { searchText = "" }
+        }
     }
 }
 
