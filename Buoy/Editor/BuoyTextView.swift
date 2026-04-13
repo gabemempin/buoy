@@ -320,6 +320,13 @@ final class BuoyTextView: NSTextView {
     // MARK: - Key Equivalents (command keys — intercepted before NSTextView default handling)
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        // Only handle key equivalents when this text view is the first responder.
+        // Otherwise, events meant for other focused views (e.g. the search field in
+        // AllNotesPanel) get swallowed by the editor behind the overlay.
+        guard window?.firstResponder == self else {
+            return false
+        }
+
         // Strip noise flags — numericPad/function/help on arrow keys, capsLock always
         let mods = event.modifierFlags
             .intersection(.deviceIndependentFlagsMask)
