@@ -69,22 +69,6 @@ extension View {
         }
     }
 
-    /// Applies a circular Liquid Glass effect on macOS 26+, subtle filled circle on earlier macOS.
-    @ViewBuilder
-    func buoyGlassCircle() -> some View {
-        if #available(macOS 26, *) {
-            self.glassEffect(in: Circle())
-                .shadow(color: .black.opacity(0.18), radius: 2, x: 0, y: 1)
-        } else {
-            self.background(
-                Circle()
-                    .fill(Color.primary.opacity(0.12))
-                    .overlay(Circle().stroke(Color.primary.opacity(0.25), lineWidth: 0.5))
-            )
-            .shadow(color: .black.opacity(0.18), radius: 2, x: 0, y: 1)
-        }
-    }
-
     /// Solid accent-colored circle button with specular highlight and shadow.
     func buoyAccentCircle(color: Color = .accentColor, isHovering: Bool = false) -> some View {
         self.background(color.opacity(isHovering ? 1 : 0.96), in: Circle())
