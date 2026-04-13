@@ -42,6 +42,37 @@ final class BuoyPanel: NSPanel {
             )
         }
 
-        return super.performKeyEquivalent(with: event)
+        // Try the normal view-hierarchy dispatch first. If BuoyTextView is the
+        // first responder it will claim the event there.
+        if super.performKeyEquivalent(with: event) {
+            return true
+        }
+
+        // Non-activating panels don't reliably trigger main-menu key equivalents,
+        // so standard editing shortcuts (⌘C/⌘V/⌘X/⌘A/⌘Z) never reach the first
+        // responder (e.g. the field editor for a SwiftUI TextField). Route them
+        // explicitly here.
+        guard let fr = firstResponder else { return false }
+        let ch = event.charactersIgnoringModifiers?.lowercased() ?? ""
+
+        if modifiers == [.command, .shift], event.keyCode == 6 /* Z */ {
+            fr.tryToPerform(Selector(("redo:")), with: nil)
+            return true
+        }
+
+        guard modifiers == .command else { return false }
+        let action: Selector? = switch ch {
+        case "c": #selector(NSText.copy(_:))
+        case "v": #selector(NSText.paste(_:))
+        case "x": #selector(NSText.cut(_:))
+        case "a": #selector(NSText.selectAll(_:))
+        case "z": Selector(("undo:"))
+        default: nil
+        }
+        guard let action else { return false }
+        if fr.tryToPerform(action, with: nil) {
+            return true
+        }
+        return false
     }
 }
