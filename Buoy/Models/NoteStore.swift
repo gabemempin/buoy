@@ -128,6 +128,11 @@ final class NoteStore {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: work)
         currentNote?.contentRTF = rtfData
         currentNote?.updatedAt = Note.currentTimestamp()
+        if let noteID = currentNote?.id,
+           let idx = notes.firstIndex(where: { $0.id == noteID }) {
+            notes[idx].contentRTF = rtfData
+            notes[idx].updatedAt = currentNote?.updatedAt ?? notes[idx].updatedAt
+        }
     }
 
     func saveTitle(_ title: String) {
