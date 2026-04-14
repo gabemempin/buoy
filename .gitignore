@@ -35,3 +35,7 @@ code-simplifier.md
 RELEASING.md
 SWIFTUI_REWRITE.md
 XCODE_SETUP.md
+
+# Editor / workspace config
+.vscode/
+*.code-workspace
