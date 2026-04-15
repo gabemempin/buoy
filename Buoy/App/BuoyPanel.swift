@@ -48,6 +48,23 @@ final class BuoyPanel: NSPanel {
             return true
         }
 
+        // ⌘← / ⌘→ — switch notes regardless of which view has focus.
+        // BuoyTextView handles this when it's first responder (above), but when
+        // focus is elsewhere (e.g. title field, settings panel) the event falls
+        // through to here.
+        if modifiers == .command {
+            switch event.keyCode {
+            case 123: // ←
+                NotificationCenter.default.post(name: .buoyPreviousNote, object: nil)
+                return true
+            case 124: // →
+                NotificationCenter.default.post(name: .buoyNextNote, object: nil)
+                return true
+            default:
+                break
+            }
+        }
+
         // Non-activating panels don't reliably trigger main-menu key equivalents,
         // so standard editing shortcuts (⌘C/⌘V/⌘X/⌘A/⌘Z) never reach the first
         // responder (e.g. the field editor for a SwiftUI TextField). Route them

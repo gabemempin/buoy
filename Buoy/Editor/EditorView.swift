@@ -10,6 +10,36 @@ private final class DragBlockingScrollView: NSScrollView {
         true
     }
 
+    private var accumulatedDeltaX: CGFloat = 0
+    private var isTrackingSwipe = false
+
+    override func scrollWheel(with event: NSEvent) {
+        if event.phase == .began {
+            // Initiate tracking if the horizontal intent dominates vertical intent
+            isTrackingSwipe = abs(event.scrollingDeltaX) > abs(event.scrollingDeltaY)
+            accumulatedDeltaX = 0
+        }
+
+        if isTrackingSwipe, event.phase == .changed || event.phase == .ended {
+            accumulatedDeltaX += event.scrollingDeltaX
+
+            // Threshold is ~50pt for a clean trigger
+            if accumulatedDeltaX > 50 {
+                NotificationCenter.default.post(name: .buoyPreviousNote, object: nil)
+                isTrackingSwipe = false
+                accumulatedDeltaX = 0
+            } else if accumulatedDeltaX < -50 {
+                NotificationCenter.default.post(name: .buoyNextNote, object: nil)
+                isTrackingSwipe = false
+                accumulatedDeltaX = 0
+            }
+        }
+
+        if !isTrackingSwipe {
+            super.scrollWheel(with: event)
+        }
+    }
+
     override var intrinsicContentSize: NSSize {
         NSSize(width: NSView.noIntrinsicMetric, height: NSView.noIntrinsicMetric)
     }
@@ -72,8 +102,11 @@ struct EditorView: NSViewRepresentable {
     func makeNSView(context: Context) -> NSScrollView {
         let scrollView = DragBlockingScrollView()
         scrollView.borderType = .noBorder
-        scrollView.hasVerticalScroller = true
+        // Start hidden so the scroller doesn't flash during the slide-in transition.
+        // Re-enabled after the spring animation (~0.3s response) settles.
+        scrollView.hasVerticalScroller = false
         scrollView.hasHorizontalScroller = false
+        scrollView.scrollerStyle = .overlay
         scrollView.autohidesScrollers = true
         scrollView.autoresizesSubviews = true
         scrollView.backgroundColor = .clear
@@ -111,6 +144,11 @@ struct EditorView: NSViewRepresentable {
         textView.loadRTF(rtfData)
         context.coordinator.setLoadingContent(false)
 
+        // Re-enable the scroller after the slide-in transition finishes.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            scrollView.hasVerticalScroller = true
+        }
+
         return scrollView
     }
 
@@ -134,11 +172,17 @@ struct EditorView: NSViewRepresentable {
 
         if context.coordinator.currentNoteID != noteID {
             context.coordinator.currentNoteID = noteID
+            // Temporarily hide the scroller so the content swap doesn't flash it.
+            scrollView.hasVerticalScroller = false
             context.coordinator.setLoadingContent(true)
             textView.loadRTF(rtfData)
             context.coordinator.setLoadingContent(false)
             let h = textView.measureContentHeight()
             onNoteSwitch?(h)
+            // Re-enable after AppKit's scroller-flash window has passed.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                scrollView.hasVerticalScroller = true
+            }
         }
 
         context.coordinator.onHeightChange = onHeightChange
