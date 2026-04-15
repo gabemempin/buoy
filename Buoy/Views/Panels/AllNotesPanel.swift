@@ -54,43 +54,32 @@ struct AllNotesPanel: View {
             Divider()
 
             //Search bar
-            HStack(spacing: 6) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                TextField("Search notes...", text: $searchText)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 12))
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
+            SearchFieldWrapper(text: $searchText, placeholder: "Search notes...")
+                .frame(height: 22)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
 
             Divider()
 
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    ForEach(filteredNotes) { note in
-                        NoteRow(
-                            note: note,
-                            isActive: note.id == currentNoteID,
-                            onSelect: {
-                                onSelect(note)
-                                withAnimation(.easeOut(duration: 0.16)) { isShowing = false }
-                            },
-                            onDelete: { onDelete(note) }
-                        )
-                    }
-                }
-                if filteredNotes.isEmpty {
-                    Text("No matching notes")
+            if filteredNotes.isEmpty {
+                Text("No matching notes")
                     .font(.system(size: 12))
                     .foregroundStyle(.tertiary)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.vertical, 20)
-                }
-
+                    .frame(maxHeight: 300, alignment: .top)
+            } else {
+                NotesTableViewWrapper(
+                    notes: filteredNotes,
+                    currentNoteID: currentNoteID,
+                    onSelect: { note in
+                        onSelect(note)
+                        withAnimation(.easeOut(duration: 0.16)) { isShowing = false }
+                    },
+                    onDelete: onDelete
+                )
+                .frame(maxHeight: 300)
             }
-            .frame(maxHeight: 300)
         }
         .frame(width: 214)
         .background(WindowDragBlocker())
@@ -104,7 +93,7 @@ struct AllNotesPanel: View {
     }
 }
 
-private struct NoteRow: View {
+struct NoteRow: View {
     let note: Note
     let isActive: Bool
     let onSelect: () -> Void

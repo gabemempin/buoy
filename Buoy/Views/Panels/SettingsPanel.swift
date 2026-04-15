@@ -78,17 +78,11 @@ struct SettingsPanel: View {
                 }
 
                 SettingsRow(label: "Theme") {
-                    Picker("", selection: $settings.theme) {
-                        Text("Auto").tag(AppTheme.system)
-                        Text("Light").tag(AppTheme.light)
-                        Text("Dark").tag(AppTheme.dark)
-                    }
-                    .pickerStyle(.segmented)
-                    .controlSize(.small)
-                    .frame(width: 130)
-                    .onChange(of: settings.theme) { _, val in
-                        settings.save()
-                    }
+                    ThemePickerWrapper(selection: $settings.theme)
+                        .frame(width: 130, height: 22)
+                        .onChange(of: settings.theme) { _, val in
+                            settings.save()
+                        }
                 }
 
                 Divider().padding(.horizontal, 10).padding(.vertical, 4)

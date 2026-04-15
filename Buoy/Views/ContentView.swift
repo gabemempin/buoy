@@ -42,6 +42,10 @@ struct ContentView: View {
     // Text view reference for toolbar actions — @StateObject persists across all re-renders
     @State private var tvRef = TextViewRef()
 
+    // Navigation slide state
+    @State private var slideDirection: NavigationDirection? = nil
+    @State private var slideID = UUID()
+
     // Title focus trigger
     @State private var focusTitleTrigger = false
 
@@ -119,8 +123,28 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .buoyNewNote))         { _ in createNote() }
         .onReceive(NotificationCenter.default.publisher(for: .buoyDeleteNote))      { _ in deleteCurrentNote() }
         .onReceive(NotificationCenter.default.publisher(for: .buoyCopyToClipboard)) { _ in copyToClipboard() }
-        .onReceive(NotificationCenter.default.publisher(for: .buoyPreviousNote))    { _ in noteStore.previousNote(); focusEditor() }
-        .onReceive(NotificationCenter.default.publisher(for: .buoyNextNote))        { _ in noteStore.nextNote(); focusEditor() }
+        .onReceive(NotificationCenter.default.publisher(for: .buoyPreviousNote))    { _ in
+            let previousID = noteStore.currentNote?.id
+            noteStore.previousNote()
+            if previousID != noteStore.currentNote?.id {
+                slideDirection = noteStore.lastNavigationDirection
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    slideID = UUID()
+                }
+            }
+            focusEditor()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .buoyNextNote))        { _ in
+            let previousID = noteStore.currentNote?.id
+            noteStore.nextNote()
+            if previousID != noteStore.currentNote?.id {
+                slideDirection = noteStore.lastNavigationDirection
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    slideID = UUID()
+                }
+            }
+            focusEditor()
+        }
         .onReceive(NotificationCenter.default.publisher(for: .showLinkDialog)) { notif in
             guard !panelPresentation.isMinimized else { return }
             linkDialogSelectedText = notif.object as? String ?? ""
@@ -232,6 +256,13 @@ struct ContentView: View {
                         maxWidth: .infinity,
                         minHeight: PanelLayoutMetrics.editorMinimumHeight,
                         alignment: .leading
+                    )
+                    .id(slideID)
+                    .transition(
+                        .asymmetric(
+                            insertion: .move(edge: slideDirection == .forward ? .trailing : .leading),
+                            removal: .move(edge: slideDirection == .forward ? .leading : .trailing)
+                        )
                     )
                 }
 

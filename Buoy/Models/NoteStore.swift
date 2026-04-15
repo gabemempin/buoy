@@ -2,10 +2,16 @@ import Foundation
 import GRDB
 import Observation
 
+enum NavigationDirection {
+    case forward
+    case backward
+}
+
 @Observable
 final class NoteStore {
     var notes: [Note] = []
     var currentNote: Note?
+    var lastNavigationDirection: NavigationDirection?
 
     private var db: DatabaseQueue?
     private var saveContentWork: DispatchWorkItem?
@@ -180,6 +186,7 @@ final class NoteStore {
               let idx = notes.firstIndex(where: { $0.id == current.id }),
               !notes.isEmpty else { return }
         let prev = idx > 0 ? notes[idx - 1] : notes[notes.count - 1]
+        lastNavigationDirection = .backward
         switchNote(to: prev)
     }
 
@@ -188,6 +195,7 @@ final class NoteStore {
               let idx = notes.firstIndex(where: { $0.id == current.id }),
               !notes.isEmpty else { return }
         let next = idx < notes.count - 1 ? notes[idx + 1] : notes[0]
+        lastNavigationDirection = .forward
         switchNote(to: next)
     }
 
