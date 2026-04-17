@@ -133,7 +133,6 @@ struct OnboardingView: View {
                 }
             }
 
-            // Next / Get Started
             Button {
                 if currentSlide < 3 {
                     goingForward = true
@@ -146,12 +145,9 @@ struct OnboardingView: View {
             } label: {
                 Text(currentSlide < 3 ? "Next" : "Get Started")
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Color.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 9)
-                    .contentShape(RoundedRectangle(cornerRadius: 10))
             }
-            .modifier(OnboardingNextButtonModifier())
             .padding(.horizontal, 24)
         }
         .padding(.top, 2)
@@ -226,6 +222,7 @@ private struct WelcomeSlide: View {
                                 .transition(.opacity)
                         } else {
                             KeyCapsView(shortcut: settings.globalShortcut)
+                                .padding(.top, 2)
                                 .transition(.opacity)
                         }
                     }
@@ -427,6 +424,26 @@ private final class DemoTextViewRef {
     var value: BuoyTextView?
 }
 
+private final class DemoTodoCircleAttachment: NSTextAttachment {
+    init(size: CGFloat = 13) {
+        super.init(data: nil, ofType: nil)
+        let image = NSImage(size: CGSize(width: size, height: size), flipped: false) { rect in
+            let circle = rect.insetBy(dx: 1, dy: 1)
+            let path = NSBezierPath(ovalIn: circle)
+            NSColor.secondaryLabelColor.setStroke()
+            path.lineWidth = 1.35
+            path.stroke()
+            return true
+        }
+        self.image = image
+        self.bounds = CGRect(x: 0, y: -1.5, width: size, height: size)
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+    }
+}
+
 private struct FormattingSlide: View {
     @State private var demoRTFData: Data = Self.templateRTF()
     @State private var demoTVRef = DemoTextViewRef()
@@ -475,13 +492,15 @@ private struct FormattingSlide: View {
             s.append(NSAttributedString(string: text, attributes: attrs))
         }
 
+        add("• ")
         add("Bold", font: bold)
         add(", ")
         add("italic", font: italic)
         add(", ")
         add("underline", extras: [.underlineStyle: NSUnderlineStyle.single.rawValue])
-        add("\n• Bullet point\n")
-        add("Regular paragraph text")
+        add("\n• Bullet points\n")
+        s.append(NSAttributedString(attachment: DemoTodoCircleAttachment()))
+        add(" and to do lists")
 
         let range = NSRange(location: 0, length: s.length)
         return (try? s.data(from: range, documentAttributes: [
@@ -594,8 +613,8 @@ private struct HarborModeSlide: View {
                         .transition(.scale(scale: 0.95, anchor: .top).combined(with: .opacity))
                 }
             }
-            .frame(maxWidth: 280)
-            .padding(.horizontal, 16)
+            .frame(maxWidth: 300)
+            .padding(.horizontal, 20)
             .animation(.spring(response: 0.35, dampingFraction: 0.82), value: isDemoMinimized)
 
             Text(isDemoMinimized ? "Press ⌘M again to restore" : "Press ⌘M to try it →")
@@ -644,6 +663,8 @@ private struct HarborModeDemoPanel: View {
             .allowsHitTesting(false)
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
+
+            Color.clear.frame(height: 14)
         }
         .buoyGlassPanel(cornerRadius: 16)
         .shadow(color: .black.opacity(0.16), radius: 14, y: 5)
@@ -740,11 +761,7 @@ private struct MiniTrafficLights: View {
 
 @ViewBuilder
 private func slideHeader(_ text: String) -> some View {
-    Text(text)
-        .font(.system(size: 20, weight: .bold))
-        .fontWidth(.expanded)
-        .multilineTextAlignment(.center)
-        .padding(.horizontal, 8)
+    SlideHeaderText(text: text)
 }
 
 @ViewBuilder
@@ -756,31 +773,18 @@ private func slideSubheading(_ text: String) -> some View {
         .padding(.horizontal, 24)
 }
 
-private struct OnboardingNextButtonModifier: ViewModifier {
-    @State private var isHovering = false
+private struct SlideHeaderText: View {
+    let text: String
 
-    func body(content: Content) -> some View {
-        if #available(macOS 26, *) {
-            content
-                .buttonStyle(.plain)
-                .contentShape(RoundedRectangle(cornerRadius: 10))
-                .glassEffect(
-                    .regular
-                        .tint(Color.accentColor.opacity(isHovering ? 0.32 : 0.24))
-                        .interactive(),
-                    in: RoundedRectangle(cornerRadius: 10)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(Color.accentColor.opacity(isHovering ? 0.5 : 0.34), lineWidth: 0.7)
-                )
-                .shadow(color: Color.accentColor.opacity(isHovering ? 0.18 : 0.08), radius: isHovering ? 8 : 4, y: 2)
-                .onHover { isHovering = $0 }
-        } else {
-            content
-                .buttonStyle(.borderedProminent)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-        }
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 20, weight: .bold))
+            .fontWidth(.expanded)
+            .multilineTextAlignment(.center)
+            .foregroundStyle(colorScheme == .dark ? Color.primary : Color.accentColor)
+            .padding(.horizontal, 8)
     }
 }
 
