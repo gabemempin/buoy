@@ -58,7 +58,7 @@ final class BuoyTextView: NSTextView {
         }
     }
 
-    var placeholderString = "Start typing… (⌘← ⌘→ to navigate notes)"
+    var placeholderString = "Let your words flow..."
 
     private(set) var measuredHeight: CGFloat = 200
     /// Last known non-zero selection — preserved even after the view resigns first responder.

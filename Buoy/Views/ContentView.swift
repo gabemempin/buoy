@@ -36,9 +36,6 @@ struct ContentView: View {
     // Toast
     @State private var toastState = ToastState()
 
-    // Harbor Mode tip
-    @State private var showHarborModeTip = false
-
     // Text view reference for toolbar actions — @StateObject persists across all re-renders
     @State private var tvRef = TextViewRef()
 
@@ -181,7 +178,7 @@ struct ContentView: View {
         .onAppear {
             showOnboarding = !settings.onboarded
             onMinimizedWidthChange?(minimizedWidth)
-            if settings.onboarded { scheduleHarborModeTip() }
+            if showOnboarding { onOverrideHeight?(PanelLayoutMetrics.onboardingOverrideHeight) }
         }
     }
 
@@ -244,9 +241,6 @@ struct ContentView: View {
                         },
                         onContentChange: { rtf in
                             noteStore.saveContent(rtf)
-                            if showHarborModeTip, wordCount(from: rtf) > 2 {
-                                withAnimation(.easeIn(duration: 0.25)) { showHarborModeTip = false }
-                            }
                         },
                         textViewRef: { tv in
                             tvRef.value = tv
@@ -360,21 +354,6 @@ struct ContentView: View {
             .animation(.easeOut(duration: 0.16), value: showShortcuts)
             .allowsHitTesting(showSettings || showShortcuts)
 
-            if showHarborModeTip && !panelPresentation.isMinimized {
-                HarborModeTipView(
-                    noteTitle: noteStore.currentNote?.title.isEmpty == false
-                        ? noteStore.currentNote!.title
-                        : "Untitled",
-                    theme: settings.theme
-                )
-                .padding(.horizontal, PanelLayoutMetrics.overlayHorizontalInset)
-                .padding(.bottom, PanelLayoutMetrics.footerOverlayBottomInset)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-                .allowsHitTesting(false)
-                .zIndex(5)
-            }
-
             if showOnboarding {
                 OnboardingView(
                     settings: $settings,
@@ -390,7 +369,6 @@ struct ContentView: View {
                             withAnimation(.easeIn(duration: 0.25)) {
                                 showMainContent = true
                             }
-                            scheduleHarborModeTip()
                         }
                     }
                 )
@@ -438,8 +416,9 @@ struct ContentView: View {
     }
 
     private var activeFooterOverlayHeight: CGFloat? {
-        if showSettings { return PanelLayoutMetrics.settingsOverrideHeight }
-        if showShortcuts { return PanelLayoutMetrics.shortcutsOverrideHeight }
+        if showOnboarding { return PanelLayoutMetrics.onboardingOverrideHeight }
+        if showSettings   { return PanelLayoutMetrics.settingsOverrideHeight }
+        if showShortcuts  { return PanelLayoutMetrics.shortcutsOverrideHeight }
         return nil
     }
 
@@ -448,27 +427,6 @@ struct ContentView: View {
     }
 
     // MARK: - Actions
-
-    private func wordCount(from rtf: Data) -> Int {
-        guard let atStr = try? NSAttributedString(
-            data: rtf,
-            options: [.documentType: NSAttributedString.DocumentType.rtf],
-            documentAttributes: nil
-        ) else { return 0 }
-        return atStr.string.split(whereSeparator: \.isWhitespace).filter { !$0.isEmpty }.count
-    }
-
-    private func scheduleHarborModeTip() {
-        guard !settings.hasSeenHarborModeTip else { return }
-        settings.hasSeenHarborModeTip = true
-        settings.save()
-        Task { @MainActor in
-            try? await Task.sleep(for: .seconds(0.6))
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) { showHarborModeTip = true }
-            try? await Task.sleep(for: .seconds(7))
-            withAnimation(.easeIn(duration: 0.25)) { showHarborModeTip = false }
-        }
-    }
 
     private func createNote() {
         noteStore.createNote()
