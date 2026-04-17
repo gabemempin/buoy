@@ -84,7 +84,7 @@ The `View+Glass.swift` helper abstracts this behind `.buoyGlass()`.
 | `Models/AppSettings.swift` | Settings persistence |
 | `Editor/BuoyTextView.swift` | Core NSTextView with all formatting logic |
 | `Views/ContentView.swift` | Root SwiftUI layout and panel state |
-| `Views/HarborModeTipView.swift` | One-time Harbor Mode onboarding tip popup |
+| `Views/OnboardingView.swift` | 4-slide carousel onboarding (Welcome, Formatting, Harbor Mode, Bug Report) |
 | `Helpers/WindowDragBlocker.swift` | DragBlockingNSView + ArrowCursorOverlay NSViewRepresentables |
 | `Helpers/PanelLayoutMetrics.swift` | All window/panel sizing constants |
 
@@ -102,18 +102,15 @@ The phrases **"invoke onboarding"** or **"reset onboarding"** mean run this comm
 ### NSTextView Cursor Bleed into Overlay Panels
 `BuoyTextView` registers an I-beam `NSTrackingArea` that bleeds through SwiftUI overlay panels. Fix: `ArrowCursorOverlay` in `WindowDragBlocker.swift` overrides `cursorUpdate(with:)` to call `NSCursor.arrow.set()` **without** calling `super`. Apply as `.overlay(ArrowCursorOverlay().allowsHitTesting(false))`. Used in `SettingsPanel` and `AllNotesPanel`.
 
-### Harbor Mode Tip Popup
-Lives in `Views/HarborModeTipView.swift`. Guarded by `settings.hasSeenHarborModeTip`. Reset with:
-```bash
-sed -i '' 's/"hasSeenHarborModeTip":true/"hasSeenHarborModeTip":false/' ~/.buoy/settings.json
-```
+### Carousel Onboarding
+`OnboardingView.swift` — 4 slides: Welcome (skeumorphic key caps + ShortcutRecorderView), Formatting (live BuoyTextView demo), Harbor Mode (⌘M animates a mini panel to pill), Bug Report (shimmer title via `AnimatedBugTitle`). A local `NSEvent` monitor captures ⌘M during onboarding — on slide 3 it toggles the demo, on all other slides it consumes the event to prevent accidental Harbor Mode. `AnimatedBugTitle` in `HeaderView.swift` is `internal` (not private) so it can be reused in Slide 4. `hasSeenHarborModeTip` remains in `AppSettings` for backwards-compat but is never set.
 
 ### Keyboard Shortcuts Panel
 `ShortcutsPanel.swift` — shortcuts list ends with `("⌘M", "Harbor Mode")`. Does not include auto-bullet or auto-todo entries.
 
 ### Overlay Panel Height Override
-Settings and Shortcuts panels animate the window taller when shown. Key pieces:
-- `PanelLayoutMetrics.settingsOverrideHeight` / `shortcutsOverrideHeight` — target heights
+Settings, Shortcuts, and Onboarding panels animate the window taller when shown. Key pieces:
+- `PanelLayoutMetrics.settingsOverrideHeight` / `shortcutsOverrideHeight` / `onboardingOverrideHeight` — target heights
 - `AppDelegate.applyOverrideHeight(_ height: CGFloat?)` — pass `nil` to restore; 0.25s easeInEaseOut
-- `ContentView` fires `onOverrideHeight` via `.onChange(of: showSettings/showShortcuts)`
+- `ContentView` fires `onOverrideHeight` via `.onChange(of: activeFooterOverlayHeight)` and directly in `onAppear` for onboarding
 - Panel bottom offset from footer: `.padding(.bottom, 43)` in `ContentView`

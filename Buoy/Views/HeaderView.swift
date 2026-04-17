@@ -138,7 +138,7 @@ struct HeaderView: View {
 
 // MARK: - Animated Bug Report Title
 
-private struct AnimatedBugTitle: View {
+struct AnimatedBugTitle: View {
     let title: String
 
     var body: some View {

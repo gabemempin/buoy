@@ -14,7 +14,6 @@ struct ShortcutsPanel: View {
         ("⌘⏎", "Copy to Clipboard"),
         ("⌘←", "Previous Note"),
         ("⌘→", "Next Note"),
-        ("⇢⇠", "Swipe to Navigate"),
         ("⌘M", "Harbor Mode"),
     ]
 

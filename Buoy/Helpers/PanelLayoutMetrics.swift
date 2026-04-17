@@ -44,6 +44,7 @@ enum PanelLayoutMetrics {
     // Minimum window heights when overlay panels are open
     static let settingsOverrideHeight: CGFloat = 460
     static let shortcutsOverrideHeight: CGFloat = 468
+    static let onboardingOverrideHeight: CGFloat = 450
 
     // Minimized pill layout
     static let minimizedPillHeight: CGFloat = 56
