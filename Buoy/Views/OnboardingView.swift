@@ -1,5 +1,7 @@
 import SwiftUI
 import AppKit
+import QuickLookThumbnailing
+import UniformTypeIdentifiers
 
 // MARK: - OnboardingView
 
@@ -15,11 +17,7 @@ struct OnboardingView: View {
 
     var body: some View {
         ZStack {
-            Color.clear
-                .buoyInsetGlass(
-                    inset: PanelLayoutMetrics.onboardingInset,
-                    cornerRadius: PanelLayoutMetrics.onboardingCornerRadius
-                )
+            OnboardingBackground()
 
             VStack(spacing: 0) {
                 // Slide content
@@ -87,40 +85,6 @@ struct OnboardingView: View {
 
     private var bottomNav: some View {
         VStack(spacing: 8) {
-            if currentSlide == 0 {
-                HStack {
-                    Spacer()
-                    skipButton
-                    Spacer()
-                }
-                .padding(.horizontal, 24)
-            } else {
-                HStack {
-                    if currentSlide > 0 {
-                        Button("Back") {
-                            goingForward = false
-                            withAnimation(.spring(response: 0.42, dampingFraction: 0.86)) {
-                                currentSlide -= 1
-                            }
-                        }
-                        .buttonStyle(.plain)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.secondary)
-                    } else {
-                        Color.clear.frame(width: 32, height: 14)
-                    }
-
-                    Spacer()
-
-                    if currentSlide < 3 {
-                        skipButton
-                    } else {
-                        Color.clear.frame(width: 32, height: 14)
-                    }
-                }
-                .padding(.horizontal, 24)
-            }
-
             HStack(spacing: 6) {
                 ForEach(0..<4, id: \.self) { i in
                     Circle()
@@ -144,21 +108,31 @@ struct OnboardingView: View {
                 }
             } label: {
                 Text(currentSlide < 3 ? "Next" : "Get Started")
-                    .font(.system(size: 13, weight: .semibold))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 9)
+                    .font(.system(size: 14, weight: .semibold))
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 3)
             }
-            .padding(.horizontal, 24)
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .shadow(color: Color.accentColor.opacity(0.32), radius: 4, y: 2)
+
+            if currentSlide > 0 {
+                Button("Back") {
+                    guard currentSlide > 0 else { return }
+                    goingForward = false
+                    withAnimation(.spring(response: 0.42, dampingFraction: 0.86)) {
+                        currentSlide -= 1
+                    }
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.secondary)
+            } else {
+                Color.clear.frame(height: 22)
+            }
         }
         .padding(.top, 2)
-        .padding(.bottom, 10)
-    }
-
-    private var skipButton: some View {
-        Button("Skip") { complete() }
-            .buttonStyle(.plain)
-            .font(.system(size: 11))
-            .foregroundStyle(.secondary)
+        .padding(.bottom, 20)
     }
 
     private func complete() {
@@ -172,12 +146,65 @@ private extension Notification.Name {
     static let onboardingCmdM = Notification.Name("BuoyOnboardingCmdM")
 }
 
+private func loadOnboardingAppIconThumbnail() async -> NSImage? {
+    guard
+        let iconManifestURL = Bundle.main.url(forResource: "icon", withExtension: "json"),
+        let floatLayerURL = Bundle.main.url(forResource: "Float", withExtension: "png"),
+        let notepadLayerURL = Bundle.main.url(forResource: "Notepad", withExtension: "png")
+    else {
+        return nil
+    }
+
+    let fileManager = FileManager.default
+    let iconURL = fileManager.temporaryDirectory.appendingPathComponent(
+        "BuoyOnboardingAppIcon.icon",
+        isDirectory: true
+    )
+    let assetsURL = iconURL.appendingPathComponent("Assets", isDirectory: true)
+
+    do {
+        try? fileManager.removeItem(at: iconURL)
+        try fileManager.createDirectory(at: assetsURL, withIntermediateDirectories: true)
+        try fileManager.copyItem(at: iconManifestURL, to: iconURL.appendingPathComponent("icon.json"))
+        try fileManager.copyItem(at: floatLayerURL, to: assetsURL.appendingPathComponent("Float.png"))
+        try fileManager.copyItem(at: notepadLayerURL, to: assetsURL.appendingPathComponent("Notepad.png"))
+    } catch {
+        return nil
+    }
+
+    let request = QLThumbnailGenerator.Request(
+        fileAt: iconURL,
+        size: CGSize(width: 512, height: 512),
+        scale: NSScreen.main?.backingScaleFactor ?? 2,
+        representationTypes: .thumbnail
+    )
+    request.contentType = UTType(importedAs: "com.apple.iconcomposer.icon")
+    request.iconMode = false
+
+    do {
+        return try await withCheckedThrowingContinuation {
+            (continuation: CheckedContinuation<NSImage?, Error>) in
+            QLThumbnailGenerator.shared.generateBestRepresentation(for: request) {
+                representation, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume(returning: representation?.nsImage)
+                }
+            }
+        }
+    } catch {
+        return nil
+    }
+}
+
 // MARK: - Slide 1: Welcome
 
 private struct WelcomeSlide: View {
     @Binding var settings: AppSettings
     var onShortcutChanged: (String) -> Void
 
+    @State private var onboardingAppIcon: NSImage?
     @State private var iconAppeared = false
     @State private var isEditingShortcut = false
     @State private var shortcutFlashMessage: String?
@@ -193,23 +220,29 @@ private struct WelcomeSlide: View {
             Spacer(minLength: 0)
 
             VStack(spacing: 8) {
-                if let icon = NSApp.applicationIconImage {
-                    Image(nsImage: icon)
-                        .resizable()
-                        .frame(width: 80, height: 80)
-                        .clipShape(RoundedRectangle(cornerRadius: 18))
-                        .shadow(radius: 4)
-                        .scaleEffect(iconAppeared ? 1.0 : 0.72)
-                        .opacity(iconAppeared ? 1 : 0)
+                Group {
+                    if let onboardingAppIcon {
+                        Image(nsImage: onboardingAppIcon)
+                            .interpolation(.high)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                    } else {
+                        Color.clear
+                    }
                 }
+                .frame(width: 80, height: 80)
+                .shadow(radius: 4)
+                .scaleEffect(iconAppeared ? 1.0 : 0.72)
+                .opacity(iconAppeared ? 1 : 0)
 
                 VStack(spacing: 6) {
                     Text("Welcome to Buoy")
                         .font(.system(size: 22, weight: .bold))
                         .fontWidth(.expanded)
+                        .foregroundStyle(Color.accentColor)
                         .multilineTextAlignment(.center)
                     Text("A notepad that floats on top of all your windows.")
-                        .font(.system(size: 12))
+                        .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 8)
@@ -219,10 +252,11 @@ private struct WelcomeSlide: View {
                     ZStack {
                         if isEditingShortcut {
                             ShortcutRecordingPrompt(text: "Type your new shortcut…")
+                                .padding(.top, 16)
                                 .transition(.opacity)
                         } else {
                             KeyCapsView(shortcut: settings.globalShortcut)
-                                .padding(.top, 2)
+                                .padding(.top, 16)
                                 .transition(.opacity)
                         }
                     }
@@ -266,6 +300,9 @@ private struct WelcomeSlide: View {
         }
         .padding(.horizontal, 24)
         .task {
+            if onboardingAppIcon == nil {
+                onboardingAppIcon = await loadOnboardingAppIconThumbnail()
+            }
             try? await Task.sleep(for: .milliseconds(60))
             withAnimation(.spring(response: 0.52, dampingFraction: 0.7)) {
                 iconAppeared = true
@@ -379,28 +416,27 @@ private struct KeyCapsView: View {
 
 private struct KeyCapView: View {
     let label: String
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         ZStack {
             // Base key body
             RoundedRectangle(cornerRadius: 9)
                 .fill(LinearGradient(
-                    colors: [
-                        Color(.sRGB, red: 0.26, green: 0.26, blue: 0.30, opacity: 1),
-                        Color(.sRGB, red: 0.14, green: 0.14, blue: 0.17, opacity: 1)
-                    ],
+                    colors: colorScheme == .dark
+                        ? [Color(.sRGB, red: 0.26, green: 0.26, blue: 0.30, opacity: 1),
+                           Color(.sRGB, red: 0.14, green: 0.14, blue: 0.17, opacity: 1)]
+                        : [Color.white, Color(.sRGB, white: 0.91, opacity: 1)],
                     startPoint: .top,
                     endPoint: .bottom
                 ))
-                // Physical bottom-shelf shadow
-                .shadow(color: .black.opacity(0.65), radius: 0, x: 0, y: 3)
-                // Ambient glow
-                .shadow(color: .black.opacity(0.22), radius: 6, x: 0, y: 4)
+                .shadow(color: .black.opacity(colorScheme == .dark ? 0.65 : 0.22), radius: 0, x: 0, y: 3)
+                .shadow(color: .black.opacity(colorScheme == .dark ? 0.22 : 0.10), radius: 6, x: 0, y: 4)
 
             // Top highlight
             RoundedRectangle(cornerRadius: 8)
                 .fill(LinearGradient(
-                    colors: [Color.white.opacity(0.14), .clear],
+                    colors: [Color.white.opacity(colorScheme == .dark ? 0.14 : 0.80), .clear],
                     startPoint: .top,
                     endPoint: .center
                 ))
@@ -408,11 +444,14 @@ private struct KeyCapView: View {
 
             // Outer border
             RoundedRectangle(cornerRadius: 9)
-                .strokeBorder(Color.white.opacity(0.13), lineWidth: 1)
+                .strokeBorder(
+                    colorScheme == .dark ? Color.white.opacity(0.13) : Color.black.opacity(0.10),
+                    lineWidth: 1
+                )
 
             Text(label)
                 .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(.white)
+                .foregroundStyle(colorScheme == .dark ? Color.white : Color(.sRGB, white: 0.18, opacity: 1))
         }
         .frame(width: 50, height: 50)
     }
@@ -424,26 +463,6 @@ private final class DemoTextViewRef {
     var value: BuoyTextView?
 }
 
-private final class DemoTodoCircleAttachment: NSTextAttachment {
-    init(size: CGFloat = 13) {
-        super.init(data: nil, ofType: nil)
-        let image = NSImage(size: CGSize(width: size, height: size), flipped: false) { rect in
-            let circle = rect.insetBy(dx: 1, dy: 1)
-            let path = NSBezierPath(ovalIn: circle)
-            NSColor.secondaryLabelColor.setStroke()
-            path.lineWidth = 1.35
-            path.stroke()
-            return true
-        }
-        self.image = image
-        self.bounds = CGRect(x: 0, y: -1.5, width: size, height: size)
-    }
-
-    required init?(coder: NSCoder) {
-        super.init(coder: coder)
-    }
-}
-
 private struct FormattingSlide: View {
     @State private var demoRTFData: Data = Self.templateRTF()
     @State private var demoTVRef = DemoTextViewRef()
@@ -453,7 +472,7 @@ private struct FormattingSlide: View {
         VStack(spacing: 10) {
             Spacer(minLength: 0)
 
-            slideHeader("Format Your Thoughts")
+            slideHeader("Format your thoughts")
 
             MiniEditorPanel(
                 rtfData: $demoRTFData,
@@ -472,6 +491,16 @@ private struct FormattingSlide: View {
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 16)
+        .onAppear {
+            DispatchQueue.main.async {
+                guard let tv = demoTVRef.value, let storage = tv.textStorage else { return }
+                storage.enumerateAttribute(.attachment, in: NSRange(location: 0, length: storage.length)) { val, range, _ in
+                    guard let attachment = val as? NSTextAttachment else { return }
+                    attachment.bounds = CGRect(x: 0, y: -1, width: 9, height: 9)
+                }
+                tv.needsDisplay = true
+            }
+        }
     }
 
     static func templateRTF() -> Data {
@@ -498,9 +527,7 @@ private struct FormattingSlide: View {
         add("italic", font: italic)
         add(", ")
         add("underline", extras: [.underlineStyle: NSUnderlineStyle.single.rawValue])
-        add("\n• Bullet points\n")
-        s.append(NSAttributedString(attachment: DemoTodoCircleAttachment()))
-        add(" and to do lists")
+        add("\n• Bullet points\n\u{2610} and to do lists")
 
         let range = NSRange(location: 0, length: s.length)
         return (try? s.data(from: range, documentAttributes: [
@@ -607,6 +634,7 @@ private struct HarborModeSlide: View {
                         theme: .system,
                         onRestore: onToggleDemo
                     )
+                    .shadow(color: .black.opacity(0.18), radius: 14, y: 5)
                     .transition(.scale(scale: 0.88, anchor: .bottom).combined(with: .opacity))
                 } else {
                     HarborModeDemoPanel()
@@ -617,8 +645,8 @@ private struct HarborModeSlide: View {
             .padding(.horizontal, 20)
             .animation(.spring(response: 0.35, dampingFraction: 0.82), value: isDemoMinimized)
 
-            Text(isDemoMinimized ? "Press ⌘M again to restore" : "Press ⌘M to try it →")
-                .font(.system(size: 11.5, weight: .medium, design: .monospaced))
+            Text(isDemoMinimized ? "Press ⌘M again to restore" : "Press ⌘M to try it")
+                .font(.system(size: 11.5, weight: .medium))
                 .foregroundStyle(.secondary)
                 .animation(.easeInOut(duration: 0.2), value: isDemoMinimized)
 
@@ -678,7 +706,7 @@ private struct BugReportSlide: View {
         VStack(spacing: 10) {
             Spacer(minLength: 0)
 
-            slideHeader("Help Us Improve")
+            slideHeader("Thanks for testing")
 
             BugReportDemoPanel()
                 .frame(maxWidth: 280)
@@ -823,5 +851,19 @@ private struct ShortcutRecordingPrompt: View {
                     }
             }
             .foregroundStyle(Color.primary.opacity(0.4))
+    }
+}
+
+// MARK: - Onboarding Background
+
+private struct OnboardingBackground: View {
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: PanelLayoutMetrics.onboardingCornerRadius)
+            .fill(colorScheme == .dark
+                ? Color(.sRGB, white: 0.11, opacity: 1)
+                : Color.white
+            )
     }
 }
