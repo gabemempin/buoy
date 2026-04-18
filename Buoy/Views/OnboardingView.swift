@@ -14,6 +14,7 @@ struct OnboardingView: View {
     @State private var goingForward = true
     @State private var isDemoMinimized = false
     @State private var cmdMMonitor: Any?
+    @Namespace private var indicatorNamespace
 
     var body: some View {
         ZStack {
@@ -87,15 +88,12 @@ struct OnboardingView: View {
         VStack(spacing: 8) {
             HStack(spacing: 6) {
                 ForEach(0..<4, id: \.self) { i in
-                    Circle()
+                    Capsule()
                         .fill(i == currentSlide ? Color.accentColor : Color.primary.opacity(0.2))
-                        .frame(
-                            width: i == currentSlide ? 8 : 6,
-                            height: i == currentSlide ? 8 : 6
-                        )
-                        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: currentSlide)
+                        .frame(width: i == currentSlide ? 18 : 6, height: 6)
                 }
             }
+            .animation(.spring(response: 0.38, dampingFraction: 0.8), value: currentSlide)
 
             Button {
                 if currentSlide < 3 {
@@ -116,20 +114,19 @@ struct OnboardingView: View {
             .controlSize(.large)
             .shadow(color: Color.accentColor.opacity(0.32), radius: 4, y: 2)
 
-            if currentSlide > 0 {
-                Button("Back") {
-                    guard currentSlide > 0 else { return }
-                    goingForward = false
-                    withAnimation(.spring(response: 0.42, dampingFraction: 0.86)) {
-                        currentSlide -= 1
-                    }
+            Button("Back") {
+                guard currentSlide > 0 else { return }
+                goingForward = false
+                withAnimation(.spring(response: 0.42, dampingFraction: 0.86)) {
+                    currentSlide -= 1
                 }
-                .buttonStyle(.plain)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.secondary)
-            } else {
-                Color.clear.frame(height: 22)
             }
+            .buttonStyle(.plain)
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(.secondary)
+            .opacity(currentSlide > 0 ? 1 : 0)
+            .allowsHitTesting(currentSlide > 0)
+            .animation(.easeInOut(duration: 0.18), value: currentSlide)
         }
         .padding(.top, 2)
         .padding(.bottom, 20)
@@ -206,6 +203,9 @@ private struct WelcomeSlide: View {
 
     @State private var onboardingAppIcon: NSImage?
     @State private var iconAppeared = false
+    @State private var titleAppeared = false
+    @State private var keyCapsAppeared = false
+    @State private var hintAppeared = false
     @State private var isEditingShortcut = false
     @State private var shortcutFlashMessage: String?
     @State private var shortcutMonitor: Any?
@@ -234,6 +234,7 @@ private struct WelcomeSlide: View {
                 .shadow(radius: 4)
                 .scaleEffect(iconAppeared ? 1.0 : 0.72)
                 .opacity(iconAppeared ? 1 : 0)
+                .offset(y: iconAppeared ? 0 : 8)
 
                 VStack(spacing: 6) {
                     Text("Welcome to Buoy")
@@ -247,6 +248,8 @@ private struct WelcomeSlide: View {
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 8)
                 }
+                .opacity(titleAppeared ? 1 : 0)
+                .offset(y: titleAppeared ? 0 : 8)
 
                 VStack(spacing: 10) {
                     ZStack {
@@ -255,7 +258,7 @@ private struct WelcomeSlide: View {
                                 .padding(.top, 16)
                                 .transition(.opacity)
                         } else {
-                            KeyCapsView(shortcut: settings.globalShortcut)
+                            KeyCapsView(shortcut: settings.globalShortcut, triggerPress: keyCapsAppeared)
                                 .padding(.top, 16)
                                 .transition(.opacity)
                         }
@@ -287,12 +290,16 @@ private struct WelcomeSlide: View {
                             .controlSize(.small)
                     }
                 }
+                .opacity(keyCapsAppeared ? 1 : 0)
+                .offset(y: keyCapsAppeared ? 0 : 8)
 
                 Text("You can change this any time in Settings.")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 24)
+                    .opacity(hintAppeared ? 1 : 0)
+                    .offset(y: hintAppeared ? 0 : 8)
             }
             .frame(maxWidth: 288)
 
@@ -304,9 +311,13 @@ private struct WelcomeSlide: View {
                 onboardingAppIcon = await loadOnboardingAppIconThumbnail()
             }
             try? await Task.sleep(for: .milliseconds(60))
-            withAnimation(.spring(response: 0.52, dampingFraction: 0.7)) {
-                iconAppeared = true
-            }
+            withAnimation(.spring(response: 0.52, dampingFraction: 0.7)) { iconAppeared = true }
+            try? await Task.sleep(for: .milliseconds(120))
+            withAnimation(.spring(response: 0.52, dampingFraction: 0.7)) { titleAppeared = true }
+            try? await Task.sleep(for: .milliseconds(140))
+            withAnimation(.spring(response: 0.52, dampingFraction: 0.7)) { keyCapsAppeared = true }
+            try? await Task.sleep(for: .milliseconds(140))
+            withAnimation(.spring(response: 0.52, dampingFraction: 0.7)) { hintAppeared = true }
         }
         .onDisappear {
             stopShortcutEditing()
@@ -392,6 +403,9 @@ private struct WelcomeSlide: View {
 
 private struct KeyCapsView: View {
     let shortcut: String
+    var triggerPress: Bool = false
+    @State private var pressedIndex: Int? = nil
+    @State private var hasPressed = false
 
     private var parts: [String] {
         shortcut.components(separatedBy: "+").map { part in
@@ -407,8 +421,25 @@ private struct KeyCapsView: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            ForEach(Array(parts.enumerated()), id: \.offset) { _, label in
-                KeyCapView(label: label)
+            ForEach(Array(parts.enumerated()), id: \.offset) { index, label in
+                KeyCapView(label: label, isPressed: pressedIndex == index)
+            }
+        }
+        .onChange(of: triggerPress) { _, newVal in
+            guard newVal, !hasPressed else { return }
+            hasPressed = true
+            let count = parts.count
+            for i in 0..<count {
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(i * 60))
+                    withAnimation(.spring(response: 0.2, dampingFraction: 0.7)) {
+                        pressedIndex = i
+                    }
+                    try? await Task.sleep(for: .milliseconds(120))
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                        if pressedIndex == i { pressedIndex = nil }
+                    }
+                }
             }
         }
     }
@@ -416,6 +447,7 @@ private struct KeyCapsView: View {
 
 private struct KeyCapView: View {
     let label: String
+    var isPressed: Bool = false
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
@@ -454,6 +486,9 @@ private struct KeyCapView: View {
                 .foregroundStyle(colorScheme == .dark ? Color.white : Color(.sRGB, white: 0.18, opacity: 1))
         }
         .frame(width: 50, height: 50)
+        .scaleEffect(isPressed ? 0.92 : 1.0, anchor: .center)
+        .offset(y: isPressed ? 1 : 0)
+        .animation(.spring(response: 0.2, dampingFraction: 0.7), value: isPressed)
     }
 }
 
@@ -466,6 +501,9 @@ private final class DemoTextViewRef {
 private struct FormattingSlide: View {
     @State private var demoRTFData: Data = Self.templateRTF()
     @State private var demoTVRef = DemoTextViewRef()
+    @State private var headerAppeared = false
+    @State private var panelAppeared = false
+    @State private var subheadingAppeared = false
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
@@ -473,6 +511,8 @@ private struct FormattingSlide: View {
             Spacer(minLength: 0)
 
             slideHeader("Format your thoughts")
+                .opacity(headerAppeared ? 1 : 0)
+                .offset(y: headerAppeared ? 0 : 8)
 
             MiniEditorPanel(
                 rtfData: $demoRTFData,
@@ -482,11 +522,16 @@ private struct FormattingSlide: View {
             .frame(maxWidth: 280)
             .padding(.horizontal, 16)
             .shadow(color: .black.opacity(0.18), radius: 14, y: 5)
+            .opacity(panelAppeared ? 1 : 0)
+            .scaleEffect(panelAppeared ? 1 : 0.96, anchor: .center)
+            .offset(y: panelAppeared ? 0 : 8)
 
             slideSubheading(
                 "Bold, italic, bullets, todos, links —\nall with keyboard shortcuts."
             )
             .padding(.bottom, 2)
+            .opacity(subheadingAppeared ? 1 : 0)
+            .offset(y: subheadingAppeared ? 0 : 8)
 
             Spacer(minLength: 0)
         }
@@ -496,10 +541,18 @@ private struct FormattingSlide: View {
                 guard let tv = demoTVRef.value, let storage = tv.textStorage else { return }
                 storage.enumerateAttribute(.attachment, in: NSRange(location: 0, length: storage.length)) { val, range, _ in
                     guard let attachment = val as? NSTextAttachment else { return }
-                    attachment.bounds = CGRect(x: 0, y: -1, width: 9, height: 9)
+                    attachment.bounds = CGRect(x: 0, y: -1, width: 7, height: 7)
                 }
                 tv.needsDisplay = true
             }
+        }
+        .task {
+            try? await Task.sleep(for: .milliseconds(50))
+            withAnimation(.spring(response: 0.52, dampingFraction: 0.7)) { headerAppeared = true }
+            try? await Task.sleep(for: .milliseconds(80))
+            withAnimation(.spring(response: 0.52, dampingFraction: 0.7)) { panelAppeared = true }
+            try? await Task.sleep(for: .milliseconds(100))
+            withAnimation(.spring(response: 0.52, dampingFraction: 0.7)) { subheadingAppeared = true }
         }
     }
 
@@ -620,6 +673,7 @@ private struct DemoToolbarView: View {
 private struct HarborModeSlide: View {
     var isDemoMinimized: Bool
     var onToggleDemo: () -> Void
+    @State private var hasTriggeredOnce = false
 
     var body: some View {
         VStack(spacing: 10) {
@@ -645,10 +699,26 @@ private struct HarborModeSlide: View {
             .padding(.horizontal, 20)
             .animation(.spring(response: 0.35, dampingFraction: 0.82), value: isDemoMinimized)
 
-            Text(isDemoMinimized ? "Press ⌘M again to restore" : "Press ⌘M to try it")
-                .font(.system(size: 11.5, weight: .medium))
-                .foregroundStyle(.secondary)
-                .animation(.easeInOut(duration: 0.2), value: isDemoMinimized)
+            Group {
+                if hasTriggeredOnce || isDemoMinimized {
+                    Text(isDemoMinimized ? "Press ⌘M again to restore" : "Press ⌘M to try it")
+                } else {
+                    let hintText = "Press ⌘M to try it"
+                    TimelineView(.animation(minimumInterval: 1.0 / 20.0)) { timeline in
+                        let t = timeline.date.timeIntervalSinceReferenceDate
+                        let cycle = t.truncatingRemainder(dividingBy: 1.6) / 1.6
+                        let phase = sin(cycle * .pi * 2 - .pi / 2)
+                        let opacity = 0.55 + 0.45 * (1.0 + phase) / 2.0
+                        Text(hintText).opacity(opacity)
+                    }
+                }
+            }
+            .font(.system(size: 11.5, weight: .medium))
+            .foregroundStyle(.secondary)
+            .animation(.easeInOut(duration: 0.2), value: isDemoMinimized)
+            .onChange(of: isDemoMinimized) { _, newVal in
+                if newVal { hasTriggeredOnce = true }
+            }
 
             slideSubheading(
                 "Click the minimize button or press ⌘M\nto tuck Buoy away without closing."
