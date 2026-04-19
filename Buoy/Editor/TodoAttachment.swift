@@ -48,17 +48,4 @@ final class TodoAttachment: NSTextAttachment {
         self.image = image
         self.bounds = CGRect(origin: CGPoint(x: 0, y: yOffset), size: displaySize)
     }
-
-    func encode() -> Data? {
-        let archiver = NSKeyedArchiver(requiringSecureCoding: true)
-        archiver.encode(isChecked, forKey: "isChecked")
-        archiver.finishEncoding()
-        return archiver.encodedData
-    }
-
-    static func decode(from data: Data) -> TodoAttachment? {
-        guard let unarchiver = try? NSKeyedUnarchiver(forReadingFrom: data) else { return nil }
-        let checked = unarchiver.decodeBool(forKey: "isChecked")
-        return TodoAttachment(isChecked: checked)
-    }
 }

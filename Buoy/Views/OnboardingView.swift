@@ -310,14 +310,16 @@ private struct WelcomeSlide: View {
             if onboardingAppIcon == nil {
                 onboardingAppIcon = await loadOnboardingAppIconThumbnail()
             }
-            try? await Task.sleep(for: .milliseconds(60))
-            withAnimation(.spring(response: 0.52, dampingFraction: 0.7)) { iconAppeared = true }
-            try? await Task.sleep(for: .milliseconds(120))
-            withAnimation(.spring(response: 0.52, dampingFraction: 0.7)) { titleAppeared = true }
-            try? await Task.sleep(for: .milliseconds(140))
-            withAnimation(.spring(response: 0.52, dampingFraction: 0.7)) { keyCapsAppeared = true }
-            try? await Task.sleep(for: .milliseconds(140))
-            withAnimation(.spring(response: 0.52, dampingFraction: 0.7)) { hintAppeared = true }
+            do {
+                try await Task.sleep(for: .milliseconds(60))
+                withAnimation(.spring(response: 0.52, dampingFraction: 0.7)) { iconAppeared = true }
+                try await Task.sleep(for: .milliseconds(120))
+                withAnimation(.spring(response: 0.52, dampingFraction: 0.7)) { titleAppeared = true }
+                try await Task.sleep(for: .milliseconds(140))
+                withAnimation(.spring(response: 0.52, dampingFraction: 0.7)) { keyCapsAppeared = true }
+                try await Task.sleep(for: .milliseconds(140))
+                withAnimation(.spring(response: 0.52, dampingFraction: 0.7)) { hintAppeared = true }
+            } catch { return }
         }
         .onDisappear {
             stopShortcutEditing()
@@ -406,6 +408,7 @@ private struct KeyCapsView: View {
     var triggerPress: Bool = false
     @State private var pressedIndex: Int? = nil
     @State private var hasPressed = false
+    @State private var keyPressTask: Task<Void, Never>?
 
     private var parts: [String] {
         shortcut.components(separatedBy: "+").map { part in
@@ -428,19 +431,30 @@ private struct KeyCapsView: View {
         .onChange(of: triggerPress) { _, newVal in
             guard newVal, !hasPressed else { return }
             hasPressed = true
+            keyPressTask?.cancel()
             let count = parts.count
-            for i in 0..<count {
-                Task { @MainActor in
-                    try? await Task.sleep(for: .milliseconds(i * 60))
-                    withAnimation(.spring(response: 0.2, dampingFraction: 0.7)) {
-                        pressedIndex = i
-                    }
-                    try? await Task.sleep(for: .milliseconds(120))
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                        if pressedIndex == i { pressedIndex = nil }
+            keyPressTask = Task { @MainActor in
+                await withTaskGroup(of: Void.self) { group in
+                    for i in 0..<count {
+                        group.addTask { @MainActor in
+                            do {
+                                try await Task.sleep(for: .milliseconds(i * 60))
+                                withAnimation(.spring(response: 0.2, dampingFraction: 0.7)) {
+                                    pressedIndex = i
+                                }
+                                try await Task.sleep(for: .milliseconds(120))
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                                    if pressedIndex == i { pressedIndex = nil }
+                                }
+                            } catch {}
+                        }
                     }
                 }
             }
+        }
+        .onDisappear {
+            keyPressTask?.cancel()
+            keyPressTask = nil
         }
     }
 }
@@ -499,6 +513,8 @@ private final class DemoTextViewRef {
 }
 
 private struct FormattingSlide: View {
+    private static let todoMarker = " and to do lists"
+
     @State private var demoRTFData: Data = Self.templateRTF()
     @State private var demoTVRef = DemoTextViewRef()
     @State private var headerAppeared = false
@@ -539,9 +555,8 @@ private struct FormattingSlide: View {
         .onAppear {
             DispatchQueue.main.async {
                 guard let tv = demoTVRef.value, let storage = tv.textStorage else { return }
-                // Find " and to do lists" and prepend a live TodoAttachment before it
                 let fullString = storage.string
-                guard let markerRange = fullString.range(of: " and to do lists") else { return }
+                guard let markerRange = fullString.range(of: Self.todoMarker) else { return }
                 let insertLocation = NSRange(markerRange, in: fullString).location
                 let todo = TodoAttachment(isChecked: false, displaySize: CGSize(width: 15, height: 15), yOffset: -2)
                 let attachStr = NSAttributedString(attachment: todo)
@@ -551,12 +566,14 @@ private struct FormattingSlide: View {
             }
         }
         .task {
-            try? await Task.sleep(for: .milliseconds(50))
-            withAnimation(.spring(response: 0.52, dampingFraction: 0.7)) { headerAppeared = true }
-            try? await Task.sleep(for: .milliseconds(80))
-            withAnimation(.spring(response: 0.52, dampingFraction: 0.7)) { panelAppeared = true }
-            try? await Task.sleep(for: .milliseconds(100))
-            withAnimation(.spring(response: 0.52, dampingFraction: 0.7)) { subheadingAppeared = true }
+            do {
+                try await Task.sleep(for: .milliseconds(50))
+                withAnimation(.spring(response: 0.52, dampingFraction: 0.7)) { headerAppeared = true }
+                try await Task.sleep(for: .milliseconds(80))
+                withAnimation(.spring(response: 0.52, dampingFraction: 0.7)) { panelAppeared = true }
+                try await Task.sleep(for: .milliseconds(100))
+                withAnimation(.spring(response: 0.52, dampingFraction: 0.7)) { subheadingAppeared = true }
+            } catch { return }
         }
     }
 
@@ -584,7 +601,7 @@ private struct FormattingSlide: View {
         add("italic", font: italic)
         add(", ")
         add("underline", extras: [.underlineStyle: NSUnderlineStyle.single.rawValue])
-        add("\n• Bullet points\n and to do lists")
+        add("\n• Bullet points\n\(Self.todoMarker)")
 
         let range = NSRange(location: 0, length: s.length)
         return (try? s.data(from: range, documentAttributes: [
