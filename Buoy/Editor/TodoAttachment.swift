@@ -4,9 +4,13 @@ final class TodoAttachment: NSTextAttachment {
     var isChecked: Bool {
         didSet { updateImage() }
     }
+    var displaySize: CGSize = CGSize(width: 19, height: 19)
+    var yOffset: CGFloat = -3
 
-    init(isChecked: Bool = false) {
+    init(isChecked: Bool = false, displaySize: CGSize = CGSize(width: 19, height: 19), yOffset: CGFloat = -3) {
         self.isChecked = isChecked
+        self.displaySize = displaySize
+        self.yOffset = yOffset
         super.init(data: nil, ofType: nil)
         updateImage()
     }
@@ -42,7 +46,7 @@ final class TodoAttachment: NSTextAttachment {
             return true
         }
         self.image = image
-        self.bounds = CGRect(origin: CGPoint(x: 0, y: -3), size: size)
+        self.bounds = CGRect(origin: CGPoint(x: 0, y: yOffset), size: displaySize)
     }
 
     func encode() -> Data? {
