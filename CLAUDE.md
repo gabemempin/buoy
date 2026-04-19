@@ -108,6 +108,12 @@ The phrases **"invoke onboarding"** or **"reset onboarding"** mean run this comm
 ### Keyboard Shortcuts Panel
 `ShortcutsPanel.swift` — shortcuts list ends with `("⌘M", "Harbor Mode")`. Does not include auto-bullet or auto-todo entries.
 
+### .gitignore Notes
+Build artifacts (`*.app/`, `*.zip`, `build.log`, `Buoy */`), VS Code config, and AGENTS.md are gitignored. CLAUDE.md is tracked. Never commit compiled app bundles or build logs.
+
+### Co-Authored-By Attribution
+Never add `Co-Authored-By` lines to commits. The git user.name was previously corrupted to `"user.email"` via a bad local config — fixed by removing the local override with `git config --local --unset user.name`.
+
 ### Overlay Panel Height Override
 Settings, Shortcuts, and Onboarding panels animate the window taller when shown. Key pieces:
 - `PanelLayoutMetrics.settingsOverrideHeight` / `shortcutsOverrideHeight` / `onboardingOverrideHeight` — target heights
