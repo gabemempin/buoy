@@ -254,11 +254,11 @@ private struct WelcomeSlide: View {
                 VStack(spacing: 10) {
                     ZStack {
                         if isEditingShortcut {
-                            ShortcutRecordingPrompt(text: "Type your new shortcut…")
+                            ShimmeringShortcutPromptView(text: "Type your new shortcut…")
                                 .padding(.top, 16)
                                 .transition(.opacity)
                         } else {
-                            KeyCapsView(shortcut: settings.globalShortcut, triggerPress: keyCapsAppeared)
+                            ShortcutKeyCapsView(shortcut: settings.globalShortcut, triggerPress: keyCapsAppeared)
                                 .padding(.top, 16)
                                 .transition(.opacity)
                         }
@@ -398,111 +398,6 @@ private struct WelcomeSlide: View {
             guard !Task.isCancelled else { return }
             shortcutFlashMessage = nil
         }
-    }
-}
-
-// MARK: - Skeumorphic Key Caps
-
-private struct KeyCapsView: View {
-    let shortcut: String
-    var triggerPress: Bool = false
-    @State private var pressedIndex: Int? = nil
-    @State private var hasPressed = false
-    @State private var keyPressTask: Task<Void, Never>?
-
-    private var parts: [String] {
-        shortcut.components(separatedBy: "+").map { part in
-            switch part {
-            case "Option": return "⌥"
-            case "Cmd":    return "⌘"
-            case "Ctrl":   return "⌃"
-            case "Shift":  return "⇧"
-            default:       return part.uppercased()
-            }
-        }
-    }
-
-    var body: some View {
-        HStack(spacing: 8) {
-            ForEach(Array(parts.enumerated()), id: \.offset) { index, label in
-                KeyCapView(label: label, isPressed: pressedIndex == index)
-            }
-        }
-        .onChange(of: triggerPress) { _, newVal in
-            guard newVal, !hasPressed else { return }
-            hasPressed = true
-            keyPressTask?.cancel()
-            let count = parts.count
-            keyPressTask = Task { @MainActor in
-                await withTaskGroup(of: Void.self) { group in
-                    for i in 0..<count {
-                        group.addTask { @MainActor in
-                            do {
-                                try await Task.sleep(for: .milliseconds(i * 60))
-                                withAnimation(.spring(response: 0.2, dampingFraction: 0.7)) {
-                                    pressedIndex = i
-                                }
-                                try await Task.sleep(for: .milliseconds(120))
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                                    if pressedIndex == i { pressedIndex = nil }
-                                }
-                            } catch {}
-                        }
-                    }
-                }
-            }
-        }
-        .onDisappear {
-            keyPressTask?.cancel()
-            keyPressTask = nil
-        }
-    }
-}
-
-private struct KeyCapView: View {
-    let label: String
-    var isPressed: Bool = false
-    @Environment(\.colorScheme) private var colorScheme
-
-    var body: some View {
-        ZStack {
-            // Base key body
-            RoundedRectangle(cornerRadius: 9)
-                .fill(LinearGradient(
-                    colors: colorScheme == .dark
-                        ? [Color(.sRGB, red: 0.26, green: 0.26, blue: 0.30, opacity: 1),
-                           Color(.sRGB, red: 0.14, green: 0.14, blue: 0.17, opacity: 1)]
-                        : [Color.white, Color(.sRGB, white: 0.91, opacity: 1)],
-                    startPoint: .top,
-                    endPoint: .bottom
-                ))
-                .shadow(color: .black.opacity(colorScheme == .dark ? 0.65 : 0.22), radius: 0, x: 0, y: 3)
-                .shadow(color: .black.opacity(colorScheme == .dark ? 0.22 : 0.10), radius: 6, x: 0, y: 4)
-
-            // Top highlight
-            RoundedRectangle(cornerRadius: 8)
-                .fill(LinearGradient(
-                    colors: [Color.white.opacity(colorScheme == .dark ? 0.14 : 0.80), .clear],
-                    startPoint: .top,
-                    endPoint: .center
-                ))
-                .padding(1.5)
-
-            // Outer border
-            RoundedRectangle(cornerRadius: 9)
-                .strokeBorder(
-                    colorScheme == .dark ? Color.white.opacity(0.13) : Color.black.opacity(0.10),
-                    lineWidth: 1
-                )
-
-            Text(label)
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(colorScheme == .dark ? Color.white : Color(.sRGB, white: 0.18, opacity: 1))
-        }
-        .frame(width: 50, height: 50)
-        .scaleEffect(isPressed ? 0.92 : 1.0, anchor: .center)
-        .offset(y: isPressed ? 1 : 0)
-        .animation(.spring(response: 0.2, dampingFraction: 0.7), value: isPressed)
     }
 }
 
@@ -904,44 +799,6 @@ private struct SlideHeaderText: View {
             .multilineTextAlignment(.center)
             .foregroundStyle(colorScheme == .dark ? Color.primary : Color.accentColor)
             .padding(.horizontal, 8)
-    }
-}
-
-private struct ShortcutRecordingPrompt: View {
-    let text: String
-
-    var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { timeline in
-            frame(phase: Self.phase(for: timeline.date))
-        }
-        .frame(maxWidth: .infinity, minHeight: 50)
-    }
-
-    private static func phase(for date: Date) -> CGFloat {
-        CGFloat(date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 2.0) / 2.0)
-    }
-
-    private func frame(phase: CGFloat) -> some View {
-        Text(text)
-            .font(.system(size: 13, weight: .medium))
-            .lineLimit(1)
-            .multilineTextAlignment(.center)
-            .overlay {
-                Text(text)
-                    .font(.system(size: 13, weight: .medium))
-                    .lineLimit(1)
-                    .foregroundStyle(Color.white.opacity(0.85))
-                    .mask {
-                        GeometryReader { geo in
-                            Ellipse()
-                                .fill(Color.white)
-                                .frame(width: 96, height: geo.size.height + 16)
-                                .blur(radius: 14)
-                                .offset(x: phase * (geo.size.width + 176) - 88)
-                        }
-                    }
-            }
-            .foregroundStyle(Color.primary.opacity(0.4))
     }
 }
 

@@ -8,63 +8,113 @@ struct ShortcutRecorderView: View {
     @State private var isRecording = false
     @State private var flashMessage: String? = nil
     @State private var keyMonitor: Any? = nil
+    @State private var flashTask: Task<Void, Never>? = nil
 
     private let reserved = [
         "Cmd+Space", "Cmd+Tab", "Cmd+Shift+3", "Cmd+Shift+4", "Cmd+Shift+5"
     ]
 
-    var displayString: String {
-        if let flash = flashMessage { return flash }
-        if isRecording { return "Press shortcut…" }
-        return electronToSymbols(shortcut)
-    }
+    private let keycapsWidth: CGFloat = 116
+    private let controlsWidth: CGFloat = 118
+    private let buttonWidth: CGFloat = 88
 
     var body: some View {
-        HStack(spacing: 8) {
-            Text(displayString)
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
-                .foregroundStyle(isRecording ? Color.accentColor : Color.primary)
-                .frame(minWidth: 80, alignment: .center)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 5)
-                .background(
-                    Group {
-                        if #unavailable(macOS 26) {
-                            RoundedRectangle(cornerRadius: 6)
-                                .fill(Color.primary.opacity(0.07))
-                        }
-                    }
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(isRecording ? Color.accentColor : Color.primary.opacity(0.2), lineWidth: isRecording ? 2 : 1)
-                )
+        HStack(alignment: .top, spacing: 6) {
+            leftDisplay
+                .frame(width: keycapsWidth, height: 34, alignment: .center)
 
-            if !isRecording {
-                Button("Edit") { startRecording() }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-            } else {
-                Button("Cancel") { stopRecording() }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .tint(.red)
+            VStack(spacing: 4) {
+                Text("Global Shortcut")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .center)
+
+                shortcutControl
+
+                Group {
+                    if let flashMessage, isRecording {
+                        Text(flashMessage)
+                            .font(.system(size: 10.5, weight: .medium))
+                            .foregroundStyle(Color.red.opacity(0.9))
+                            .transition(.opacity)
+                    }
+                }
+                .animation(.easeInOut(duration: 0.15), value: flashMessage)
             }
+            .frame(width: controlsWidth)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .onDisappear { stopRecording() }
     }
 
+    @ViewBuilder
+    private var leftDisplay: some View {
+        if isRecording {
+            ShimmeringShortcutPromptView(text: "Type New...", fontSize: 12.5, minHeight: 30)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .transition(.opacity)
+        } else {
+            ShortcutKeyCapsView(shortcut: shortcut, keySize: 30, spacing: 5, fontSize: 12.5)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .offset(y: 2)
+                .transition(.opacity)
+        }
+    }
+
+    @ViewBuilder
+    private var shortcutControl: some View {
+        if isRecording {
+            Button(action: stopRecording) {
+                Text("Cancel")
+                    .font(.system(size: 11.5, weight: .medium))
+                    .foregroundStyle(Color.secondary)
+                    .frame(width: buttonWidth)
+                    .padding(.vertical, 5)
+                    .background(
+                        RoundedRectangle(cornerRadius: 9)
+                            .fill(Color.primary.opacity(0.06))
+                    )
+            }
+            .buttonStyle(.plain)
+            .transition(.opacity)
+        } else {
+            Button(action: startRecording) {
+                Text("Edit")
+                    .font(.system(size: 11.5, weight: .medium))
+                    .foregroundStyle(Color.secondary)
+                    .frame(width: buttonWidth)
+                    .padding(.vertical, 5)
+                    .background(
+                        RoundedRectangle(cornerRadius: 9)
+                            .fill(Color.primary.opacity(0.06))
+                    )
+            }
+            .buttonStyle(.plain)
+            .transition(.opacity)
+        }
+    }
+
     private func startRecording() {
+        flashTask?.cancel()
+        flashTask = nil
+        flashMessage = nil
+        if let monitor = keyMonitor {
+            NSEvent.removeMonitor(monitor)
+            keyMonitor = nil
+        }
         isRecording = true
-        let monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [self] event in
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [self] event in
             handleKeyEvent(event)
             return nil
         }
-        keyMonitor = monitor
     }
 
     private func stopRecording() {
         isRecording = false
+        flashMessage = nil
+        flashTask?.cancel()
+        flashTask = nil
         if let monitor = keyMonitor {
             NSEvent.removeMonitor(monitor)
             keyMonitor = nil
@@ -107,16 +157,11 @@ struct ShortcutRecorderView: View {
 
     private func flash(_ msg: String) {
         flashMessage = msg
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+        flashTask?.cancel()
+        flashTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(1500))
+            guard !Task.isCancelled else { return }
             flashMessage = nil
         }
-    }
-
-    private func electronToSymbols(_ s: String) -> String {
-        s.replacingOccurrences(of: "Cmd", with: "⌘")
-         .replacingOccurrences(of: "Ctrl", with: "⌃")
-         .replacingOccurrences(of: "Option", with: "⌥")
-         .replacingOccurrences(of: "Shift", with: "⇧")
-         .replacingOccurrences(of: "+", with: "")
     }
 }

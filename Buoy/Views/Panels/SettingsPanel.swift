@@ -3,6 +3,7 @@ import AppKit
 import LaunchAtLogin
 
 struct SettingsPanel: View {
+    @Environment(\.colorScheme) private var colorScheme
     @Binding var isShowing: Bool
     @Binding var settings: AppSettings
     var onQuit: () -> Void
@@ -79,7 +80,8 @@ struct SettingsPanel: View {
 
                 SettingsRow(label: "Theme") {
                     ThemePickerWrapper(selection: $settings.theme)
-                        .frame(width: 130, height: 22)
+                        .frame(height: 20)
+                        .fixedSize(horizontal: true, vertical: false)
                         .onChange(of: settings.theme) { _, val in
                             settings.save()
                         }
@@ -87,16 +89,11 @@ struct SettingsPanel: View {
 
                 Divider().padding(.horizontal, 10).padding(.vertical, 4)
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Global Shortcut")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                    ShortcutRecorderView(shortcut: $settings.globalShortcut) { newShortcut in
-                        onShortcutChanged(newShortcut)
-                    }
+                ShortcutRecorderView(shortcut: $settings.globalShortcut) { newShortcut in
+                    onShortcutChanged(newShortcut)
                 }
                 .padding(.horizontal, 10)
-                .padding(.vertical, 6)
+                .padding(.vertical, 4)
 
                 Divider().padding(.horizontal, 10).padding(.vertical, 4)
 
@@ -106,10 +103,16 @@ struct SettingsPanel: View {
                             .font(.system(size: 12))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 6)
-                            .buoyGlassButton(tint: .orange, strokeOpacity: 0.6, isHovering: isReportBugHovering)
+                            .buoySettingsActionButton(
+                                tint: .orange,
+                                role: .accent,
+                                isHovering: isReportBugHovering,
+                                fillOpacity: isReportBugHovering ? 0.12 : 0.08,
+                                strokeOpacity: isReportBugHovering ? 0.62 : 0.46
+                            )
                     }
                     .buttonStyle(.plain)
-                    .foregroundStyle(.orange.opacity(0.9))
+                    .foregroundStyle(reportBugForegroundColor)
                     .onHover { isReportBugHovering = $0 }
 
                     Button { checkForUpdates() } label: {
@@ -120,7 +123,7 @@ struct SettingsPanel: View {
                         .font(.system(size: 12))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6)
-                        .buoyGlassButton(tint: .primary, tintOpacity: 0.08, strokeOpacity: 0.15, isHovering: isCheckUpdatesHovering)
+                        .buoySettingsActionButton(tint: .gray, role: .neutral, isHovering: isCheckUpdatesHovering)
                     }
                     .buttonStyle(.plain)
                     .onHover { isCheckUpdatesHovering = $0 }
@@ -129,7 +132,7 @@ struct SettingsPanel: View {
                         .font(.system(size: 12))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6)
-                        .buoyGlassButton(tint: .red, strokeOpacity: 0.6, isHovering: isQuitHovering)
+                        .buoySettingsActionButton(tint: .red, role: .destructive, isHovering: isQuitHovering)
                         .foregroundStyle(.red)
                         .buttonStyle(.plain)
                         .onHover { isQuitHovering = $0 }
@@ -163,6 +166,12 @@ struct SettingsPanel: View {
             try? await Task.sleep(for: .seconds(4))
             updateStatus = nil
         }
+    }
+
+    private var reportBugForegroundColor: Color {
+        colorScheme == .dark
+            ? Color(red: 1.0, green: 0.76, blue: 0.42)
+            : Color(red: 0.76, green: 0.36, blue: 0.03)
     }
 }
 
@@ -202,5 +211,49 @@ private struct SettingsRow<Content: View>: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
+    }
+}
+
+private enum BuoySettingsActionRole {
+    case accent
+    case neutral
+    case destructive
+}
+
+private extension View {
+    func buoySettingsActionButton(
+        tint: Color,
+        role: BuoySettingsActionRole,
+        isHovering: Bool,
+        cornerRadius: CGFloat = 18,
+        fillOpacity: Double? = nil,
+        strokeOpacity: Double? = nil
+    ) -> some View {
+        let fillColor: Color
+        let baseStrokeOpacity: Double
+        switch role {
+        case .accent:
+            fillColor = tint.opacity(fillOpacity ?? (isHovering ? 0.20 : 0.14))
+            baseStrokeOpacity = strokeOpacity ?? (isHovering ? 0.52 : 0.34)
+        case .neutral:
+            fillColor = Color.black.opacity(fillOpacity ?? (isHovering ? 0.09 : 0.06))
+            baseStrokeOpacity = strokeOpacity ?? (isHovering ? 0.52 : 0.34)
+        case .destructive:
+            fillColor = tint.opacity(fillOpacity ?? (isHovering ? 0.16 : 0.10))
+            baseStrokeOpacity = strokeOpacity ?? (isHovering ? 0.52 : 0.34)
+        }
+
+        return self
+            .background(
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .fill(fillColor)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .stroke(tint.opacity(baseStrokeOpacity), lineWidth: 1)
+            )
+            .shadow(color: Color.black.opacity(isHovering ? 0.08 : 0.04), radius: isHovering ? 8 : 4, x: 0, y: 2)
+            .contentShape(RoundedRectangle(cornerRadius: cornerRadius))
+            .animation(.easeInOut(duration: 0.16), value: isHovering)
     }
 }
