@@ -82,9 +82,7 @@ struct SettingsPanel: View {
                     ThemePickerWrapper(selection: $settings.theme)
                         .frame(height: 20)
                         .fixedSize(horizontal: true, vertical: false)
-                        .onChange(of: settings.theme) { _, val in
-                            settings.save()
-                        }
+                        .onChange(of: settings.theme) { _, _ in settings.save() }
                 }
 
                 Divider().padding(.horizontal, 10).padding(.vertical, 4)
@@ -95,7 +93,7 @@ struct SettingsPanel: View {
                 .padding(.horizontal, 10)
                 .padding(.vertical, 4)
 
-                Divider().padding(.horizontal, 10).padding(.vertical, 4)
+                Divider().padding(.horizontal, 10).padding(.vertical, 9)
 
                 VStack(spacing: 6) {
                     Button { onReportBug() } label: {

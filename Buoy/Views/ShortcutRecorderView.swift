@@ -24,7 +24,7 @@ struct ShortcutRecorderView: View {
                 .frame(width: keycapsWidth, height: 34, alignment: .center)
 
             VStack(spacing: 4) {
-                Text("Global Shortcut")
+                Text("Keyboard Shortcut")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -53,11 +53,12 @@ struct ShortcutRecorderView: View {
         if isRecording {
             ShimmeringShortcutPromptView(text: "Type New...", fontSize: 12.5, minHeight: 30)
                 .frame(maxWidth: .infinity, alignment: .center)
+                .offset(y: 6)
                 .transition(.opacity)
         } else {
             ShortcutKeyCapsView(shortcut: shortcut, keySize: 30, spacing: 5, fontSize: 12.5)
                 .frame(maxWidth: .infinity, alignment: .center)
-                .offset(y: 2)
+                .offset(y: 6)
                 .transition(.opacity)
         }
     }

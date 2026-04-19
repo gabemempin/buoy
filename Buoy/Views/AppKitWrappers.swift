@@ -56,7 +56,7 @@ struct ThemePickerWrapper: NSViewRepresentable {
             target: context.coordinator,
             action: #selector(Coordinator.onChange(_:))
         )
-        control.segmentStyle = .roundRect
+        control.segmentStyle = .capsule
         control.controlSize = .small
         return control
     }
