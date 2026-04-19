@@ -91,6 +91,12 @@ struct ThemePickerWrapper: NSViewRepresentable {
     }
 }
 
+// MARK: - NoSeparatorRowView
+
+private final class NoSeparatorRowView: NSTableRowView {
+    override func drawSeparator(in dirtyRect: NSRect) {}
+}
+
 // MARK: - NotesTableViewWrapper
 
 struct NotesTableViewWrapper: NSViewRepresentable {
@@ -199,6 +205,10 @@ struct NotesTableViewWrapper: NSViewRepresentable {
             }
         }
         
+        func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
+            return NoSeparatorRowView()
+        }
+
         func tableView(_ tableView: NSTableView, rowActionsForRow row: Int, edge: NSTableView.RowActionEdge) -> [NSTableViewRowAction] {
             guard edge == .trailing else { return [] }
             let deleteAction = NSTableViewRowAction(style: .destructive, title: "Delete") { [weak self] action, rowIndex in
