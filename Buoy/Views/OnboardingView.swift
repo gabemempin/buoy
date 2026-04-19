@@ -14,7 +14,6 @@ struct OnboardingView: View {
     @State private var goingForward = true
     @State private var isDemoMinimized = false
     @State private var cmdMMonitor: Any?
-    @Namespace private var indicatorNamespace
 
     var body: some View {
         ZStack {
