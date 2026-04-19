@@ -39,3 +39,9 @@ XCODE_SETUP.md
 # Editor / workspace config
 .vscode/
 *.code-workspace
+
+# Build artifacts / releases
+*.app/
+*.zip
+build.log
+Buoy */
