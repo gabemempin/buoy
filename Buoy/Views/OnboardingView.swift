@@ -112,6 +112,7 @@ struct OnboardingView: View {
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
+            .environment(\.controlActiveState, .active)
             .shadow(color: Color.accentColor.opacity(0.32), radius: 4, y: 2)
 
             Button("Back") {
@@ -539,11 +540,15 @@ private struct FormattingSlide: View {
         .onAppear {
             DispatchQueue.main.async {
                 guard let tv = demoTVRef.value, let storage = tv.textStorage else { return }
-                storage.enumerateAttribute(.attachment, in: NSRange(location: 0, length: storage.length)) { val, range, _ in
-                    guard let attachment = val as? NSTextAttachment else { return }
-                    attachment.bounds = CGRect(x: 0, y: -1, width: 7, height: 7)
-                }
-                tv.needsDisplay = true
+                // Find " and to do lists" and prepend a live TodoAttachment before it
+                let fullString = storage.string
+                guard let markerRange = fullString.range(of: " and to do lists") else { return }
+                let insertLocation = NSRange(markerRange, in: fullString).location
+                let todo = TodoAttachment(isChecked: false, displaySize: CGSize(width: 15, height: 15), yOffset: -2)
+                let attachStr = NSAttributedString(attachment: todo)
+                storage.beginEditing()
+                storage.insert(attachStr, at: insertLocation)
+                storage.endEditing()
             }
         }
         .task {
@@ -580,7 +585,7 @@ private struct FormattingSlide: View {
         add("italic", font: italic)
         add(", ")
         add("underline", extras: [.underlineStyle: NSUnderlineStyle.single.rawValue])
-        add("\n• Bullet points\n\u{2610} and to do lists")
+        add("\n• Bullet points\n and to do lists")
 
         let range = NSRange(location: 0, length: s.length)
         return (try? s.data(from: range, documentAttributes: [
