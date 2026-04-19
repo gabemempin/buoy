@@ -16,7 +16,7 @@ struct ShortcutRecorderView: View {
 
     private let keycapsWidth: CGFloat = 116
     private let controlsWidth: CGFloat = 118
-    private let buttonWidth: CGFloat = 88
+    private let buttonWidth: CGFloat = 118
 
     var body: some View {
         HStack(alignment: .top, spacing: 6) {

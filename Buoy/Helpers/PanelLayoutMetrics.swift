@@ -42,7 +42,7 @@ enum PanelLayoutMetrics {
     static let maximumAutoHeight: CGFloat = 700
 
     // Minimum window heights when overlay panels are open
-    static let settingsOverrideHeight: CGFloat = 460
+    static let settingsOverrideHeight: CGFloat = 470
     static let shortcutsOverrideHeight: CGFloat = 468
     static let onboardingOverrideHeight: CGFloat = 450
 

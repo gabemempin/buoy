@@ -36,7 +36,7 @@ struct SettingsPanel: View {
             }
             .padding(.horizontal, 10)
             .padding(.top, 14)
-            .padding(.bottom, 8)
+            .padding(.bottom, 14)
 
             Divider()
 
@@ -79,9 +79,7 @@ struct SettingsPanel: View {
                 }
 
                 SettingsRow(label: "Theme") {
-                    ThemePickerWrapper(selection: $settings.theme)
-                        .frame(height: 20)
-                        .fixedSize(horizontal: true, vertical: false)
+                    ThemeSegmentedPicker(selection: $settings.theme)
                         .onChange(of: settings.theme) { _, _ in settings.save() }
                 }
 
@@ -142,7 +140,7 @@ struct SettingsPanel: View {
         .frame(width: 260)
         .background(WindowDragBlocker())
         .overlay(ArrowCursorOverlay().allowsHitTesting(false))
-        .buoyGlassPanel(cornerRadius: 20)
+        .buoyGlassPanel(cornerRadius: 16)
         .shadow(radius: 8)
         .transition(.scale(scale: 0.92, anchor: .bottomLeading).combined(with: .opacity))
     }
@@ -209,6 +207,37 @@ private struct SettingsRow<Content: View>: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
+    }
+}
+
+private struct ThemeSegmentedPicker: View {
+    @Binding var selection: AppTheme
+    private let options: [(String, AppTheme)] = [("Auto", .system), ("Light", .light), ("Dark", .dark)]
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(options, id: \.1) { label, theme in
+                Button {
+                    selection = theme
+                } label: {
+                    Text(label)
+                        .font(.system(size: 11, weight: .medium))
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 3)
+                        .background {
+                            if selection == theme {
+                                Capsule()
+                                    .fill(Color.primary.opacity(0.15))
+                            }
+                        }
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(selection == theme ? Color.primary : Color.secondary)
+            }
+        }
+        .padding(3)
+        .background(Capsule().fill(Color.primary.opacity(0.07)))
+        .animation(.easeInOut(duration: 0.15), value: selection)
     }
 }
 
