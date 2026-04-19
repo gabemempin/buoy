@@ -111,6 +111,7 @@ struct NotesTableViewWrapper: NSViewRepresentable {
         tableView.rowSizeStyle = .custom
         tableView.rowHeight = 30 // Approx height of NoteRow
         tableView.intercellSpacing = NSSize(width: 0, height: 0)
+        tableView.gridStyleMask = []
         tableView.style = .plain
         tableView.selectionHighlightStyle = .none // Visual selection handled by NoteRow
 
