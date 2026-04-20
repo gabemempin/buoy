@@ -42,6 +42,15 @@ final class BuoyPanel: NSPanel {
             )
         }
 
+        //Handler for Cmd+W at the panel level
+        if modifiers == .command, event.charactersIgnoringModifiers?.lowercased() == "w" {
+            return NSApp.sendAction(
+                #selector(AppDelegate.hidePanel(_:)),
+                to: NSApp.delegate,
+                from: self
+            )
+        }
+
         // Try the normal view-hierarchy dispatch first. If BuoyTextView is the
         // first responder it will claim the event there.
         if super.performKeyEquivalent(with: event) {

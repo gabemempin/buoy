@@ -121,7 +121,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     // MARK: - App Launch
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(settingsStore.value.showInDock ? .regular : .accessory)
+        let showInDock = settingsStore.value.showInDock
+        DispatchQueue.main.async {
+            NSApp.setActivationPolicy(showInDock ? .regular : .accessory)
+            if showInDock { NSApp.activate(ignoringOtherApps: true) }
+        }
         setupPanel()
         installOutsideClickMonitor()
         applyTheme(settingsStore.value.theme)
@@ -300,7 +304,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         p.makeKeyAndOrderFront(nil)
     }
 
-    func hidePanel() {
+    @objc func hidePanel(_ sender: Any? = nil) {
         panel?.orderOut(nil)
     }
 
@@ -516,6 +520,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             currentHeight = max(PanelLayoutMetrics.minimumWindowHeight, liveHeight)
         }
         overlayOverrideHeight = height ?? 0
+        let minHeight = overlayOverrideHeight > 0
+            ? overlayOverrideHeight
+            : PanelLayoutMetrics.minimizedWindowHeight
+        p.minSize = NSSize(width: PanelLayoutMetrics.minimizedWindowMinimumWidth, height: minHeight)
         guard !panelPresentation.isMinimized else { return }
         let target = max(currentHeight, overlayOverrideHeight)
         let clampedTarget = max(PanelLayoutMetrics.minimumWindowHeight, target)
@@ -622,6 +630,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func windowDidMove(_ notification: Notification) {
         recordCurrentFullSizeFrame()
+    }
+
+    func windowWillResize(_ sender: NSWindow, to frameSize: NSSize) -> NSSize {
+        guard overlayOverrideHeight > 0 else { return frameSize }
+        let minWindowHeight = overlayOverrideHeight + sender.frame.height - sender.contentRect(forFrameRect: sender.frame).height
+        return NSSize(width: frameSize.width, height: max(frameSize.height, minWindowHeight))
     }
 
     func windowDidResize(_ notification: Notification) {

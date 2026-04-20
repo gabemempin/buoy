@@ -44,6 +44,7 @@ struct SettingsPanel: View {
                 SettingsToggle(label: "Show in Dock", isOn: $settings.showInDock)
                     .onChange(of: settings.showInDock) { _, val in
                         NSApp.setActivationPolicy(val ? .regular : .accessory)
+                        if val { NSApp.activate(ignoringOtherApps: true) }
                         settings.save()
                     }
                 SettingsToggle(label: "Always on Top", isOn: $settings.alwaysOnTop)
