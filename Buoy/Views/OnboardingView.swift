@@ -237,10 +237,7 @@ private struct WelcomeSlide: View {
                 .offset(y: iconAppeared ? 0 : 8)
 
                 VStack(spacing: 6) {
-                    Text("Welcome to Buoy")
-                        .font(.system(size: 22, weight: .bold))
-                        .fontWidth(.expanded)
-                        .foregroundStyle(Color.accentColor)
+                    AnimatedBugTitle(title: "Welcome to Buoy", fontSize: 22)
                         .multilineTextAlignment(.center)
                     Text("A notepad that floats on top of all your windows.")
                         .font(.system(size: 14, weight: .semibold))
@@ -252,6 +249,11 @@ private struct WelcomeSlide: View {
                 .offset(y: titleAppeared ? 0 : 8)
 
                 VStack(spacing: 10) {
+                    Text("Your shortcut to invoke Buoy")
+                        .padding(.top, 8)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+
                     ZStack {
                         if isEditingShortcut {
                             ShimmeringShortcutPromptView(text: "Type your new shortcut…")

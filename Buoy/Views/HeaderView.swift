@@ -140,6 +140,7 @@ struct HeaderView: View {
 
 struct AnimatedBugTitle: View {
     let title: String
+    var fontSize: CGFloat = 19
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { timeline in
@@ -153,7 +154,7 @@ struct AnimatedBugTitle: View {
 
     private func frame(phase: CGFloat) -> some View {
         let displayTitle = title.isEmpty ? "Untitled" : title
-        let font = Font(NSFont.systemFont(ofSize: 19, weight: .semibold, width: .expanded))
+        let font = Font(NSFont.systemFont(ofSize: fontSize, weight: fontSize > 19 ? .bold : .semibold, width: .expanded))
 
         return ZStack {
             // Base layer: blue text
