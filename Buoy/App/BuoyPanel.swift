@@ -42,6 +42,15 @@ final class BuoyPanel: NSPanel {
             )
         }
 
+        // ⌘, — open Buoy's SettingsPanel (intercept before macOS routes it to an empty Settings window)
+        if modifiers == .command, event.charactersIgnoringModifiers == "," {
+            return NSApp.sendAction(
+                #selector(AppDelegate.openSettings),
+                to: NSApp.delegate,
+                from: self
+            )
+        }
+
         //Handler for Cmd+W at the panel level
         if modifiers == .command, event.charactersIgnoringModifiers?.lowercased() == "w" {
             return NSApp.sendAction(

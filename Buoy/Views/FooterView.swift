@@ -3,6 +3,7 @@ import SwiftUI
 struct FooterView: View {
     var createdAt: Int64
     var updatedAt: Int64
+    var plainText: String = ""
     var onShortcuts: () -> Void
     var onSettings: () -> Void
     var onTransferToAppleNotes: () -> Void
@@ -11,9 +12,32 @@ struct FooterView: View {
     var onSendBugReport: (() -> Void)? = nil
     var onCancelBugReport: (() -> Void)? = nil
 
+    private enum InfoMode: Int, CaseIterable {
+        case lastEdited, created, characters, words
+    }
+
     @State private var showTransfer = false
-    @State private var showCreated = true
+    @State private var infoMode: InfoMode = .lastEdited
     @State private var isCancelHovering = false
+
+    private var infoLabel: String {
+        switch infoMode {
+        case .lastEdited:  return "Last edited: \(TimestampFormatter.format(updatedAt))"
+        case .created:     return "Created: \(TimestampFormatter.format(createdAt))"
+        case .characters:  return "\(plainText.count) characters"
+        case .words:       return "\(plainText.split(whereSeparator: \.isWhitespace).count) words"
+        }
+    }
+
+    private var infoHelp: String {
+        switch infoMode {
+        case .lastEdited:  return "Tap to see creation time"
+        case .created:     return "Tap to see character count"
+        case .characters:  return "Tap to see word count"
+        case .words:       return "Tap to see last edited time"
+        }
+    }
+
     @State private var isShortcutsHovering = false
     @State private var isSettingsHovering = false
     @State private var isSendHovering = false
@@ -25,20 +49,22 @@ struct FooterView: View {
             HStack {
                 Spacer()
                 Button {
-                    withAnimation(.easeInOut(duration: 0.12)) { showCreated.toggle() }
+                    withAnimation(.easeInOut(duration: 0.12)) {
+                        let all = InfoMode.allCases
+                        let next = (infoMode.rawValue + 1) % all.count
+                        infoMode = all[next]
+                    }
                 } label: {
-                    Text(showCreated
-                         ? "Created: \(TimestampFormatter.format(createdAt))"
-                         : "Last edited: \(TimestampFormatter.format(updatedAt))")
+                    Text(infoLabel)
                         .font(.system(size: 10))
                         .foregroundStyle(.tertiary)
                 }
                 .buttonStyle(.plain)
-                .help(showCreated ? "Tap to see last edited time" : "Tap to see creation time")
+                .help(infoHelp)
             }
             .padding(.horizontal, 8)
             .padding(.bottom, 4)
-            .onChange(of: createdAt) { _, _ in showCreated = true }
+            .onChange(of: createdAt) { _, _ in infoMode = .lastEdited }
 
             if showTransfer && !isBugReport {
                 HStack {

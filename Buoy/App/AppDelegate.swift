@@ -541,7 +541,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     // MARK: - Menu Actions
 
-    @objc private func openSettings() {
+    @objc func openSettings() {
         showPanel()
         if panelPresentation.isMinimized {
             exitMinimizedMode()

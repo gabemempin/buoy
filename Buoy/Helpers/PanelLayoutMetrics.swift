@@ -50,7 +50,7 @@ enum PanelLayoutMetrics {
     static let minimizedPillHeight: CGFloat = 56
     static let minimizedWindowHeight: CGFloat = minimizedPillHeight + (windowPadding * 2)
     static let minimizedWindowMinimumWidth: CGFloat = 240
-    static let minimizedWindowMaximumWidth: CGFloat = 520
+    static let minimizedWindowMaximumWidth: CGFloat = minimumWindowWidth
     static let minimizedPillLeadingPadding: CGFloat = 22
     static let minimizedPillTrailingPadding: CGFloat = 12
     static let minimizedTitleButtonSpacing: CGFloat = 14

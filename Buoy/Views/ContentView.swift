@@ -148,7 +148,11 @@ struct ContentView: View {
             withAnimation { showLinkDialog = true }
         }
         .onReceive(NotificationCenter.default.publisher(for: .openSettings)) { _ in
-            withAnimation(.easeOut(duration: 0.16)) { showSettings = true }
+            withAnimation(.easeOut(duration: 0.16)) {
+                showSettings.toggle()
+                if showSettings { showAllNotes = false; showShortcuts = false }
+            }
+            if !showSettings { focusEditor() }
         }
         // Block window dragging whenever any overlay panel is open
         .onChange(of: showSettings || showShortcuts || showAllNotes) { _, panelOpen in
@@ -263,6 +267,9 @@ struct ContentView: View {
                 FooterView(
                     createdAt: noteStore.currentNote?.createdAt ?? 0,
                     updatedAt: noteStore.currentNote?.updatedAt ?? 0,
+                    plainText: noteStore.currentNote.flatMap {
+                        NSAttributedString(rtf: $0.contentRTF, documentAttributes: nil)?.string
+                    } ?? "",
                     onShortcuts: toggleShortcuts,
                     onSettings:  toggleSettings,
                     onTransferToAppleNotes: transferToAppleNotes,
