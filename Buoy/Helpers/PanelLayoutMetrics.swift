@@ -75,14 +75,17 @@ enum PanelLayoutMetrics {
         return ceil(measured.width)
     }
 
-    static func minimizedTitleLaneWidth(forWindowWidth windowWidth: CGFloat) -> CGFloat {
-        let available = windowWidth
-            - (windowPadding * 2)
+    static func minimizedTitleLaneWidth(forPillWidth pillWidth: CGFloat) -> CGFloat {
+        let available = pillWidth
             - minimizedPillLeadingPadding
             - minimizedPillTrailingPadding
             - minimizedTitleButtonSpacing
             - minimizedRestoreButtonSize
         return max(0, available)
+    }
+
+    static func minimizedTitleLaneWidth(forWindowWidth windowWidth: CGFloat) -> CGFloat {
+        minimizedTitleLaneWidth(forPillWidth: windowWidth - (windowPadding * 2))
     }
 
     static func minimizedWindowWidth(forTitle title: String) -> CGFloat {

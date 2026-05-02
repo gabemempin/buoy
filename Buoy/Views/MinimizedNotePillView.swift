@@ -8,7 +8,7 @@ struct MinimizedNotePillView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let laneWidth = PanelLayoutMetrics.minimizedTitleLaneWidth(forWindowWidth: proxy.size.width)
+            let laneWidth = PanelLayoutMetrics.minimizedTitleLaneWidth(forPillWidth: proxy.size.width)
 
             HStack(spacing: PanelLayoutMetrics.minimizedTitleButtonSpacing) {
                 MinimizedTitleLane(title: title, theme: theme, availableWidth: laneWidth)

@@ -83,16 +83,13 @@ struct ContentView: View {
 
     var body: some View {
         ZStack {
-            fullPanelContent
-                .opacity(panelPresentation.isMinimized ? 0 : 1)
-                .allowsHitTesting(!panelPresentation.isMinimized)
-                .accessibilityHidden(panelPresentation.isMinimized)
-
-            minimizedPanelContent
-                .opacity(panelPresentation.isMinimized ? 1 : 0)
-                .scaleEffect(panelPresentation.isMinimized ? 1 : 0.96)
-                .allowsHitTesting(panelPresentation.isMinimized)
-                .accessibilityHidden(!panelPresentation.isMinimized)
+            if panelPresentation.isMinimized {
+                minimizedPanelContent
+                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
+            } else {
+                fullPanelContent
+                    .transition(.opacity)
+            }
         }
         .animation(.easeInOut(duration: PanelLayoutMetrics.minimizedTransitionDuration), value: panelPresentation.isMinimized)
         // Auto-focus the editor when the panel becomes key (fixes macOS 15 where
@@ -195,9 +192,8 @@ struct ContentView: View {
         minimizedContent
             .padding(PanelLayoutMetrics.windowPadding)
             .frame(
-                minWidth: PanelLayoutMetrics.minimizedWindowMinimumWidth,
-                minHeight: PanelLayoutMetrics.minimizedWindowHeight,
-                maxHeight: PanelLayoutMetrics.minimizedWindowHeight
+                width: panelPresentation.minimizedContentWidth,
+                height: PanelLayoutMetrics.minimizedWindowHeight
             )
             .background(WindowDragBlocker())
     }
