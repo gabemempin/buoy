@@ -31,10 +31,21 @@ final class BuoyPanel: NSPanel {
         let modifiers = event.modifierFlags
             .intersection(.deviceIndependentFlagsMask)
             .subtracting([.numericPad, .function, .help, .capsLock])
+        let commandCharacter = event.charactersIgnoringModifiers?.lowercased()
+
+        if modifiers == .command, commandCharacter == "n" {
+            NotificationCenter.default.post(name: .buoyNewNote, object: nil)
+            return true
+        }
+
+        if modifiers == .command, event.keyCode == 51 {
+            NotificationCenter.default.post(name: .buoyDeleteNote, object: nil)
+            return true
+        }
 
         // Non-activating panels do not reliably participate in the normal Window
         // menu key-equivalent routing, so handle ⌘M at the panel level.
-        if modifiers == .command, event.charactersIgnoringModifiers?.lowercased() == "m" {
+        if modifiers == .command, commandCharacter == "m" {
             return NSApp.sendAction(
                 #selector(AppDelegate.toggleMinimizedMode(_:)),
                 to: NSApp.delegate,
@@ -52,7 +63,7 @@ final class BuoyPanel: NSPanel {
         }
 
         //Handler for Cmd+W at the panel level
-        if modifiers == .command, event.charactersIgnoringModifiers?.lowercased() == "w" {
+        if modifiers == .command, commandCharacter == "w" {
             return NSApp.sendAction(
                 #selector(AppDelegate.hidePanel(_:)),
                 to: NSApp.delegate,
@@ -88,7 +99,6 @@ final class BuoyPanel: NSPanel {
         // responder (e.g. the field editor for a SwiftUI TextField). Route them
         // explicitly here.
         guard let fr = firstResponder else { return false }
-        let ch = event.charactersIgnoringModifiers?.lowercased() ?? ""
 
         if modifiers == [.command, .shift], event.keyCode == 6 /* Z */ {
             fr.tryToPerform(Selector(("redo:")), with: nil)
@@ -96,7 +106,7 @@ final class BuoyPanel: NSPanel {
         }
 
         guard modifiers == .command else { return false }
-        let action: Selector? = switch ch {
+        let action: Selector? = switch commandCharacter ?? "" {
         case "c": #selector(NSText.copy(_:))
         case "v": #selector(NSText.paste(_:))
         case "x": #selector(NSText.cut(_:))
