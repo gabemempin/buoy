@@ -76,28 +76,79 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         )
     }
 
+    private func frame(
+        forContentSize contentSize: NSSize,
+        preservingBottomOf currentFrame: NSRect,
+        in panel: NSPanel
+    ) -> NSRect {
+        var f = panel.frameRect(forContentRect: NSRect(origin: currentFrame.origin, size: contentSize))
+        f.origin.x = currentFrame.origin.x
+        f.origin.y = currentFrame.origin.y
+        return f
+    }
+
+    private func bottomCenteredFrame(
+        forContentSize contentSize: NSSize,
+        around currentFrame: NSRect,
+        in panel: NSPanel
+    ) -> NSRect {
+        let targetFrame = panel.frameRect(
+            forContentRect: NSRect(origin: .zero, size: contentSize)
+        )
+        return NSRect(
+            x: currentFrame.midX - targetFrame.width / 2,
+            y: currentFrame.minY,
+            width: targetFrame.width,
+            height: targetFrame.height
+        )
+    }
+
+    private func clampedToVisibleFrame(_ frame: NSRect, in panel: NSPanel) -> NSRect {
+        let screen = panel.screen
+            ?? NSScreen.screens.first { $0.frame.intersects(frame) }
+            ?? NSScreen.main
+        guard let visible = screen?.visibleFrame else { return frame }
+        var f = frame
+        f.size.width  = min(f.size.width,  visible.width)
+        f.size.height = min(f.size.height, visible.height)
+        if f.maxX > visible.maxX { f.origin.x = visible.maxX - f.width }
+        if f.minX < visible.minX { f.origin.x = visible.minX }
+        if f.maxY > visible.maxY { f.origin.y = visible.maxY - f.height }
+        if f.minY < visible.minY { f.origin.y = visible.minY }
+        return f
+    }
+
+    /// Returns a frame for `contentSize` grown from `currentFrame`, choosing an anchor
+    /// that keeps the result on-screen. Prefers top-anchored (downward growth); switches
+    /// to bottom-anchored (upward growth) if the bottom would clip below the visible area.
+    /// Always applies `clampedToVisibleFrame` as a final safety net.
+    private func resizedFrame(
+        contentSize: NSSize,
+        currentFrame: NSRect,
+        in panel: NSPanel,
+        centerHorizontally: Bool
+    ) -> NSRect {
+        let topAnchored = centerHorizontally
+            ? topCenteredFrame(forContentSize: contentSize, around: currentFrame, in: panel)
+            : frame(forContentSize: contentSize, preservingTopOf: currentFrame, in: panel)
+        let visibleMinY = (panel.screen ?? NSScreen.main)?.visibleFrame.minY
+        let needsBottomAnchor = visibleMinY.map { topAnchored.minY < $0 } ?? false
+        let chosen = needsBottomAnchor
+            ? (centerHorizontally
+                ? bottomCenteredFrame(forContentSize: contentSize, around: currentFrame, in: panel)
+                : frame(forContentSize: contentSize, preservingBottomOf: currentFrame, in: panel))
+            : topAnchored
+        return clampedToVisibleFrame(chosen, in: panel)
+    }
+
     private func minimizedContentWidth() -> CGFloat {
         PanelLayoutMetrics.minimizedWindowWidth(forTitle: noteStore.currentNote?.title ?? "")
     }
 
     private func restoredFullSizeFrame(around currentFrame: NSRect, in panel: NSPanel) -> NSRect {
-        if let lastFullSizeFrame {
-            let restoredContentSize = panel.contentRect(forFrameRect: lastFullSizeFrame).size
-            return topCenteredFrame(
-                forContentSize: restoredContentSize,
-                around: currentFrame,
-                in: panel
-            )
-        }
-
-        return topCenteredFrame(
-            forContentSize: NSSize(
-                width: PanelLayoutMetrics.minimumWindowWidth,
-                height: currentHeight
-            ),
-            around: currentFrame,
-            in: panel
-        )
+        let contentSize = lastFullSizeFrame.map { panel.contentRect(forFrameRect: $0).size }
+            ?? NSSize(width: PanelLayoutMetrics.minimumWindowWidth, height: currentHeight)
+        return resizedFrame(contentSize: contentSize, currentFrame: currentFrame, in: panel, centerHorizontally: true)
     }
 
     private func recordCurrentFullSizeFrame() {
@@ -301,6 +352,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             }
         }
         p.allowsKeyFocus = true
+        p.setFrame(clampedToVisibleFrame(p.frame, in: p), display: false)
         p.makeKeyAndOrderFront(nil)
     }
 
@@ -472,10 +524,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         guard abs(liveHeight - effectiveTarget) > 0.5 else { return }
         let currentFrame = p.frame
         let currentContentWidth = panelContentSize(p).width
-        let targetFrame = frame(
-            forContentSize: NSSize(width: currentContentWidth, height: effectiveTarget),
-            preservingTopOf: currentFrame,
-            in: p
+        let targetFrame = resizedFrame(
+            contentSize: NSSize(width: currentContentWidth, height: effectiveTarget),
+            currentFrame: currentFrame,
+            in: p,
+            centerHorizontally: false
         )
         animatePanel(to: targetFrame, duration: duration, timingName: timingName)
         if overlayOverrideHeight == 0 {
@@ -500,10 +553,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let effectiveTarget = max(target, overlayOverrideHeight)
         guard abs(liveHeight - effectiveTarget) > 0.5 else { return }
 
-        let targetFrame = frame(
-            forContentSize: NSSize(width: panelContentSize(p).width, height: effectiveTarget),
-            preservingTopOf: p.frame,
-            in: p
+        let targetFrame = resizedFrame(
+            contentSize: NSSize(width: panelContentSize(p).width, height: effectiveTarget),
+            currentFrame: p.frame,
+            in: p,
+            centerHorizontally: false
         )
         animatePanel(to: targetFrame, duration: 0.28, timingName: .easeInEaseOut)
         if overlayOverrideHeight == 0 {
@@ -528,10 +582,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let target = max(currentHeight, overlayOverrideHeight)
         let clampedTarget = max(PanelLayoutMetrics.minimumWindowHeight, target)
         guard abs(liveHeight - clampedTarget) > 0.5 else { return }
-        let targetFrame = frame(
-            forContentSize: NSSize(width: panelContentSize(p).width, height: clampedTarget),
-            preservingTopOf: p.frame,
-            in: p
+        let targetFrame = resizedFrame(
+            contentSize: NSSize(width: panelContentSize(p).width, height: clampedTarget),
+            currentFrame: p.frame,
+            in: p,
+            centerHorizontally: false
         )
         animatePanel(to: targetFrame, duration: 0.25, timingName: .easeInEaseOut)
         if overlayOverrideHeight == 0 {

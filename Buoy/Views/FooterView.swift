@@ -129,9 +129,9 @@ struct FooterView: View {
                 if isBugReport {
                     Button(action: { onSendBugReport?() }) {
                         HStack(spacing: 4) {
-                            Image(systemName: "envelope")
+                            Image(systemName: "arrowshape.turn.up.right")
                                 .font(.system(size: 11))
-                            Text("Send to Mail")
+                            Text("Send Report")
                                 .font(.system(size: 11, weight: .medium))
                         }
                         .foregroundStyle(.white)
@@ -140,7 +140,7 @@ struct FooterView: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .help("Send bug report via Mail")
+                    .help("Send bug report via browser")
                     .buoyAccentCapsule(color: .blue, isHovering: isSendHovering)
                     .onHover { isSendHovering = $0 }
                 } else {

@@ -564,35 +564,11 @@ struct ContentView: View {
         bugReportNoteID = nil
         noteStore.deleteNote(note)
 
-        guard let mailURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Mail") else {
-            toastState.show("Mail.app not found on this Mac", isError: true)
-            return
+        var components = URLComponents(string: "https://tally.so/r/J98A7K")!
+        components.queryItems = [URLQueryItem(name: "report", value: text)]
+        if let url = components.url {
+            NSWorkspace.shared.open(url)
         }
-        let config = NSWorkspace.OpenConfiguration()
-        config.activates = true
-        NSWorkspace.shared.openApplication(at: mailURL, configuration: config) { _, error in
-            guard error == nil else { return }
-            DispatchQueue.global(qos: .userInitiated).async {
-                let bodyExpr = Self.buildMailASString(text)
-                let source = """
-tell application "Mail"
-    set newMsg to make new outgoing message with properties {subject:"[Buoy Beta] Bug Report", content:\(bodyExpr), visible:true}
-    tell newMsg
-        make new to recipient at end of to recipients with properties {address:"gmempin@icloud.com"}
-    end tell
-end tell
-"""
-                var errorDict: NSDictionary?
-                NSAppleScript(source: source)?.executeAndReturnError(&errorDict)
-            }
-        }
-    }
-
-    private static func buildMailASString(_ text: String) -> String {
-        if text.isEmpty { return "\"\"" }
-        return text.components(separatedBy: "\n").map { line in
-            line.components(separatedBy: "\"").map { "\"\($0)\"" }.joined(separator: " & quote & ")
-        }.joined(separator: " & return & ")
     }
 
     private func transferToAppleNotes() {
