@@ -82,28 +82,17 @@ struct ContentView: View {
     }
 
     var body: some View {
-        Group {
-            if panelPresentation.isMinimized {
-                minimizedContent
-                    .padding(PanelLayoutMetrics.windowPadding)
-                    .frame(
-                        minWidth: PanelLayoutMetrics.minimizedWindowMinimumWidth,
-                        minHeight: PanelLayoutMetrics.minimizedWindowHeight,
-                        maxHeight: PanelLayoutMetrics.minimizedWindowHeight
-                    )
-                    .background(WindowDragBlocker())
-                    .transition(.scale(scale: 0.92).combined(with: .opacity))
-            } else {
-                fullContent
-                    .padding(PanelLayoutMetrics.windowPadding)
-                    .frame(
-                        minWidth: PanelLayoutMetrics.minimumContentWidth,
-                        minHeight: PanelLayoutMetrics.minimumWindowHeight
-                    )
-                    .background(WindowDragBlocker())
-                    .buoyGlass()
-                    .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
-            }
+        ZStack {
+            fullPanelContent
+                .opacity(panelPresentation.isMinimized ? 0 : 1)
+                .allowsHitTesting(!panelPresentation.isMinimized)
+                .accessibilityHidden(panelPresentation.isMinimized)
+
+            minimizedPanelContent
+                .opacity(panelPresentation.isMinimized ? 1 : 0)
+                .scaleEffect(panelPresentation.isMinimized ? 1 : 0.96)
+                .allowsHitTesting(panelPresentation.isMinimized)
+                .accessibilityHidden(!panelPresentation.isMinimized)
         }
         .animation(.easeInOut(duration: PanelLayoutMetrics.minimizedTransitionDuration), value: panelPresentation.isMinimized)
         // Auto-focus the editor when the panel becomes key (fixes macOS 15 where
@@ -163,6 +152,11 @@ struct ContentView: View {
         .onChange(of: panelPresentation.isMinimized) { _, isMinimized in
             if isMinimized {
                 dismissTransientUI()
+            } else {
+                DispatchQueue.main.asyncAfter(deadline: .now() + PanelLayoutMetrics.minimizedFrameAnimationDuration) {
+                    guard !panelPresentation.isMinimized else { return }
+                    focusEditor()
+                }
             }
         }
         .onChange(of: displayTitle) { _, _ in
@@ -184,6 +178,28 @@ struct ContentView: View {
             onMinimizedWidthChange?(minimizedWidth)
             if showOnboarding { onOverrideHeight?(PanelLayoutMetrics.onboardingOverrideHeight) }
         }
+    }
+
+    private var fullPanelContent: some View {
+        fullContent
+            .padding(PanelLayoutMetrics.windowPadding)
+            .frame(
+                minWidth: PanelLayoutMetrics.minimumContentWidth,
+                minHeight: PanelLayoutMetrics.minimumWindowHeight
+            )
+            .background(WindowDragBlocker())
+            .buoyGlass()
+    }
+
+    private var minimizedPanelContent: some View {
+        minimizedContent
+            .padding(PanelLayoutMetrics.windowPadding)
+            .frame(
+                minWidth: PanelLayoutMetrics.minimizedWindowMinimumWidth,
+                minHeight: PanelLayoutMetrics.minimizedWindowHeight,
+                maxHeight: PanelLayoutMetrics.minimizedWindowHeight
+            )
+            .background(WindowDragBlocker())
     }
 
     private var fullContent: some View {

@@ -22,6 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var hasPositioned = false
     private var lastFullSizeFrame: NSRect?
     private var isMinimizeAnimating = false
+    private var minimizeAnimationGeneration = 0
 
     private func panelContentHeight(_ panel: NSPanel) -> CGFloat {
         panel.contentRect(forFrameRect: panel.frame).height
@@ -145,28 +146,68 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         PanelLayoutMetrics.minimizedWindowWidth(forTitle: noteStore.currentNote?.title ?? "")
     }
 
+    private func shouldUseBottomMinimizedAnchor(for frame: NSRect, in panel: NSPanel) -> Bool {
+        guard let visibleFrame = (panel.screen ?? NSScreen.main)?.visibleFrame else { return false }
+        let lowerBandMaxY = visibleFrame.minY + visibleFrame.height * 0.35
+        return frame.midY < lowerBandMaxY
+    }
+
     private func restoredFullSizeFrame(around currentFrame: NSRect, in panel: NSPanel) -> NSRect {
-        let contentSize = lastFullSizeFrame.map { panel.contentRect(forFrameRect: $0).size }
+        let contentSize = lastFullSizeFrame
+            .flatMap { restorableFullContentSize(fromFrame: $0, in: panel) }
             ?? NSSize(width: PanelLayoutMetrics.minimumWindowWidth, height: currentHeight)
         return resizedFrame(contentSize: contentSize, currentFrame: currentFrame, in: panel, centerHorizontally: true)
     }
 
     private func recordCurrentFullSizeFrame() {
-        guard let p = panel, !panelPresentation.isMinimized, overlayOverrideHeight == 0 else { return }
+        guard let p = panel,
+              !panelPresentation.isMinimized,
+              !isMinimizeAnimating,
+              overlayOverrideHeight == 0,
+              restorableFullContentSize(fromFrame: p.frame, in: p) != nil
+        else { return }
         lastFullSizeFrame = p.frame
+    }
+
+    private func restorableFullContentSize(fromFrame frame: NSRect, in panel: NSPanel) -> NSSize? {
+        let contentSize = panel.contentRect(forFrameRect: frame).size
+        guard contentSize.width >= PanelLayoutMetrics.minimumWindowWidth - 0.5,
+              contentSize.height >= PanelLayoutMetrics.minimumWindowHeight - 0.5
+        else { return nil }
+        return contentSize
+    }
+
+    private func beginMinimizeAnimation() -> Int {
+        minimizeAnimationGeneration += 1
+        isMinimizeAnimating = true
+        return minimizeAnimationGeneration
+    }
+
+    private func finishMinimizeAnimation(generation: Int, restoredFrame: NSRect? = nil) {
+        guard minimizeAnimationGeneration == generation else { return }
+        isMinimizeAnimating = false
+        if let restoredFrame, overlayOverrideHeight == 0, !panelPresentation.isMinimized {
+            lastFullSizeFrame = restoredFrame
+        }
     }
 
     private func animatePanel(
         to frame: NSRect,
         duration: TimeInterval,
-        timingName: CAMediaTimingFunctionName
+        timingName: CAMediaTimingFunctionName,
+        completion: (() -> Void)? = nil
     ) {
-        guard let p = panel else { return }
-        NSAnimationContext.runAnimationGroup { ctx in
+        guard let p = panel else {
+            completion?()
+            return
+        }
+        NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = duration
             ctx.timingFunction = CAMediaTimingFunction(name: timingName)
             p.animator().setFrame(frame, display: true)
-        }
+        }, completionHandler: {
+            completion?()
+        })
     }
 
     // MARK: - App Launch
@@ -432,44 +473,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func enterMinimizedMode() {
         guard let p = panel, !panelPresentation.isMinimized else { return }
+        let wasMinimizeAnimating = isMinimizeAnimating
+        let generation = beginMinimizeAnimation()
 
         // Only capture the full-size frame when no minimize transition is in flight.
         // If a restore animation is mid-way, p.frame is an intermediate value and
         // would corrupt lastFullSizeFrame, causing the panel to restore as a square.
-        if overlayOverrideHeight == 0 && !isMinimizeAnimating {
+        if overlayOverrideHeight == 0,
+           !wasMinimizeAnimating,
+           restorableFullContentSize(fromFrame: p.frame, in: p) != nil {
             lastFullSizeFrame = p.frame
         }
+        p.endEditing(for: nil)
+        p.makeFirstResponder(nil)
 
         panelPresentation.minimizedContentWidth = minimizedContentWidth()
-        let targetFrame = topCenteredFrame(
-            forContentSize: NSSize(
-                width: panelPresentation.minimizedContentWidth,
-                height: PanelLayoutMetrics.minimizedWindowHeight
-            ),
-            around: p.frame,
-            in: p
+        let pillSize = NSSize(
+            width: panelPresentation.minimizedContentWidth,
+            height: PanelLayoutMetrics.minimizedWindowHeight
         )
+        let targetFrame = shouldUseBottomMinimizedAnchor(for: p.frame, in: p)
+            ? bottomCenteredFrame(forContentSize: pillSize, around: p.frame, in: p)
+            : topCenteredFrame(forContentSize: pillSize, around: p.frame, in: p)
 
         withAnimation(.easeInOut(duration: PanelLayoutMetrics.minimizedTransitionDuration)) {
             panelPresentation.isMinimized = true
         }
         refreshMinimizeMenuItem()
-        isMinimizeAnimating = true
         animatePanel(
             to: targetFrame,
             duration: PanelLayoutMetrics.minimizedFrameAnimationDuration,
             timingName: .easeInEaseOut
-        )
-        DispatchQueue.main.asyncAfter(
-            deadline: .now() + PanelLayoutMetrics.minimizedFrameAnimationDuration + 0.05
         ) { [weak self] in
-            self?.isMinimizeAnimating = false
+            self?.finishMinimizeAnimation(generation: generation)
         }
     }
 
     private func exitMinimizedMode() {
         guard panelPresentation.isMinimized else { return }
         guard let p = panel else { return }
+        let generation = beginMinimizeAnimation()
 
         let targetFrame = restoredFullSizeFrame(around: p.frame, in: p)
 
@@ -477,16 +520,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             panelPresentation.isMinimized = false
         }
         refreshMinimizeMenuItem()
-        isMinimizeAnimating = true
         animatePanel(
             to: targetFrame,
             duration: PanelLayoutMetrics.minimizedFrameAnimationDuration,
             timingName: .easeInEaseOut
-        )
-        DispatchQueue.main.asyncAfter(
-            deadline: .now() + PanelLayoutMetrics.minimizedFrameAnimationDuration + 0.05
         ) { [weak self] in
-            self?.isMinimizeAnimating = false
+            self?.finishMinimizeAnimation(generation: generation, restoredFrame: targetFrame)
         }
     }
 
@@ -494,14 +533,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         panelPresentation.minimizedContentWidth = width
         guard panelPresentation.isMinimized, let p = panel else { return }
 
-        let targetFrame = topCenteredFrame(
-            forContentSize: NSSize(
-                width: width,
-                height: PanelLayoutMetrics.minimizedWindowHeight
-            ),
-            around: p.frame,
-            in: p
-        )
+        let pillSize = NSSize(width: width, height: PanelLayoutMetrics.minimizedWindowHeight)
+        let targetFrame = shouldUseBottomMinimizedAnchor(for: p.frame, in: p)
+            ? bottomCenteredFrame(forContentSize: pillSize, around: p.frame, in: p)
+            : topCenteredFrame(forContentSize: pillSize, around: p.frame, in: p)
         animatePanel(to: targetFrame, duration: 0.18, timingName: .easeInEaseOut)
     }
 
@@ -512,7 +547,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         timingName: CAMediaTimingFunctionName = .easeOut
     ) {
         guard let p = panel else { return }
-        guard !panelPresentation.isMinimized else { return }
+        guard !panelPresentation.isMinimized, !isMinimizeAnimating else { return }
         let liveHeight = panelContentHeight(p)
         if overlayOverrideHeight == 0 {
             currentHeight = max(PanelLayoutMetrics.minimumWindowHeight, liveHeight)
@@ -538,7 +573,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func animateNoteSwitchHeight(_ newHeight: CGFloat) {
         guard let p = panel else { return }
-        guard !panelPresentation.isMinimized else { return }
+        guard !panelPresentation.isMinimized, !isMinimizeAnimating else { return }
         let liveHeight = panelContentHeight(p)
         if overlayOverrideHeight == 0 {
             currentHeight = max(PanelLayoutMetrics.minimumWindowHeight, liveHeight)
