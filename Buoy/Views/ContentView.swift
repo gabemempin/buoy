@@ -48,6 +48,9 @@ struct ContentView: View {
 
     // Cursor position captured before link dialog opens (avoids stale selection overwriting it)
     @State private var savedInsertionPoint: NSRange = NSRange(location: 0, length: 0)
+
+    // Tracks the editor's current selection for the footer word/char count
+    @State private var editorSelectedText: String = ""
     @State private var showOnboarding: Bool
     @State private var showMainContent: Bool
 
@@ -255,6 +258,9 @@ struct ContentView: View {
                                 onNoteSwitchHeight?(h + 160)
                             }
                         },
+                        onSelectionChange: { text in
+                            editorSelectedText = text
+                        },
                         onContentChange: { rtf in
                             noteStore.saveContent(rtf)
                         },
@@ -282,6 +288,7 @@ struct ContentView: View {
                     plainText: noteStore.currentNote.flatMap {
                         NSAttributedString(rtf: $0.contentRTF, documentAttributes: nil)?.string
                     } ?? "",
+                    selectedText: editorSelectedText,
                     onShortcuts: toggleShortcuts,
                     onSettings:  toggleSettings,
                     onTransferToAppleNotes: transferToAppleNotes,
@@ -290,6 +297,9 @@ struct ContentView: View {
                     onSendBugReport: sendBugReport,
                     onCancelBugReport: cancelBugReport
                 )
+                .onChange(of: noteStore.currentNote?.id) { _, _ in
+                    editorSelectedText = ""
+                }
             }
             .opacity(showMainContent ? 1 : 0)
 

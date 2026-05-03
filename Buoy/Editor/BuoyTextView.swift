@@ -1088,6 +1088,34 @@ final class BuoyTextView: NSTextView {
 
     // MARK: - Plain text export
 
+    func selectedPlainText(for range: NSRange) -> String {
+        guard let storage = textStorage, range.length > 0,
+              NSMaxRange(range) <= storage.length else { return "" }
+        let nsString = storage.string as NSString
+        var result = ""
+        var location = range.location
+        let end = NSMaxRange(range)
+
+        while location < end {
+            var effectiveRange = NSRange(location: 0, length: 0)
+            let attrs = storage.attributes(at: location, effectiveRange: &effectiveRange)
+            let clampedEnd = min(NSMaxRange(effectiveRange), end)
+
+            if let todo = attrs[.attachment] as? TodoAttachment {
+                result += todo.isChecked ? "☑" : "☐"
+                location = NSMaxRange(effectiveRange)
+                if location < end, nsString.character(at: location) == 32 {
+                    location += 1
+                }
+            } else {
+                let clampedStart = max(effectiveRange.location, location)
+                result += nsString.substring(with: NSRange(location: clampedStart, length: clampedEnd - clampedStart))
+                location = clampedEnd
+            }
+        }
+        return result
+    }
+
     func plainTextContent() -> String {
         guard let storage = textStorage else { return string }
         let nsString = storage.string as NSString

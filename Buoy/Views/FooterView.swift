@@ -4,6 +4,7 @@ struct FooterView: View {
     var createdAt: Int64
     var updatedAt: Int64
     var plainText: String = ""
+    var selectedText: String = ""
     var onShortcuts: () -> Void
     var onSettings: () -> Void
     var onTransferToAppleNotes: () -> Void
@@ -24,8 +25,18 @@ struct FooterView: View {
         switch infoMode {
         case .lastEdited:  return "Last edited: \(TimestampFormatter.format(updatedAt))"
         case .created:     return "Created: \(TimestampFormatter.format(createdAt))"
-        case .characters:  return "\(plainText.count) characters"
-        case .words:       return "\(plainText.split(whereSeparator: \.isWhitespace).count) words"
+        case .characters:
+            if selectedText.isEmpty {
+                return "\(plainText.count) characters"
+            } else {
+                return "\(selectedText.count) of \(plainText.count) characters"
+            }
+        case .words:
+            if selectedText.isEmpty {
+                return "\(plainText.split(whereSeparator: \.isWhitespace).count) words"
+            } else {
+                return "\(selectedText.split(whereSeparator: \.isWhitespace).count) of \(plainText.split(whereSeparator: \.isWhitespace).count) words"
+            }
         }
     }
 

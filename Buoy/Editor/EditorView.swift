@@ -87,7 +87,7 @@ struct EditorView: NSViewRepresentable {
     var placeholder: String = "Start typing… (⌘← ⌘→ to navigate notes)"
     var onHeightChange: ((CGFloat) -> Void)?
     var onNoteSwitch: ((CGFloat) -> Void)?
-    var onSelectionChange: ((NSRange) -> Void)?
+    var onSelectionChange: ((String) -> Void)?
     var onContentChange: ((Data) -> Void)?
     var textViewRef: ((BuoyTextView) -> Void)?
 
@@ -208,7 +208,7 @@ extension TextViewCoordinator: BuoyTextViewDelegate {
     }
 
     func textViewSelectionDidChange(_ textView: BuoyTextView) {
-        onSelectionChange?(textView.selectedRange())
+        onSelectionChange?(textView.selectedPlainText(for: textView.selectedRange()))
     }
 
     func textViewRequestShowLinkDialog(selectedText: String) {

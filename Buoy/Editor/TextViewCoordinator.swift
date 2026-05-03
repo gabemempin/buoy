@@ -2,7 +2,7 @@ import AppKit
 
 final class TextViewCoordinator: NSObject, NSTextViewDelegate {
     var onHeightChange: ((CGFloat) -> Void)?
-    var onSelectionChange: ((NSRange) -> Void)?
+    var onSelectionChange: ((String) -> Void)?
     var onContentChange: ((Data) -> Void)?
     var currentNoteID: String?
     private(set) var isLoadingContent = false
@@ -25,7 +25,7 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
 
     func textViewDidChangeSelection(_ notification: Notification) {
         guard let tv = notification.object as? BuoyTextView else { return }
-        onSelectionChange?(tv.selectedRange())
+        onSelectionChange?(tv.selectedPlainText(for: tv.selectedRange()))
     }
 
     func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
