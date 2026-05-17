@@ -218,6 +218,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             NSApp.setActivationPolicy(showInDock ? .regular : .accessory)
             if showInDock { NSApp.activate(ignoringOtherApps: true) }
         }
+        noteStore.restoreSelection(noteID: settingsStore.value.lastSelectedNoteID)
         setupPanel()
         installOutsideClickMonitor()
         applyTheme(settingsStore.value.theme)

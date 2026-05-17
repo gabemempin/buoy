@@ -162,6 +162,9 @@ struct ContentView: View {
         .onChange(of: displayTitle) { _, _ in
             onMinimizedWidthChange?(minimizedWidth)
         }
+        .onChange(of: noteStore.currentNote?.id) { _, noteID in
+            persistCurrentNoteSelection(noteID)
+        }
         // Re-measure height when font size changes
         .onChange(of: settings.fontSize) { _, _ in
             guard !panelPresentation.isMinimized else { return }
@@ -175,6 +178,7 @@ struct ContentView: View {
         }
         .onAppear {
             showOnboarding = !settings.onboarded
+            persistCurrentNoteSelection(noteStore.currentNote?.id)
             onMinimizedWidthChange?(minimizedWidth)
             if showOnboarding { onOverrideHeight?(PanelLayoutMetrics.onboardingOverrideHeight) }
         }
@@ -461,6 +465,11 @@ struct ContentView: View {
         noteStore.createNote()
         // Signal HeaderView to focus + select the title field
         focusTitleTrigger.toggle()
+    }
+
+    private func persistCurrentNoteSelection(_ noteID: String?) {
+        guard settings.lastSelectedNoteID != noteID else { return }
+        settings.lastSelectedNoteID = noteID
     }
 
     private func dismissTransientUI() {

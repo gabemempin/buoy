@@ -92,6 +92,13 @@ final class NoteStore {
         })
     }
 
+    func restoreSelection(noteID: String?) {
+        guard let noteID,
+              let note = notes.first(where: { $0.id == noteID })
+        else { return }
+        switchNote(to: note)
+    }
+
     func createNote() {
         guard let db else { return }
         let count = notes.count
@@ -113,15 +120,16 @@ final class NoteStore {
     func deleteNote(_ note: Note) {
         guard notes.count > 1 else { return }
         guard let db else { return }
+        let deletedID = note.id
+        let deletedIndex = notes.firstIndex { $0.id == deletedID }
+        let wasDeletingCurrent = currentNote?.id == deletedID
         _ = try? db.write { db in
             try Note.deleteOne(db, key: note.id)
         }
-        let deletedID = note.id
         loadNoteList()
-        if currentNote?.id == deletedID {
-            if let first = notes.first {
-                switchNote(to: first)
-            }
+        if wasDeletingCurrent, !notes.isEmpty {
+            let fallbackIndex = deletedIndex.map { min($0, notes.count - 1) } ?? 0
+            switchNote(to: notes[fallbackIndex])
         }
     }
 

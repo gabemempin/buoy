@@ -33,6 +33,7 @@ struct SettingsPanel: View {
                         .background(Circle().fill(Color.primary.opacity(0.08)))
                 }
                 .buttonStyle(.plain)
+                .pointingHandCursor()
             }
             .padding(.horizontal, 10)
             .padding(.top, 14)
@@ -111,6 +112,7 @@ struct SettingsPanel: View {
                     .buttonStyle(.plain)
                     .foregroundStyle(reportBugForegroundColor)
                     .onHover { isReportBugHovering = $0 }
+                    .pointingHandCursor()
 
                     Button { checkForUpdates() } label: {
                         Group {
@@ -124,6 +126,7 @@ struct SettingsPanel: View {
                     }
                     .buttonStyle(.plain)
                     .onHover { isCheckUpdatesHovering = $0 }
+                    .pointingHandCursor()
 
                     Button("Quit Buoy") { onQuit() }
                         .font(.system(size: 12))
@@ -133,6 +136,7 @@ struct SettingsPanel: View {
                         .foregroundStyle(.red)
                         .buttonStyle(.plain)
                         .onHover { isQuitHovering = $0 }
+                        .pointingHandCursor()
                 }
                 .padding(.horizontal, 10)
                 .padding(.bottom, 10)
@@ -234,6 +238,7 @@ private struct ThemeSegmentedPicker: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(selection == theme ? Color.primary : Color.secondary)
+                .pointingHandCursor()
             }
         }
         .padding(3)
@@ -248,7 +253,33 @@ private enum BuoySettingsActionRole {
     case destructive
 }
 
+private struct PointingHandCursorModifier: ViewModifier {
+    @State private var isHovering = false
+
+    func body(content: Content) -> some View {
+        content
+            .onHover { hovering in
+                if hovering {
+                    NSCursor.pointingHand.push()
+                } else if isHovering {
+                    NSCursor.pop()
+                }
+                isHovering = hovering
+            }
+            .onDisappear {
+                if isHovering {
+                    NSCursor.pop()
+                    isHovering = false
+                }
+            }
+    }
+}
+
 private extension View {
+    func pointingHandCursor() -> some View {
+        modifier(PointingHandCursorModifier())
+    }
+
     func buoySettingsActionButton(
         tint: Color,
         role: BuoySettingsActionRole,

@@ -14,6 +14,7 @@ struct AppSettings: Codable {
     var globalShortcut: String = "Option+Cmd+N"
     var onboarded: Bool = false
     var hasSeenHarborModeTip: Bool = false
+    var lastSelectedNoteID: String? = nil
 
     private static var fileURL: URL {
         let home = FileManager.default.homeDirectoryForCurrentUser
