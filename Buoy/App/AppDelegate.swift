@@ -285,6 +285,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         hosting.frame = initialRect
         hosting.wantsLayer = true
         hosting.layer?.backgroundColor = .clear
+        // Prevent SwiftUI from pushing min/max content-size constraints up to the
+        // NSPanel. We manage the panel's frame and minSize directly via animatePanel,
+        // and SwiftUI's push collides with AppKit's constraint cycle during the
+        // Harbor Mode frame animation — re-entering Harbor Mode after a restore
+        // crashes in -[NSWindow _postWindowNeedsUpdateConstraints].
+        hosting.sizingOptions = []
 
         let p = BuoyPanel(
             contentRect: initialRect,
