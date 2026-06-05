@@ -32,6 +32,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         panel.contentRect(forFrameRect: panel.frame).size
     }
 
+    private var normalPanelMinimumSize: NSSize {
+        NSSize(
+            width: PanelLayoutMetrics.minimumWindowWidth,
+            height: PanelLayoutMetrics.minimumWindowHeight
+        )
+    }
+
+    private var minimizedPanelMinimumSize: NSSize {
+        NSSize(
+            width: PanelLayoutMetrics.minimizedWindowMinimumWidth,
+            height: PanelLayoutMetrics.minimizedWindowHeight
+        )
+    }
+
+    private func applyPanelMinimumSize(forMinimizedLayout isMinimizedLayout: Bool? = nil) {
+        guard let p = panel else { return }
+        let usesMinimizedLayout = isMinimizedLayout ?? (panelPresentation.isMinimized || isMinimizeAnimating)
+        p.minSize = usesMinimizedLayout ? minimizedPanelMinimumSize : normalPanelMinimumSize
+    }
+
     private func frame(
         forContentSize contentSize: NSSize,
         preservingTopOf currentFrame: NSRect,
@@ -309,14 +329,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         p.becomesKeyOnlyIfNeeded = true
         p.isMovableByWindowBackground = false
         p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        p.minSize = NSSize(
-            width: PanelLayoutMetrics.minimizedWindowMinimumWidth,
-            height: PanelLayoutMetrics.minimizedWindowHeight
-        )
         p.delegate = self
         p.contentView = hosting
 
         panel = p
+        applyPanelMinimumSize(forMinimizedLayout: false)
         currentHeight = initialHeight
         panelPresentation.minimizedContentWidth = minimizedContentWidth()
     }
@@ -482,6 +499,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         guard let p = panel, !panelPresentation.isMinimized else { return }
         let wasMinimizeAnimating = isMinimizeAnimating
         let generation = beginMinimizeAnimation()
+        applyPanelMinimumSize(forMinimizedLayout: true)
 
         // Only capture the full-size frame when no minimize transition is in flight.
         // If a restore animation is mid-way, p.frame is an intermediate value and
@@ -541,7 +559,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 duration: PanelLayoutMetrics.minimizedFrameAnimationDuration,
                 timingName: .easeInEaseOut
             ) { [weak self] in
-                self?.finishMinimizeAnimation(generation: generation, restoredFrame: targetFrame)
+                guard let self, self.minimizeAnimationGeneration == generation else { return }
+                self.finishMinimizeAnimation(generation: generation, restoredFrame: targetFrame)
+                self.applyPanelMinimumSize(forMinimizedLayout: false)
             }
         }
     }
@@ -627,10 +647,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             currentHeight = max(PanelLayoutMetrics.minimumWindowHeight, liveHeight)
         }
         overlayOverrideHeight = height ?? 0
-        let minHeight = overlayOverrideHeight > 0
-            ? overlayOverrideHeight
-            : PanelLayoutMetrics.minimizedWindowHeight
-        p.minSize = NSSize(width: PanelLayoutMetrics.minimizedWindowMinimumWidth, height: minHeight)
+        applyPanelMinimumSize()
         guard !panelPresentation.isMinimized else { return }
         let target = max(currentHeight, overlayOverrideHeight)
         let clampedTarget = max(PanelLayoutMetrics.minimumWindowHeight, target)
@@ -741,9 +758,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func windowWillResize(_ sender: NSWindow, to frameSize: NSSize) -> NSSize {
-        guard overlayOverrideHeight > 0 else { return frameSize }
-        let minWindowHeight = overlayOverrideHeight + sender.frame.height - sender.contentRect(forFrameRect: sender.frame).height
-        return NSSize(width: frameSize.width, height: max(frameSize.height, minWindowHeight))
+        var constrainedSize = frameSize
+        constrainedSize.width = max(constrainedSize.width, sender.minSize.width)
+        constrainedSize.height = max(constrainedSize.height, sender.minSize.height)
+
+        if overlayOverrideHeight > 0 {
+            let minWindowHeight = overlayOverrideHeight + sender.frame.height - sender.contentRect(forFrameRect: sender.frame).height
+            constrainedSize.height = max(constrainedSize.height, minWindowHeight)
+        }
+
+        return constrainedSize
     }
 
     func windowDidResize(_ notification: Notification) {
