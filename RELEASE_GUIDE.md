@@ -3,11 +3,13 @@
 
 ## Releasing Guide
 
-User will do the following:
-- [ ] Bump version in Xcode: Buoy target → General → **Version**
-- [ ] Product → Archive → Distribute App → Copy App → save `.app`
+The fastest path is the **`/newupdate VERSION`** skill — Claude bumps the version, archives via `xcodebuild`, zips, releases, updates the website, and pushes. No manual Xcode steps required.
 
-Then Claude will automate the following:
+The manual breakdown, for reference:
+
+Claude does the following (no Xcode interaction needed):
+- [ ] Bump `MARKETING_VERSION` in `Buoy.xcodeproj/project.pbxproj`
+- [ ] `xcodebuild ... archive` → app at `/tmp/Buoy.xcarchive/Products/Applications/Buoy.app`
 - [ ] Zip the app:
   ```bash
   cd "/path/to/export/folder"
@@ -44,7 +46,7 @@ Then Claude will automate the following:
 
 | Risk | What to do |
 |------|------------|
-| Netlify build fails | Check `netlify.toml` and that `npm run build` succeeds locally first |
+| Cloudflare build fails | Run `npx tsc --noEmit` (and `npm run build`) locally first; check `wrangler.jsonc` / `open-next.config.ts` |
 | GitHub release URL 404s | Double-check the zip was uploaded to the right repo/tag |
 | `version.json` pushed before website is live | Users see "update available" but download fails — push app repo last |
 | Beta user gets "damaged app" error | They downloaded via browser; fix: `xattr -rd com.apple.quarantine /Applications/Buoy.app` |

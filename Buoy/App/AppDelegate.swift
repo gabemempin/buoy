@@ -499,9 +499,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             width: panelPresentation.minimizedContentWidth,
             height: PanelLayoutMetrics.minimizedWindowHeight
         )
-        let targetFrame = shouldUseBottomMinimizedAnchor(for: p.frame, in: p)
+        let anchoredFrame = shouldUseBottomMinimizedAnchor(for: p.frame, in: p)
             ? bottomCenteredFrame(forContentSize: pillSize, around: p.frame, in: p)
             : topCenteredFrame(forContentSize: pillSize, around: p.frame, in: p)
+        let targetFrame = clampedToVisibleFrame(anchoredFrame, in: p)
 
         withAnimation(.easeInOut(duration: PanelLayoutMetrics.minimizedTransitionDuration)) {
             panelPresentation.isMinimized = true
@@ -527,12 +528,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             panelPresentation.isMinimized = false
         }
         refreshMinimizeMenuItem()
-        animatePanel(
-            to: targetFrame,
-            duration: PanelLayoutMetrics.minimizedFrameAnimationDuration,
-            timingName: .easeInEaseOut
-        ) { [weak self] in
-            self?.finishMinimizeAnimation(generation: generation, restoredFrame: targetFrame)
+        // Defer the window-frame animation to the next runloop iteration so the
+        // SwiftUI content swap (pill → full editor) completes its layout pass
+        // before AppKit runs setFrame(display: true). Running both in the same
+        // iteration re-enters the window's constraint update and crashes in
+        // -[NSWindow _postWindowNeedsUpdateConstraints] when restoring from
+        // Harbor Mode (the full editor remounts NSTextView mid-resize).
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.minimizeAnimationGeneration == generation else { return }
+            self.animatePanel(
+                to: targetFrame,
+                duration: PanelLayoutMetrics.minimizedFrameAnimationDuration,
+                timingName: .easeInEaseOut
+            ) { [weak self] in
+                self?.finishMinimizeAnimation(generation: generation, restoredFrame: targetFrame)
+            }
         }
     }
 
@@ -541,9 +551,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         guard panelPresentation.isMinimized, let p = panel else { return }
 
         let pillSize = NSSize(width: width, height: PanelLayoutMetrics.minimizedWindowHeight)
-        let targetFrame = shouldUseBottomMinimizedAnchor(for: p.frame, in: p)
+        let anchoredFrame = shouldUseBottomMinimizedAnchor(for: p.frame, in: p)
             ? bottomCenteredFrame(forContentSize: pillSize, around: p.frame, in: p)
             : topCenteredFrame(forContentSize: pillSize, around: p.frame, in: p)
+        let targetFrame = clampedToVisibleFrame(anchoredFrame, in: p)
         animatePanel(to: targetFrame, duration: 0.18, timingName: .easeInEaseOut)
     }
 

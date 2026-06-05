@@ -66,9 +66,19 @@ final class DragEnablingNSView: NSView {
     override func mouseDragged(with event: NSEvent) {
         guard let window = window else { return }
         let loc = NSEvent.mouseLocation
-        window.setFrameOrigin(NSPoint(
+        var origin = NSPoint(
             x: dragStartWindowOrigin.x + loc.x - dragStartMouse.x,
             y: dragStartWindowOrigin.y + loc.y - dragStartMouse.y
-        ))
+        )
+        // Keep the panel inside the screen's visible frame so it can't be dragged
+        // up under the menu bar or off any edge into an unreachable position.
+        if let visible = (window.screen ?? NSScreen.main)?.visibleFrame {
+            let size = window.frame.size
+            let maxX = max(visible.minX, visible.maxX - size.width)
+            let maxY = max(visible.minY, visible.maxY - size.height)
+            origin.x = min(max(origin.x, visible.minX), maxX)
+            origin.y = min(max(origin.y, visible.minY), maxY)
+        }
+        window.setFrameOrigin(origin)
     }
 }
