@@ -314,7 +314,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         let p = BuoyPanel(
             contentRect: initialRect,
-            styleMask: [.borderless, .nonactivatingPanel],
+            styleMask: [.borderless, .resizable, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
@@ -758,9 +758,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func windowWillResize(_ sender: NSWindow, to frameSize: NSSize) -> NSSize {
+        // Enforce the floor against the metric constants directly rather than
+        // `sender.minSize`: because the hosting view uses `sizingOptions = []`,
+        // AppKit's Auto Layout pass recomputes the window's minSize from content
+        // (which imposes no minimum) and zeroes out the value we set in
+        // applyPanelMinimumSize, so it can't be relied on here.
+        let usesMinimizedLayout = panelPresentation.isMinimized || isMinimizeAnimating
+        let floor = usesMinimizedLayout ? minimizedPanelMinimumSize : normalPanelMinimumSize
         var constrainedSize = frameSize
-        constrainedSize.width = max(constrainedSize.width, sender.minSize.width)
-        constrainedSize.height = max(constrainedSize.height, sender.minSize.height)
+        constrainedSize.width = max(constrainedSize.width, floor.width)
+        constrainedSize.height = max(constrainedSize.height, floor.height)
 
         if overlayOverrideHeight > 0 {
             let minWindowHeight = overlayOverrideHeight + sender.frame.height - sender.contentRect(forFrameRect: sender.frame).height
