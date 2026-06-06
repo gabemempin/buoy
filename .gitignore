@@ -44,3 +44,6 @@ XCODE_SETUP.md
 *.zip
 build.log
 Buoy */
+
+# xcodebuild DerivedData (CLI archive/build output)
+build/
