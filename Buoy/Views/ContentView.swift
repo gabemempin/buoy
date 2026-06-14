@@ -91,7 +91,7 @@ struct ContentView: View {
                     .transition(.opacity.combined(with: .scale(scale: 0.96)))
             } else {
                 fullPanelContent
-                    .transition(.opacity)
+                    .transition(.scale(scale: 0.7, anchor: .center).combined(with: .opacity))
             }
         }
         .animation(.easeInOut(duration: PanelLayoutMetrics.minimizedTransitionDuration), value: panelPresentation.isMinimized)
