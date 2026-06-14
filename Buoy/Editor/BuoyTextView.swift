@@ -186,7 +186,7 @@ final class BuoyTextView: NSTextView {
         para.headIndent = indent
         para.firstLineHeadIndent = indent
 
-        let attachment = TodoAttachment(isChecked: isChecked)
+        let attachment = TodoAttachment(isChecked: isChecked, fontSize: fontSize)
         let atStr = NSMutableAttributedString(attachment: attachment)
         atStr.addAttribute(.font, value: NSFont.systemFont(ofSize: fontSize),
                            range: NSRange(location: 0, length: atStr.length))
@@ -272,7 +272,13 @@ final class BuoyTextView: NSTextView {
             let newFont = NSFont(descriptor: desc, size: fontSize) ?? NSFont.systemFont(ofSize: fontSize)
             storage.addAttribute(.font, value: newFont, range: range)
         }
+        storage.enumerateAttribute(.attachment, in: fullRange) { val, _, _ in
+            (val as? TodoAttachment)?.apply(fontSize: fontSize)
+        }
         storage.endEditing()
+        // Attachment bounds changed; force a relayout so the new checkbox size takes effect.
+        layoutManager?.invalidateLayout(forCharacterRange: fullRange, actualCharacterRange: nil)
+        layoutManager?.invalidateDisplay(forCharacterRange: fullRange)
         // Defer content change to avoid modifying @Observable state during SwiftUI render
         DispatchQueue.main.async { [weak self] in
             self?.notifyChange()

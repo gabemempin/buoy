@@ -455,7 +455,7 @@ private struct FormattingSlide: View {
                 let fullString = storage.string
                 guard let markerRange = fullString.range(of: Self.todoMarker) else { return }
                 let insertLocation = NSRange(markerRange, in: fullString).location
-                let todo = TodoAttachment(isChecked: false, displaySize: CGSize(width: 15, height: 15), yOffset: -2)
+                let todo = TodoAttachment(isChecked: false, fontSize: 10)
                 let attachStr = NSAttributedString(attachment: todo)
                 storage.beginEditing()
                 storage.insert(attachStr, at: insertLocation)
