@@ -112,28 +112,8 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .buoyNewNote))         { _ in createNote() }
         .onReceive(NotificationCenter.default.publisher(for: .buoyDeleteNote))      { _ in deleteCurrentNote() }
         .onReceive(NotificationCenter.default.publisher(for: .buoyCopyToClipboard)) { _ in copyToClipboard() }
-        .onReceive(NotificationCenter.default.publisher(for: .buoyPreviousNote))    { _ in
-            let previousID = noteStore.currentNote?.id
-            noteStore.previousNote()
-            if previousID != noteStore.currentNote?.id {
-                slideDirection = noteStore.lastNavigationDirection
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                    slideID = UUID()
-                }
-            }
-            focusEditor()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .buoyNextNote))        { _ in
-            let previousID = noteStore.currentNote?.id
-            noteStore.nextNote()
-            if previousID != noteStore.currentNote?.id {
-                slideDirection = noteStore.lastNavigationDirection
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                    slideID = UUID()
-                }
-            }
-            focusEditor()
-        }
+        .onReceive(NotificationCenter.default.publisher(for: .buoyPreviousNote))    { _ in navigateNote(forward: false) }
+        .onReceive(NotificationCenter.default.publisher(for: .buoyNextNote))        { _ in navigateNote(forward: true) }
         .onReceive(NotificationCenter.default.publisher(for: .showLinkDialog)) { notif in
             guard !panelPresentation.isMinimized else { return }
             linkDialogSelectedText = notif.object as? String ?? ""
@@ -407,6 +387,8 @@ struct ContentView: View {
             .animation(.easeOut(duration: 0.16), value: showShortcuts)
             .allowsHitTesting(showSettings || showShortcuts)
 
+            UpdateBubbleOverlay(settings: $settings, isSuppressed: !canShowUpdateBubble)
+
             if showOnboarding {
                 OnboardingView(
                     settings: $settings,
@@ -479,12 +461,31 @@ struct ContentView: View {
         bugReportNoteID != nil && bugReportNoteID == noteStore.currentNote?.id
     }
 
+    /// Suppress the update bubble whenever another overlay or transient mode owns
+    /// the bottom edge, so it never stacks on top of them.
+    private var canShowUpdateBubble: Bool {
+        !showOnboarding && !showSettings && !showShortcuts && !showAllNotes
+            && !showLinkDialog && !isBugReport && pendingDeleteNote == nil
+    }
+
     // MARK: - Actions
 
     private func createNote() {
         noteStore.createNote()
         // Signal HeaderView to focus + select the title field
         focusTitleTrigger.toggle()
+    }
+
+    private func navigateNote(forward: Bool) {
+        let previousID = noteStore.currentNote?.id
+        if forward { noteStore.nextNote() } else { noteStore.previousNote() }
+        if previousID != noteStore.currentNote?.id {
+            slideDirection = noteStore.lastNavigationDirection
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                slideID = UUID()
+            }
+        }
+        focusEditor()
     }
 
     private func persistCurrentNoteSelection(_ noteID: String?) {
