@@ -33,6 +33,9 @@ struct ContentView: View {
     @State private var showLinkDialog = false
     @State private var linkDialogSelectedText = ""
 
+    // Delete confirmation
+    @State private var pendingDeleteNote: Note? = nil
+
     // Toast
     @State private var toastState = ToastState()
 
@@ -186,6 +189,8 @@ struct ContentView: View {
 
     private var fullPanelContent: some View {
         fullContent
+            .blur(radius: pendingDeleteNote != nil ? 9 : 0)
+            .animation(.easeOut(duration: 0.16), value: pendingDeleteNote != nil)
             .padding(PanelLayoutMetrics.windowPadding)
             .frame(
                 minWidth: PanelLayoutMetrics.minimumContentWidth,
@@ -193,6 +198,27 @@ struct ContentView: View {
             )
             .background(WindowDragBlocker())
             .buoyGlass()
+            .overlay { deleteConfirmOverlay }
+    }
+
+    @ViewBuilder
+    private var deleteConfirmOverlay: some View {
+        if let note = pendingDeleteNote {
+            ZStack {
+                Color.black.opacity(0.12)
+                    .contentShape(Rectangle())
+                    .onTapGesture { cancelDeleteNote() }
+
+                DeleteConfirmDialog(
+                    noteTitle: note.title,
+                    onCancel: { cancelDeleteNote() },
+                    onConfirm: { confirmDeleteNote() }
+                )
+            }
+            // Clip to the window corner radius so the scrim stays concentric with the glass.
+            .clipShape(RoundedRectangle(cornerRadius: 20))
+            .transition(.opacity)
+        }
     }
 
     private var minimizedPanelContent: some View {
@@ -333,13 +359,7 @@ struct ContentView: View {
                                 noteStore.switchNote(to: note)
                                 focusEditor()
                             },
-                            onDelete: { note in
-                                guard noteStore.notes.count > 1 else {
-                                    toastState.show("Cannot delete the last note", isError: true)
-                                    return
-                                }
-                                noteStore.deleteNote(note)
-                            }
+                            onDelete: { note in requestDeleteNote(note) }
                         )
                         .frame(
                             maxHeight: max(
@@ -507,11 +527,28 @@ struct ContentView: View {
 
     private func deleteCurrentNote() {
         guard let note = noteStore.currentNote else { return }
-        if noteStore.notes.count <= 1 {
+        requestDeleteNote(note)
+    }
+
+    /// Entry point for both delete paths (⌘⌫ and the All Notes panel).
+    /// Validates the "last note" guard, then defers to the confirmation dialog.
+    private func requestDeleteNote(_ note: Note) {
+        guard noteStore.notes.count > 1 else {
             toastState.show("Cannot delete the last note", isError: true)
             return
         }
+        withAnimation(.easeOut(duration: 0.16)) { pendingDeleteNote = note }
+    }
+
+    private func confirmDeleteNote() {
+        guard let note = pendingDeleteNote else { return }
+        withAnimation(.easeOut(duration: 0.16)) { pendingDeleteNote = nil }
         noteStore.deleteNote(note)
+        focusEditor()
+    }
+
+    private func cancelDeleteNote() {
+        withAnimation(.easeOut(duration: 0.16)) { pendingDeleteNote = nil }
         focusEditor()
     }
 
