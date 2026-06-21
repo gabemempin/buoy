@@ -143,6 +143,7 @@ struct EditorView: NSViewRepresentable {
         context.coordinator.setLoadingContent(true)
         textView.loadRTF(rtfData)
         context.coordinator.setLoadingContent(false)
+        context.coordinator.syncTextLength((textView.string as NSString).length)
 
         // Re-enable the scroller after the slide-in transition finishes.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
@@ -177,6 +178,7 @@ struct EditorView: NSViewRepresentable {
             context.coordinator.setLoadingContent(true)
             textView.loadRTF(rtfData)
             context.coordinator.setLoadingContent(false)
+            context.coordinator.syncTextLength((textView.string as NSString).length)
             let h = textView.measureContentHeight()
             onNoteSwitch?(h)
             // Re-enable after AppKit's scroller-flash window has passed.

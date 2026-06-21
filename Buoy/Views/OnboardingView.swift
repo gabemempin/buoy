@@ -561,6 +561,7 @@ private struct DemoToolbarView: View {
             onBold:      { applyFormat { $0.applyBold() } },
             onItalic:    { applyFormat { $0.applyItalic() } },
             onUnderline: { applyFormat { $0.applyUnderline() } },
+            onStrikethrough: { applyFormat { $0.applyStrikethrough() } },
             onBullet:    { applyCursorAction { $0.applyBullet($1) } },
             onTodo:      { applyCursorAction { $0.applyTodo($1) } },
             onLink:      {}
@@ -672,7 +673,7 @@ private struct HarborModeDemoPanel: View {
             }
 
             ToolbarView(
-                onBold: {}, onItalic: {}, onUnderline: {},
+                onBold: {}, onItalic: {}, onUnderline: {}, onStrikethrough: {},
                 onBullet: {}, onTodo: {}, onLink: {},
                 isBugReport: false
             )
@@ -734,7 +735,7 @@ private struct BugReportDemoPanel: View {
 
             // Blue toolbar pill (non-interactive)
             ToolbarView(
-                onBold: {}, onItalic: {}, onUnderline: {},
+                onBold: {}, onItalic: {}, onUnderline: {}, onStrikethrough: {},
                 onBullet: {}, onTodo: {}, onLink: {},
                 isBugReport: true
             )

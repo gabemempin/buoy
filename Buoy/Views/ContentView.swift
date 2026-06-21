@@ -231,6 +231,7 @@ struct ContentView: View {
                     onBold:      { applyEditorFormat { $0.applyBold() } },
                     onItalic:    { applyEditorFormat { $0.applyItalic() } },
                     onUnderline: { applyEditorFormat { $0.applyUnderline() } },
+                    onStrikethrough: { applyEditorFormat { $0.applyStrikethrough() } },
                     onBullet:    { applyEditorCursorAction { $0.applyBullet($1) } },
                     onTodo:      { applyEditorCursorAction { $0.applyTodo($1) } },
                     onLink:      { showLinkDialogFromToolbar() },

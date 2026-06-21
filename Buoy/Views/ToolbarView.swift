@@ -5,6 +5,7 @@ struct ToolbarView: View {
     var onBold: () -> Void
     var onItalic: () -> Void
     var onUnderline: () -> Void
+    var onStrikethrough: () -> Void
     var onBullet: () -> Void
     var onTodo: () -> Void
     var onLink: () -> Void
@@ -17,6 +18,8 @@ struct ToolbarView: View {
             ToolbarPillButton(systemImage: "italic",      tooltip: "Italic (⌘I)",      action: onItalic)
             pillDivider
             ToolbarPillButton(systemImage: "underline",   tooltip: "Underline (⌘U)",   action: onUnderline)
+            pillDivider
+            ToolbarPillButton(systemImage: "strikethrough", tooltip: "Strikethrough (⌘⇧X)", action: onStrikethrough)
             pillDivider
             ToolbarPillButton(systemImage: "list.bullet", tooltip: "Bullet List",       action: onBullet)
             pillDivider

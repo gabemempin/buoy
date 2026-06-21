@@ -344,6 +344,12 @@ final class BuoyTextView: NSTextView {
             return true
         }
 
+        // ⌘⇧X — strikethrough (must check before the .command-only guard below)
+        if mods == [.command, .shift] && event.keyCode == 7 {
+            applyStrikethrough()
+            return true
+        }
+
         guard mods == .command else { return super.performKeyEquivalent(with: event) }
 
         let ch = event.charactersIgnoringModifiers ?? ""
@@ -841,6 +847,54 @@ final class BuoyTextView: NSTextView {
             storage.removeAttribute(.underlineStyle, range: sel)
         } else {
             storage.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: sel)
+        }
+        storage.endEditing()
+        didChangeText()
+        window?.makeFirstResponder(self)
+        super.setSelectedRange(sel)
+    }
+
+    /// Toggles strikethrough on the current selection. Checklist circles (TodoAttachment)
+    /// are exempt — the line is never drawn through the checkbox glyph. Strikethrough is a
+    /// standalone attribute, so it composes freely with bold/italic/underline.
+    func applyStrikethrough() {
+        let sel = selectedRange()
+        guard sel.length > 0, let storage = textStorage else {
+            // No selection — toggle strikethrough in typingAttributes for future typing
+            var attrs = typingAttributes
+            if let existing = attrs[.strikethroughStyle] as? Int,
+               existing == NSUnderlineStyle.single.rawValue {
+                attrs.removeValue(forKey: .strikethroughStyle)
+            } else {
+                attrs[.strikethroughStyle] = NSUnderlineStyle.single.rawValue
+            }
+            typingAttributes = attrs
+            return
+        }
+
+        // Collect eligible sub-ranges, skipping any checklist-circle attachment characters.
+        var textRanges: [NSRange] = []
+        storage.enumerateAttribute(.attachment, in: sel) { val, range, _ in
+            if val is TodoAttachment { return }
+            textRanges.append(range)
+        }
+        guard !textRanges.isEmpty else { return }
+
+        var allStruck = true
+        for range in textRanges {
+            storage.enumerateAttribute(.strikethroughStyle, in: range) { val, _, _ in
+                if val == nil { allStruck = false }
+            }
+        }
+
+        guard shouldChangeText(in: sel, replacementString: nil) else { return }
+        storage.beginEditing()
+        for range in textRanges {
+            if allStruck {
+                storage.removeAttribute(.strikethroughStyle, range: range)
+            } else {
+                storage.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: range)
+            }
         }
         storage.endEditing()
         didChangeText()
@@ -1360,10 +1414,11 @@ final class BuoyTextView: NSTextView {
         let boldItem      = sub.addItem(withTitle: "Bold",      action: #selector(boldAction(_:)),      keyEquivalent: "")
         let italicItem    = sub.addItem(withTitle: "Italic",    action: #selector(italicAction(_:)),    keyEquivalent: "")
         let underlineItem = sub.addItem(withTitle: "Underline", action: #selector(underlineAction(_:)), keyEquivalent: "")
+        let strikethroughItem = sub.addItem(withTitle: "Strikethrough", action: #selector(strikethroughAction(_:)), keyEquivalent: "")
         sub.addItem(.separator())
         let linkItem = sub.addItem(withTitle: "Link…", action: #selector(linkAction(_:)), keyEquivalent: "")
 
-        for item in [boldItem, italicItem, underlineItem, linkItem] {
+        for item in [boldItem, italicItem, underlineItem, strikethroughItem, linkItem] {
             item.target = self
         }
 
@@ -1385,7 +1440,8 @@ final class BuoyTextView: NSTextView {
         let formattingActions: Set<Selector> = [
             #selector(boldAction(_:)),
             #selector(italicAction(_:)),
-            #selector(underlineAction(_:))
+            #selector(underlineAction(_:)),
+            #selector(strikethroughAction(_:))
         ]
         if let action = item.action, formattingActions.contains(action) {
             return selectedRange().length > 0
@@ -1396,6 +1452,7 @@ final class BuoyTextView: NSTextView {
     @objc private func boldAction(_ sender: Any?)      { applyBold() }
     @objc private func italicAction(_ sender: Any?)    { applyItalic() }
     @objc private func underlineAction(_ sender: Any?) { applyUnderline() }
+    @objc private func strikethroughAction(_ sender: Any?) { applyStrikethrough() }
     @objc private func linkAction(_ sender: Any?) {
         let sel = selectedRange()
         let selected = sel.length > 0 ? (string as NSString).substring(with: sel) : ""
