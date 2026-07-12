@@ -60,6 +60,20 @@ final class BuoyTextView: NSTextView {
 
     var placeholderString = "Let your words flow..."
 
+    /// When true, forces the arrow cursor instead of the I-beam — set while an
+    /// overlay panel (Settings, Shortcuts, All Notes) is presented so its own
+    /// hover states aren't fought by this view's tracking area underneath.
+    var suppressesIBeamCursor = false {
+        didSet {
+            guard suppressesIBeamCursor != oldValue else { return }
+            if suppressesIBeamCursor {
+                NSCursor.arrow.set()
+            } else {
+                window?.invalidateCursorRects(for: self)
+            }
+        }
+    }
+
     private(set) var measuredHeight: CGFloat = 200
     /// Last known non-zero selection — preserved even after the view resigns first responder.
     private(set) var lastKnownSelection: NSRange = NSRange(location: 0, length: 0)
@@ -164,6 +178,18 @@ final class BuoyTextView: NSTextView {
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
         true
+    }
+
+    // MARK: - Cursor
+
+    override func cursorUpdate(with event: NSEvent) {
+        guard !suppressesIBeamCursor else { return }
+        super.cursorUpdate(with: event)
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        guard !suppressesIBeamCursor else { return }
+        super.mouseMoved(with: event)
     }
 
     private func updateDefaultTypingAttributes() {
@@ -279,9 +305,14 @@ final class BuoyTextView: NSTextView {
         // Attachment bounds changed; force a relayout so the new checkbox size takes effect.
         layoutManager?.invalidateLayout(forCharacterRange: fullRange, actualCharacterRange: nil)
         layoutManager?.invalidateDisplay(forCharacterRange: fullRange)
-        // Defer content change to avoid modifying @Observable state during SwiftUI render
+        // Defer content change to avoid modifying @Observable state during SwiftUI render.
+        // Reports content only — font size is attribute-only, so it must not auto-grow
+        // the window (same rule as formatting toggles).
         DispatchQueue.main.async { [weak self] in
-            self?.notifyChange()
+            guard let self else { return }
+            self.buoyDelegate?.textViewDidChange(self)
+            self.measuredHeight = self.measureContentHeight()
+            self.needsDisplay = true
         }
     }
 

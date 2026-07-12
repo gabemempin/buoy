@@ -47,6 +47,7 @@ struct AllNotesPanel: View {
                         .background(Circle().fill(Color.primary.opacity(0.08)))
                 }
                 .buttonStyle(.plain)
+                .pointingHandCursor()
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
@@ -83,7 +84,6 @@ struct AllNotesPanel: View {
         }
         .frame(width: 214)
         .background(WindowDragBlocker())
-        .overlay(ArrowCursorOverlay().allowsHitTesting(false))
         .buoyGlassPanel(cornerRadius: 14)
         .shadow(radius: 8)
         .transition(.scale(scale: 0.92, anchor: .topTrailing).combined(with: .opacity))
@@ -118,6 +118,7 @@ struct NoteRow: View {
                         .background(Circle().fill(Color.primary.opacity(0.08)))
                 }
                 .buttonStyle(.plain)
+                .pointingHandCursor()
                 .transition(.opacity)
             }
         }

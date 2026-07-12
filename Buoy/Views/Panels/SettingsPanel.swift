@@ -144,7 +144,6 @@ struct SettingsPanel: View {
         }
         .frame(width: 260)
         .background(WindowDragBlocker())
-        .overlay(ArrowCursorOverlay().allowsHitTesting(false))
         .buoyGlassPanel(cornerRadius: 16)
         .shadow(radius: 8)
         .transition(.scale(scale: 0.92, anchor: .bottomLeading).combined(with: .opacity))
@@ -253,33 +252,7 @@ private enum BuoySettingsActionRole {
     case destructive
 }
 
-private struct PointingHandCursorModifier: ViewModifier {
-    @State private var isHovering = false
-
-    func body(content: Content) -> some View {
-        content
-            .onHover { hovering in
-                if hovering {
-                    NSCursor.pointingHand.push()
-                } else if isHovering {
-                    NSCursor.pop()
-                }
-                isHovering = hovering
-            }
-            .onDisappear {
-                if isHovering {
-                    NSCursor.pop()
-                    isHovering = false
-                }
-            }
-    }
-}
-
 private extension View {
-    func pointingHandCursor() -> some View {
-        modifier(PointingHandCursorModifier())
-    }
-
     func buoySettingsActionButton(
         tint: Color,
         role: BuoySettingsActionRole,

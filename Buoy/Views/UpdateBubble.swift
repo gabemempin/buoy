@@ -47,7 +47,6 @@ struct UpdateBubble: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(WindowDragBlocker())
-        .overlay(ArrowCursorOverlay().allowsHitTesting(false))
         .buoyGlassPanel(cornerRadius: 14)
         .shadow(radius: 8)
     }
@@ -108,30 +107,3 @@ struct UpdateBubbleOverlay: View {
     }
 }
 
-private struct UpdateBubblePointingHandCursorModifier: ViewModifier {
-    @State private var isHovering = false
-
-    func body(content: Content) -> some View {
-        content
-            .onHover { hovering in
-                if hovering {
-                    NSCursor.pointingHand.push()
-                } else if isHovering {
-                    NSCursor.pop()
-                }
-                isHovering = hovering
-            }
-            .onDisappear {
-                if isHovering {
-                    NSCursor.pop()
-                    isHovering = false
-                }
-            }
-    }
-}
-
-private extension View {
-    func pointingHandCursor() -> some View {
-        modifier(UpdateBubblePointingHandCursorModifier())
-    }
-}

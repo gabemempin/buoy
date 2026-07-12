@@ -33,6 +33,7 @@ struct ShortcutsPanel: View {
                         .background(Circle().fill(Color.primary.opacity(0.08)))
                 }
                 .buttonStyle(.plain)
+                .pointingHandCursor()
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)

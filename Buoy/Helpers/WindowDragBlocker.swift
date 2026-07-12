@@ -12,38 +12,34 @@ final class DragBlockingNSView: NSView {
     override var mouseDownCanMoveWindow: Bool { false }
 }
 
-/// Forces the arrow cursor over overlay panels, preventing NSTextView's
-/// I-beam from bleeding through. Apply as .overlay(.allowsHitTesting(false))
-/// so it sits above all content in z-order and intercepts cursorUpdate events
-/// before they propagate up the responder chain to BuoyTextView.
-struct ArrowCursorOverlay: NSViewRepresentable {
-    func makeNSView(context: Context) -> ArrowCursorNSView { ArrowCursorNSView() }
-    func updateNSView(_ nsView: ArrowCursorNSView, context: Context) {}
+/// Shows the pointing-hand cursor while hovering a control. Overlay panels
+/// suppress BuoyTextView's I-beam at the source (BuoyTextView.suppressesIBeamCursor),
+/// so this only needs to push/pop the hand cursor for its own hover state.
+struct PointingHandCursorModifier: ViewModifier {
+    @State private var isHovering = false
+
+    func body(content: Content) -> some View {
+        content
+            .onHover { hovering in
+                if hovering {
+                    NSCursor.pointingHand.push()
+                } else if isHovering {
+                    NSCursor.pop()
+                }
+                isHovering = hovering
+            }
+            .onDisappear {
+                if isHovering {
+                    NSCursor.pop()
+                    isHovering = false
+                }
+            }
+    }
 }
 
-final class ArrowCursorNSView: NSView {
-    private var trackingArea: NSTrackingArea?
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        if let ta = trackingArea { removeTrackingArea(ta) }
-        let ta = NSTrackingArea(
-            rect: bounds,
-            options: [.activeAlways, .cursorUpdate, .inVisibleRect],
-            owner: self,
-            userInfo: nil
-        )
-        addTrackingArea(ta)
-        trackingArea = ta
-    }
-
-    override func cursorUpdate(with event: NSEvent) {
-        NSCursor.arrow.set()
-        // Do NOT call super — stops propagation to BuoyTextView's tracking area
-    }
-
-    override func resetCursorRects() {
-        addCursorRect(bounds, cursor: .arrow)
+extension View {
+    func pointingHandCursor() -> some View {
+        modifier(PointingHandCursorModifier())
     }
 }
 

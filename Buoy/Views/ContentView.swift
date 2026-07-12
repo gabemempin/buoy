@@ -131,6 +131,7 @@ struct ContentView: View {
             NSApp.windows.compactMap { $0 as? NSPanel }.forEach {
                 $0.isMovable = !panelOpen
             }
+            tvRef.value?.suppressesIBeamCursor = panelOpen || showOnboarding
         }
         .onChange(of: panelPresentation.isMinimized) { _, isMinimized in
             if isMinimized {
@@ -147,14 +148,6 @@ struct ContentView: View {
         }
         .onChange(of: noteStore.currentNote?.id) { _, noteID in
             persistCurrentNoteSelection(noteID)
-        }
-        // Re-measure height when font size changes
-        .onChange(of: settings.fontSize) { _, _ in
-            guard !panelPresentation.isMinimized else { return }
-            if let tv = tvRef.value {
-                let h = tv.measureContentHeight()
-                onHeightChange?(h + 160)
-            }
         }
         .onChange(of: activeFooterOverlayHeight) { _, height in
             onOverrideHeight?(height)
@@ -277,6 +270,7 @@ struct ContentView: View {
                         },
                         textViewRef: { tv in
                             tvRef.value = tv
+                            tv.suppressesIBeamCursor = showSettings || showShortcuts || showAllNotes || showOnboarding
                         }
                     )
                     .frame(
@@ -398,6 +392,7 @@ struct ContentView: View {
                         withAnimation(.easeInOut(duration: 1.0)) {
                             showOnboarding = false
                         }
+                        tvRef.value?.suppressesIBeamCursor = showSettings || showShortcuts || showAllNotes
                         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                             onOnboardingComplete?()
                         }
