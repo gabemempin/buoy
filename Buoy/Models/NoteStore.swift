@@ -69,6 +69,15 @@ final class NoteStore {
             }
         }
 
+        migrator.registerMigration("v3_isPinned") { db in
+            let columns = try db.columns(in: "notes").map { $0.name }
+            if !columns.contains("isPinned") {
+                try db.alter(table: "notes") { t in
+                    t.add(column: "isPinned", .boolean).defaults(to: false)
+                }
+            }
+        }
+
         try? migrator.migrate(db)
     }
 
@@ -108,13 +117,29 @@ final class NoteStore {
             title: "Note \(count + 1)",
             contentRTF: Data(),
             createdAt: now,
-            updatedAt: now
+            updatedAt: now,
+            isPinned: false
         )
         _ = try? db.write { db in
             try newNote.insert(db)
         }
         loadNoteList()
         currentNote = newNote
+    }
+
+    func togglePin(_ note: Note) {
+        guard let db else { return }
+        let newValue = !note.isPinned
+        _ = try? db.write { db in
+            try db.execute(
+                sql: "UPDATE notes SET isPinned = ? WHERE id = ?",
+                arguments: [newValue, note.id]
+            )
+        }
+        loadNoteList()
+        if currentNote?.id == note.id {
+            currentNote?.isPinned = newValue
+        }
     }
 
     func deleteNote(_ note: Note) {

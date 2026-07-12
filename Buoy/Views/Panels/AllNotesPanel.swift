@@ -6,16 +6,22 @@ struct AllNotesPanel: View {
     var currentNoteID: String?
     var onSelect: (Note) -> Void
     var onDelete: (Note) -> Void
+    var onTogglePin: (Note) -> Void
 
     @State private var searchText = ""
 
     private var filteredNotes: [Note] {
-        if searchText.isEmpty { return notes }
-        return notes.filter {
-            $0.title.localizedCaseInsensitiveContains(searchText)
-                || Self.plainTextContent(from: $0.contentRTF)
-                .localizedCaseInsensitiveContains(searchText)
+        let matches: [Note]
+        if searchText.isEmpty {
+            matches = notes
+        } else {
+            matches = notes.filter {
+                $0.title.localizedCaseInsensitiveContains(searchText)
+                    || Self.plainTextContent(from: $0.contentRTF)
+                    .localizedCaseInsensitiveContains(searchText)
+            }
         }
+        return matches.filter(\.isPinned) + matches.filter { !$0.isPinned }
     }
 
     private static func plainTextContent(from rtfData: Data) -> String {
@@ -77,7 +83,8 @@ struct AllNotesPanel: View {
                         onSelect(note)
                         withAnimation(.easeOut(duration: 0.16)) { isShowing = false }
                     },
-                    onDelete: onDelete
+                    onDelete: onDelete,
+                    onTogglePin: onTogglePin
                 )
                 .frame(maxHeight: 300)
             }
@@ -98,6 +105,7 @@ struct NoteRow: View {
     let isActive: Bool
     let onSelect: () -> Void
     let onDelete: () -> Void
+    let onTogglePin: () -> Void
 
     @State private var isHovering = false
 
@@ -108,6 +116,19 @@ struct NoteRow: View {
                 .foregroundStyle(isActive ? Color.primary : Color.secondary)
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
+
+            if isHovering || note.isPinned {
+                Button(action: onTogglePin) {
+                    Image(systemName: note.isPinned ? "pin.fill" : "pin")
+                        .font(.system(size: 9))
+                        .foregroundStyle(note.isPinned ? Color.accentColor : Color.secondary)
+                        .frame(width: 18, height: 18)
+                        .background(Circle().fill(Color.primary.opacity(0.08)))
+                }
+                .buttonStyle(.plain)
+                .pointingHandCursor()
+                .transition(.opacity)
+            }
 
             if isHovering {
                 Button(action: onDelete) {

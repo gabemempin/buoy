@@ -334,7 +334,8 @@ struct ContentView: View {
                                 noteStore.switchNote(to: note)
                                 focusEditor()
                             },
-                            onDelete: { note in requestDeleteNote(note) }
+                            onDelete: { note in requestDeleteNote(note) },
+                            onTogglePin: { note in noteStore.togglePin(note) }
                         )
                         .frame(
                             maxHeight: max(

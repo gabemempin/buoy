@@ -7,11 +7,12 @@ struct Note: Identifiable, Codable, FetchableRecord, PersistableRecord {
     var contentRTF: Data
     var createdAt: Int64
     var updatedAt: Int64
+    var isPinned: Bool
 
     static let databaseTableName = "notes"
 
     enum Columns: String, ColumnExpression {
-        case id, title, contentRTF, createdAt, updatedAt
+        case id, title, contentRTF, createdAt, updatedAt, isPinned
     }
 
     static func nowMs() -> Int64 { Int64(Date().timeIntervalSince1970 * 1000) }

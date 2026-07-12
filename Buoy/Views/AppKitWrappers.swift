@@ -104,6 +104,7 @@ struct NotesTableViewWrapper: NSViewRepresentable {
     var currentNoteID: String?
     var onSelect: (Note) -> Void
     var onDelete: (Note) -> Void
+    var onTogglePin: (Note) -> Void
 
     func makeNSView(context: Context) -> NSScrollView {
         let scrollView = NSScrollView()
@@ -182,6 +183,9 @@ struct NotesTableViewWrapper: NSViewRepresentable {
                 },
                 onDelete: { [weak self] in
                     self?.parent.onDelete(note)
+                },
+                onTogglePin: { [weak self] in
+                    self?.parent.onTogglePin(note)
                 }
             )
             
