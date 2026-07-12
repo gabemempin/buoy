@@ -74,6 +74,9 @@ final class BuoyTextView: NSTextView {
         }
     }
 
+    private lazy var listReorder = ListReorderController(textView: self)
+    var currentEditorTextColor: NSColor { editorTextColor }
+
     private(set) var measuredHeight: CGFloat = 200
     /// Last known non-zero selection — preserved even after the view resigns first responder.
     private(set) var lastKnownSelection: NSRange = NSRange(location: 0, length: 0)
@@ -608,6 +611,108 @@ final class BuoyTextView: NSTextView {
         return Int((style?.headIndent ?? 0) / ListIndent.width)
     }
 
+    // MARK: - List drag-to-reorder
+
+    /// Whether the paragraph starting at `paragraphStart` is a todo or bullet line.
+    func isListParagraph(at paragraphStart: Int) -> Bool {
+        guard let storage = textStorage, paragraphStart < storage.length else { return false }
+        if storage.attributes(at: paragraphStart, effectiveRange: nil)[.attachment] is TodoAttachment {
+            return true
+        }
+        let nsString = storage.string as NSString
+        let previewLen = min(2, storage.length - paragraphStart)
+        let prefix = nsString.substring(with: NSRange(location: paragraphStart, length: previewLen))
+        return prefix.hasPrefix("• ") || prefix.hasPrefix("◦ ")
+    }
+
+    /// The maximal run of consecutive list paragraphs (todo or bullet) containing `charIndex`.
+    func listBlock(containing charIndex: Int) -> ListBlock? {
+        guard let storage = textStorage, storage.length > 0 else { return nil }
+        let nsString = storage.string as NSString
+        let clamped = min(max(charIndex, 0), storage.length - 1)
+        var current = nsString.paragraphRange(for: NSRange(location: clamped, length: 0))
+        guard isListParagraph(at: current.location) else { return nil }
+
+        var paragraphs = [current]
+
+        while current.location > 0 {
+            let prev = nsString.paragraphRange(for: NSRange(location: current.location - 1, length: 0))
+            guard isListParagraph(at: prev.location) else { break }
+            paragraphs.insert(prev, at: 0)
+            current = prev
+        }
+
+        current = paragraphs[paragraphs.count - 1]
+        while NSMaxRange(current) < storage.length {
+            let next = nsString.paragraphRange(for: NSRange(location: NSMaxRange(current), length: 0))
+            guard next.length > 0, isListParagraph(at: next.location) else { break }
+            paragraphs.append(next)
+            current = next
+        }
+
+        let range = NSRange(location: paragraphs[0].location, length: NSMaxRange(paragraphs[paragraphs.count - 1]) - paragraphs[0].location)
+        return ListBlock(paragraphs: paragraphs, range: range)
+    }
+
+    /// Moves the paragraph at `sourceIndex` within `block` to `targetBoundary` (0...paragraphs.count),
+    /// rebuilding the whole block as a single undoable edit.
+    func commitListReorder(block: ListBlock, sourceIndex: Int, targetBoundary: Int) {
+        guard let storage = textStorage,
+              sourceIndex >= 0, sourceIndex < block.paragraphs.count,
+              targetBoundary >= 0, targetBoundary <= block.paragraphs.count,
+              targetBoundary != sourceIndex, targetBoundary != sourceIndex + 1,
+              NSMaxRange(block.range) <= storage.length else { return }
+
+        var lines: [(line: NSAttributedString, newline: NSAttributedString?)] = []
+        for para in block.paragraphs {
+            let full = storage.attributedSubstring(from: para)
+            if full.length > 0, (full.string as NSString).character(at: full.length - 1) == 10 {
+                let lineRange = NSRange(location: 0, length: full.length - 1)
+                let newlineRange = NSRange(location: full.length - 1, length: 1)
+                lines.append((full.attributedSubstring(from: lineRange), full.attributedSubstring(from: newlineRange)))
+            } else {
+                lines.append((full, nil))
+            }
+        }
+        let blockHadTrailingNewline = lines.last?.newline != nil
+
+        let insertIndex = targetBoundary > sourceIndex ? targetBoundary - 1 : targetBoundary
+        let moved = lines.remove(at: sourceIndex)
+        lines.insert(moved, at: insertIndex)
+
+        let rebuilt = NSMutableAttributedString()
+        var caretOffsetForInsertIndex: Int?
+        for (i, entry) in lines.enumerated() {
+            if i == insertIndex {
+                caretOffsetForInsertIndex = rebuilt.length + entry.line.length
+            }
+            rebuilt.append(entry.line)
+            let isLast = (i == lines.count - 1)
+            if !isLast || blockHadTrailingNewline {
+                if let newline = entry.newline {
+                    rebuilt.append(newline)
+                } else {
+                    var attrs = entry.line.length > 0
+                        ? entry.line.attributes(at: entry.line.length - 1, effectiveRange: nil)
+                        : typingAttributes
+                    attrs.removeValue(forKey: .attachment)
+                    attrs.removeValue(forKey: .link)
+                    attrs.removeValue(forKey: .backgroundColor)
+                    rebuilt.append(NSAttributedString(string: "\n", attributes: attrs))
+                }
+            }
+        }
+
+        guard shouldChangeText(in: block.range, replacementString: rebuilt.string) else { return }
+        storage.replaceCharacters(in: block.range, with: rebuilt)
+        didChangeText()
+
+        if let offset = caretOffsetForInsertIndex {
+            setSelectedRange(NSRange(location: block.range.location + offset, length: 0))
+        }
+        notifyChange()
+    }
+
     private func resetParagraphIndent(at location: Int) {
         guard let storage = textStorage, storage.length > 0 else { return }
         // When a list marker is removed at end-of-document, the original lineStart can now equal
@@ -683,29 +788,90 @@ final class BuoyTextView: NSTextView {
         return true
     }
 
-    // MARK: - Mouse Down (toggle checkboxes)
+    // MARK: - Mouse Down (toggle checkboxes / drag-to-reorder list markers)
 
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
-        if let layout = layoutManager, let container = textContainer {
+        if let layout = layoutManager, let container = textContainer, let storage = textStorage {
             let glyphIndex = layout.glyphIndex(for: point, in: container,
                                                fractionOfDistanceThroughGlyph: nil)
             if glyphIndex < layout.numberOfGlyphs {
                 let charIndex = layout.characterIndexForGlyph(at: glyphIndex)
-                if charIndex < textStorage!.length {
-                    let attrs = textStorage!.attributes(at: charIndex, effectiveRange: nil)
-                    if let todo = attrs[.attachment] as? TodoAttachment {
-                        todo.isChecked.toggle()
-                        textStorage!.edited(.editedAttributes,
-                                           range: NSRange(location: charIndex, length: 1),
-                                           changeInLength: 0)
-                        notifyChange()
-                        return
+                if charIndex < storage.length {
+                    let isTodo = storage.attributes(at: charIndex, effectiveRange: nil)[.attachment] is TodoAttachment
+                    let isBullet = isBulletMarkerCharacter(at: charIndex)
+                    if isTodo || isBullet {
+                        if handleMarkerPress(event: event, charIndex: charIndex, isTodo: isTodo) {
+                            return
+                        }
                     }
                 }
             }
         }
         super.mouseDown(with: event)
+    }
+
+    /// Whether `charIndex` is the bullet glyph ("•"/"◦") at the start of its paragraph.
+    private func isBulletMarkerCharacter(at charIndex: Int) -> Bool {
+        guard let storage = textStorage, charIndex < storage.length else { return false }
+        let nsString = storage.string as NSString
+        let ch = nsString.substring(with: NSRange(location: charIndex, length: 1))
+        guard ch == "•" || ch == "◦" else { return false }
+        let paraRange = nsString.paragraphRange(for: NSRange(location: charIndex, length: 0))
+        return paraRange.location == charIndex
+    }
+
+    /// Handles a mouse-down on a todo checkbox or bullet marker glyph. A plain click (released
+    /// before crossing a small movement threshold) toggles the checkbox / places the caret;
+    /// dragging past the threshold reorders the line within its contiguous list block.
+    /// Returns true if the event was fully handled (caller should not fall through to super).
+    private func handleMarkerPress(event: NSEvent, charIndex: Int, isTodo: Bool) -> Bool {
+        guard let window = window else { return false }
+        let paraRange = (string as NSString).paragraphRange(for: NSRange(location: charIndex, length: 0))
+        guard isListParagraph(at: paraRange.location) else { return false }
+
+        let pressLocation = event.locationInWindow
+        let dragThreshold: CGFloat = 4
+
+        while true {
+            guard let next = window.nextEvent(
+                matching: [.leftMouseDragged, .leftMouseUp],
+                until: .distantFuture,
+                inMode: .eventTracking,
+                dequeue: true
+            ) else { return true }
+
+            switch next.type {
+            case .leftMouseUp:
+                if isTodo, let storage = textStorage,
+                   let todo = storage.attributes(at: charIndex, effectiveRange: nil)[.attachment] as? TodoAttachment {
+                    todo.isChecked.toggle()
+                    storage.edited(.editedAttributes, range: NSRange(location: charIndex, length: 1), changeInLength: 0)
+                    notifyChange()
+                } else {
+                    window.makeFirstResponder(self)
+                    setSelectedRange(NSRange(location: charIndex, length: 0))
+                }
+                return true
+            case .leftMouseDragged:
+                let dx = next.locationInWindow.x - pressLocation.x
+                let dy = next.locationInWindow.y - pressLocation.y
+                if (dx * dx + dy * dy) >= dragThreshold * dragThreshold {
+                    guard let block = listBlock(containing: paraRange.location),
+                          let sourceIndex = block.paragraphs.firstIndex(where: { $0 == paraRange }) else {
+                        return true
+                    }
+                    if let targetBoundary = listReorder.runReorderDragLoop(
+                        block: block, sourceIndex: sourceIndex, firstDragEvent: next
+                    ) {
+                        commitListReorder(block: block, sourceIndex: sourceIndex, targetBoundary: targetBoundary)
+                    }
+                    return true
+                }
+            default:
+                break
+            }
+        }
     }
 
     // MARK: - Paste
