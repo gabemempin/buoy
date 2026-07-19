@@ -1,0 +1,1 @@
+killall Buoy 2>/dev/null; xcodebuild -project Buoy.xcodeproj -scheme Buoy -configuration Debug build && open "$(ls -td ~/Library/Developer/Xcode/DerivedData/*/Build/Products/Debug/Buoy.app | head -1)"

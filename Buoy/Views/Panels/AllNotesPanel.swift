@@ -7,6 +7,7 @@ struct AllNotesPanel: View {
     var onSelect: (Note) -> Void
     var onDelete: (Note) -> Void
     var onTogglePin: (Note) -> Void
+    var onReorderPinned: ([String]) -> Void
 
     @State private var searchText = ""
 
@@ -21,7 +22,14 @@ struct AllNotesPanel: View {
                     .localizedCaseInsensitiveContains(searchText)
             }
         }
-        return matches.filter(\.isPinned) + matches.filter { !$0.isPinned }
+        let pinned = matches.filter(\.isPinned).sorted { lhs, rhs in
+            let lhsOrder = lhs.pinnedOrder ?? Int64.max
+            let rhsOrder = rhs.pinnedOrder ?? Int64.max
+            if lhsOrder != rhsOrder { return lhsOrder < rhsOrder }
+            if lhs.createdAt != rhs.createdAt { return lhs.createdAt < rhs.createdAt }
+            return lhs.id < rhs.id
+        }
+        return pinned + matches.filter { !$0.isPinned }
     }
 
     private static func plainTextContent(from rtfData: Data) -> String {
@@ -84,7 +92,9 @@ struct AllNotesPanel: View {
                         withAnimation(.easeOut(duration: 0.16)) { isShowing = false }
                     },
                     onDelete: onDelete,
-                    onTogglePin: onTogglePin
+                    onTogglePin: onTogglePin,
+                    onReorderPinned: onReorderPinned,
+                    allowsPinnedReordering: searchText.isEmpty
                 )
                 .frame(maxHeight: 300)
             }
@@ -103,19 +113,39 @@ struct AllNotesPanel: View {
 struct NoteRow: View {
     let note: Note
     let isActive: Bool
+    let dragNoteID: String?
     let onSelect: () -> Void
     let onDelete: () -> Void
     let onTogglePin: () -> Void
 
     @State private var isHovering = false
 
+    private var title: some View {
+        Text(note.title.isEmpty ? "Untitled" : note.title)
+            .font(.system(size: 12, weight: isActive ? .semibold : .regular))
+            .foregroundStyle(isActive ? Color.primary : Color.secondary)
+            .lineLimit(1)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     var body: some View {
         HStack {
-            Text(note.title.isEmpty ? "Untitled" : note.title)
-                .font(.system(size: 12, weight: isActive ? .semibold : .regular))
-                .foregroundStyle(isActive ? Color.primary : Color.secondary)
-                .lineLimit(1)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            if let dragNoteID {
+                // The drag surface covers the flexible title area (expanded to the row's
+                // edges via negative padding), leaving the pin/delete buttons on top of
+                // plain SwiftUI so they stay clickable.
+                title
+                    .background(
+                        NoteRowDragHandle(
+                            noteID: dragNoteID,
+                            onSelect: onSelect
+                        )
+                            .padding(.vertical, -7)
+                            .padding(.leading, -10)
+                    )
+            } else {
+                title
+            }
 
             if isHovering || note.isPinned {
                 Button(action: onTogglePin) {
@@ -145,7 +175,10 @@ struct NoteRow: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
-        .background(isActive ? Color.primary.opacity(0.08) : Color.clear)
+        .background(
+            RoundedRectangle(cornerRadius: 7)
+                .fill(isActive ? Color.primary.opacity(0.08) : Color.clear)
+        )
         .contentShape(Rectangle())
         .onTapGesture { onSelect() }
         .onHover { h in

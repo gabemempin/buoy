@@ -8,11 +8,12 @@ struct Note: Identifiable, Codable, FetchableRecord, PersistableRecord {
     var createdAt: Int64
     var updatedAt: Int64
     var isPinned: Bool
+    var pinnedOrder: Int64?
 
     static let databaseTableName = "notes"
 
     enum Columns: String, ColumnExpression {
-        case id, title, contentRTF, createdAt, updatedAt, isPinned
+        case id, title, contentRTF, createdAt, updatedAt, isPinned, pinnedOrder
     }
 
     static func nowMs() -> Int64 { Int64(Date().timeIntervalSince1970 * 1000) }

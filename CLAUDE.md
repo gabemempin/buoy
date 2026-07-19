@@ -12,7 +12,15 @@ Buoy is a native macOS menu bar sticky-note app — a SwiftUI/AppKit rewrite of 
 
 ## Build & Run
 
-Open `Buoy.xcodeproj` in Xcode and press ⌘R. No CLI build system. Code signing is set to "Sign to Run Locally" — no developer account required.
+Use the Codex app's **Build & Run** local-environment action or run
+`./script/build_and_run.sh` manually. It kills the current Buoy process, builds
+the Debug configuration with `xcodebuild`, and opens the resulting app from
+DerivedData. In Xcode, opening `Buoy.xcodeproj` and pressing ⌘R remains supported.
+Code signing is set to "Sign to Run Locally" — no developer account required.
+
+**Manual verification policy:** Do not run builds, tests, or launch Buoy after
+routine code changes unless the user explicitly asks. The user launches the app
+manually and reports any failures. Static inspection is the default verification.
 
 **Swift Package dependencies** (managed via Xcode SPM):
 - `GRDB.swift` (groue/GRDB) — SQLite ORM

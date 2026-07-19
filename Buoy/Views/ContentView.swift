@@ -335,7 +335,10 @@ struct ContentView: View {
                                 focusEditor()
                             },
                             onDelete: { note in requestDeleteNote(note) },
-                            onTogglePin: { note in noteStore.togglePin(note) }
+                            onTogglePin: { note in noteStore.togglePin(note) },
+                            onReorderPinned: { noteIDs in
+                                noteStore.reorderPinnedNotes(noteIDs)
+                            }
                         )
                         .frame(
                             maxHeight: max(

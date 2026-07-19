@@ -78,6 +78,35 @@ final class NoteStore {
             }
         }
 
+        migrator.registerMigration("v4_pinnedOrder") { db in
+            let columns = try db.columns(in: "notes").map { $0.name }
+            if !columns.contains("pinnedOrder") {
+                try db.alter(table: "notes") { t in
+                    t.add(column: "pinnedOrder", .integer)
+                }
+            }
+
+            var nextOrder = (try Int64.fetchOne(
+                db,
+                sql: "SELECT MAX(pinnedOrder) FROM notes WHERE isPinned = 1"
+            ) ?? -1) + 1
+            let unorderedPinnedIDs = try String.fetchAll(
+                db,
+                sql: """
+                    SELECT id FROM notes
+                    WHERE isPinned = 1 AND pinnedOrder IS NULL
+                    ORDER BY createdAt ASC, id ASC
+                """
+            )
+            for id in unorderedPinnedIDs {
+                try db.execute(
+                    sql: "UPDATE notes SET pinnedOrder = ? WHERE id = ?",
+                    arguments: [nextOrder, id]
+                )
+                nextOrder += 1
+            }
+        }
+
         try? migrator.migrate(db)
     }
 
@@ -118,7 +147,8 @@ final class NoteStore {
             contentRTF: Data(),
             createdAt: now,
             updatedAt: now,
-            isPinned: false
+            isPinned: false,
+            pinnedOrder: nil
         )
         _ = try? db.write { db in
             try newNote.insert(db)
@@ -130,15 +160,59 @@ final class NoteStore {
     func togglePin(_ note: Note) {
         guard let db else { return }
         let newValue = !note.isPinned
-        _ = try? db.write { db in
-            try db.execute(
-                sql: "UPDATE notes SET isPinned = ? WHERE id = ?",
-                arguments: [newValue, note.id]
-            )
+        do {
+            let newOrder: Int64? = try db.write { db -> Int64? in
+                if newValue {
+                    let nextOrder = (try Int64.fetchOne(
+                        db,
+                        sql: "SELECT MAX(pinnedOrder) FROM notes WHERE isPinned = 1"
+                    ) ?? -1) + 1
+                    try db.execute(
+                        sql: "UPDATE notes SET isPinned = 1, pinnedOrder = ? WHERE id = ?",
+                        arguments: [nextOrder, note.id]
+                    )
+                    return nextOrder
+                }
+
+                try db.execute(
+                    sql: "UPDATE notes SET isPinned = 0, pinnedOrder = NULL WHERE id = ?",
+                    arguments: [note.id]
+                )
+                return nil
+            }
+            loadNoteList()
+            if currentNote?.id == note.id {
+                currentNote?.isPinned = newValue
+                currentNote?.pinnedOrder = newOrder
+            }
+        } catch {
+            print("[NoteStore] Failed to toggle note pin: \(error)")
         }
-        loadNoteList()
-        if currentNote?.id == note.id {
-            currentNote?.isPinned = newValue
+    }
+
+    func reorderPinnedNotes(_ orderedIDs: [String]) {
+        let currentPinnedIDs = notes.filter(\.isPinned).map(\.id)
+        guard orderedIDs.count == currentPinnedIDs.count,
+              Set(orderedIDs) == Set(currentPinnedIDs),
+              let db
+        else { return }
+
+        do {
+            try db.write { db in
+                for (index, id) in orderedIDs.enumerated() {
+                    try db.execute(
+                        sql: "UPDATE notes SET pinnedOrder = ? WHERE id = ? AND isPinned = 1",
+                        arguments: [Int64(index), id]
+                    )
+                }
+            }
+            loadNoteList()
+            if let currentID = currentNote?.id,
+               let index = orderedIDs.firstIndex(of: currentID) {
+                currentNote?.pinnedOrder = Int64(index)
+            }
+        } catch {
+            print("[NoteStore] Failed to reorder pinned notes: \(error)")
         }
     }
 

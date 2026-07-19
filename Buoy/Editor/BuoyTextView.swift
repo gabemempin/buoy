@@ -199,6 +199,30 @@ final class BuoyTextView: NSTextView {
         typingAttributes = normalizedTypingAttributes()
     }
 
+    private func systemFont(
+        ofSize size: CGFloat? = nil,
+        preserving traits: NSFontDescriptor.SymbolicTraits = []
+    ) -> NSFont {
+        let resolvedSize = size ?? fontSize
+        let base = NSFont.systemFont(ofSize: resolvedSize)
+        let supportedTraits: NSFontDescriptor.SymbolicTraits = [.bold, .italic]
+        let preservedTraits = traits.intersection(supportedTraits)
+        guard !preservedTraits.isEmpty else { return base }
+
+        let descriptor = base.fontDescriptor.withSymbolicTraits(preservedTraits)
+        return NSFont(descriptor: descriptor, size: resolvedSize) ?? base
+    }
+
+    private func systemFont(
+        ofSize size: CGFloat? = nil,
+        preservingTraitsFrom source: NSFont?
+    ) -> NSFont {
+        systemFont(
+            ofSize: size,
+            preserving: source?.fontDescriptor.symbolicTraits ?? []
+        )
+    }
+
     private func paragraphStyle(
         basedOn source: NSParagraphStyle? = nil,
         isTodoParagraph: Bool = false
@@ -233,12 +257,10 @@ final class BuoyTextView: NSTextView {
     private func normalizedTypingAttributes(
         basedOn source: [NSAttributedString.Key: Any]? = nil
     ) -> [NSAttributedString.Key: Any] {
-        let sysFont = NSFont.systemFont(ofSize: fontSize)
         let style = paragraphStyle(basedOn: source?[.paragraphStyle] as? NSParagraphStyle)
-
-        let traits = (source?[.font] as? NSFont)?.fontDescriptor.symbolicTraits ?? []
-        let desc = sysFont.fontDescriptor.withSymbolicTraits(traits)
-        let font = NSFont(descriptor: desc, size: fontSize) ?? sysFont
+        let font = systemFont(
+            preservingTraitsFrom: source?[.font] as? NSFont
+        )
 
         var attrs = source ?? [:]
         attrs[.font] = font
@@ -296,10 +318,11 @@ final class BuoyTextView: NSTextView {
         storage.beginEditing()
         storage.enumerateAttribute(.font, in: fullRange) { val, range, _ in
             guard let font = val as? NSFont else { return }
-            let traits = font.fontDescriptor.symbolicTraits
-            let desc = NSFont.systemFont(ofSize: fontSize).fontDescriptor.withSymbolicTraits(traits)
-            let newFont = NSFont(descriptor: desc, size: fontSize) ?? NSFont.systemFont(ofSize: fontSize)
-            storage.addAttribute(.font, value: newFont, range: range)
+            storage.addAttribute(
+                .font,
+                value: systemFont(preservingTraitsFrom: font),
+                range: range
+            )
         }
         storage.enumerateAttribute(.attachment, in: fullRange) { val, _, _ in
             (val as? TodoAttachment)?.apply(fontSize: fontSize)
@@ -924,10 +947,11 @@ final class BuoyTextView: NSTextView {
         storage.beginEditing()
         storage.enumerateAttribute(.font, in: range) { val, attrRange, _ in
             guard let font = val as? NSFont else { return }
-            let traits = font.fontDescriptor.symbolicTraits
-            let desc = NSFont.systemFont(ofSize: fontSize).fontDescriptor.withSymbolicTraits(traits)
-            let newFont = NSFont(descriptor: desc, size: fontSize) ?? NSFont.systemFont(ofSize: fontSize)
-            storage.addAttribute(.font, value: newFont, range: attrRange)
+            storage.addAttribute(
+                .font,
+                value: systemFont(preservingTraitsFrom: font),
+                range: attrRange
+            )
         }
         storage.addAttribute(.foregroundColor, value: editorTextColor, range: range)
         storage.removeAttribute(.backgroundColor, range: range)
@@ -1273,10 +1297,10 @@ final class BuoyTextView: NSTextView {
         guard sel.length > 0, let storage = textStorage else {
             var attrs = typingAttributes
             if let font = attrs[.font] as? NSFont {
-                let traits = font.fontDescriptor.symbolicTraits
+                let normalizedFont = systemFont(preservingTraitsFrom: font)
+                let traits = normalizedFont.fontDescriptor.symbolicTraits
                 let newTraits = traits.contains(trait) ? traits.subtracting(trait) : traits.union(trait)
-                let desc = NSFont.systemFont(ofSize: fontSize).fontDescriptor.withSymbolicTraits(newTraits)
-                attrs[.font] = NSFont(descriptor: desc, size: fontSize) ?? font
+                attrs[.font] = systemFont(preserving: newTraits)
                 typingAttributes = attrs
             }
             return
@@ -1290,11 +1314,17 @@ final class BuoyTextView: NSTextView {
         storage.beginEditing()
         storage.enumerateAttribute(.font, in: sel) { val, range, _ in
             let base = (val as? NSFont) ?? NSFont.systemFont(ofSize: self.fontSize)
-            let currentTraits = base.fontDescriptor.symbolicTraits
+            let normalizedBase = systemFont(
+                ofSize: base.pointSize,
+                preservingTraitsFrom: base
+            )
+            let currentTraits = normalizedBase.fontDescriptor.symbolicTraits
             let newTraits = allHave ? currentTraits.subtracting(trait) : currentTraits.union(trait)
-            let desc = NSFont.systemFont(ofSize: base.pointSize).fontDescriptor.withSymbolicTraits(newTraits)
-            let newFont = NSFont(descriptor: desc, size: base.pointSize) ?? base
-            storage.addAttribute(.font, value: newFont, range: range)
+            storage.addAttribute(
+                .font,
+                value: systemFont(ofSize: base.pointSize, preserving: newTraits),
+                range: range
+            )
         }
         storage.endEditing()
         didChangeText()
@@ -1503,10 +1533,11 @@ final class BuoyTextView: NSTextView {
         // Normalize all fonts to system font, preserving bold/italic traits
         mutable.enumerateAttribute(.font, in: fullRange) { val, range, _ in
             guard let font = val as? NSFont else { return }
-            let traits = font.fontDescriptor.symbolicTraits
-            let desc = NSFont.systemFont(ofSize: fontSize).fontDescriptor.withSymbolicTraits(traits)
-            let newFont = NSFont(descriptor: desc, size: fontSize)
-            mutable.addAttribute(.font, value: newFont ?? NSFont.systemFont(ofSize: fontSize), range: range)
+            mutable.addAttribute(
+                .font,
+                value: systemFont(preservingTraitsFrom: font),
+                range: range
+            )
         }
 
         // Normalize foreground colors to adaptive textColor; re-apply linkColor to link ranges
