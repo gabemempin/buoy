@@ -1,6 +1,7 @@
 import AppKit
 
 enum PanelLayoutMetrics {
+    static let windowCornerRadius: CGFloat = 20
     static let windowPadding: CGFloat = 6
     static let stackSpacing: CGFloat = 4
     static let onboardingInset: CGFloat = 2

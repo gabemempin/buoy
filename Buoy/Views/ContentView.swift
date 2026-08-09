@@ -16,6 +16,7 @@ struct ContentView: View {
     var onOnboardingComplete: (() -> Void)?
     var onOverrideHeight: ((CGFloat?) -> Void)?
     var onMinimizedWidthChange: ((CGFloat) -> Void)?
+    var onCornerResizeAvailabilityChange: ((Bool) -> Void)?
     var onClose: () -> Void
     var onMinimize: () -> Void
     var onExpand: () -> Void
@@ -66,6 +67,7 @@ struct ContentView: View {
         onOnboardingComplete: (() -> Void)? = nil,
         onOverrideHeight: ((CGFloat?) -> Void)? = nil,
         onMinimizedWidthChange: ((CGFloat) -> Void)? = nil,
+        onCornerResizeAvailabilityChange: ((Bool) -> Void)? = nil,
         onClose: @escaping () -> Void,
         onMinimize: @escaping () -> Void,
         onExpand: @escaping () -> Void,
@@ -79,6 +81,7 @@ struct ContentView: View {
         self.onOnboardingComplete = onOnboardingComplete
         self.onOverrideHeight = onOverrideHeight
         self.onMinimizedWidthChange = onMinimizedWidthChange
+        self.onCornerResizeAvailabilityChange = onCornerResizeAvailabilityChange
         self.onClose = onClose
         self.onMinimize = onMinimize
         self.onExpand = onExpand
@@ -152,10 +155,14 @@ struct ContentView: View {
         .onChange(of: activeFooterOverlayHeight) { _, height in
             onOverrideHeight?(height)
         }
+        .onChange(of: canUseCornerResizeControls) { _, canUseControls in
+            onCornerResizeAvailabilityChange?(canUseControls)
+        }
         .onAppear {
             showOnboarding = !settings.onboarded
             persistCurrentNoteSelection(noteStore.currentNote?.id)
             onMinimizedWidthChange?(minimizedWidth)
+            onCornerResizeAvailabilityChange?(canUseCornerResizeControls)
             if showOnboarding { onOverrideHeight?(PanelLayoutMetrics.onboardingOverrideHeight) }
         }
     }
@@ -455,6 +462,17 @@ struct ContentView: View {
         if showSettings   { return PanelLayoutMetrics.settingsOverrideHeight }
         if showShortcuts  { return PanelLayoutMetrics.shortcutsOverrideHeight }
         return nil
+    }
+
+    private var canUseCornerResizeControls: Bool {
+        !panelPresentation.isMinimized
+            && showMainContent
+            && !showOnboarding
+            && !showAllNotes
+            && !showSettings
+            && !showShortcuts
+            && !showLinkDialog
+            && pendingDeleteNote == nil
     }
 
     private var isBugReport: Bool {

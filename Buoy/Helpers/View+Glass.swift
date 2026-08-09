@@ -2,7 +2,6 @@ import SwiftUI
 import AppKit
 
 private enum BuoyGlassMetrics {
-    static let windowCornerRadius: CGFloat = 20
     static let enableWindowFocusPolish = true
     static let liquidGlassBackdropActiveOpacity: CGFloat = 0.62
     static let liquidGlassBackdropInactiveOpacity: CGFloat = 0.67
@@ -26,7 +25,7 @@ extension View {
     func buoyGlass(material: NSVisualEffectView.Material = .sidebar) -> some View {
         modifier(
             BuoyRegularGlassModifier(
-                shape: RoundedRectangle(cornerRadius: BuoyGlassMetrics.windowCornerRadius),
+                shape: RoundedRectangle(cornerRadius: PanelLayoutMetrics.windowCornerRadius),
                 fallbackMaterial: material
             )
         )
@@ -42,7 +41,7 @@ extension View {
     ) -> some View {
         modifier(
             BuoyRoundedGlassModifier(
-                cornerRadius: cornerRadius ?? max(0, BuoyGlassMetrics.windowCornerRadius - inset),
+                cornerRadius: cornerRadius ?? max(0, PanelLayoutMetrics.windowCornerRadius - inset),
                 fallbackMaterial: material
             )
         )

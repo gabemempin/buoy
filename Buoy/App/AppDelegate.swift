@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var minimizeRestoreMenuItem: NSMenuItem?
     private var globalMouseMonitor: Any?
     private var localMouseMonitor: Any?
+    private let cornerResizeOverlayController = CornerResizeOverlayController()
 
     let noteStore = NoteStore()
     var settingsStore = SettingsStore()
@@ -265,6 +266,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         noteStore.flushPendingSaves()
         removeOutsideClickMonitor()
+        cornerResizeOverlayController.detach()
     }
 
     // MARK: - Panel Setup
@@ -291,6 +293,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             },
             onMinimizedWidthChange: { [weak self] width in
                 self?.updateMinimizedWidth(width)
+            },
+            onCornerResizeAvailabilityChange: { [weak self] isAvailable in
+                self?.cornerResizeOverlayController.setEnabled(isAvailable)
             },
             onClose: { [weak self] in self?.hidePanel() },
             onMinimize: { [weak self] in self?.enterMinimizedMode() },
@@ -333,6 +338,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         p.contentView = hosting
 
         panel = p
+        cornerResizeOverlayController.attach(to: p)
         applyPanelMinimumSize(forMinimizedLayout: false)
         currentHeight = initialHeight
         panelPresentation.minimizedContentWidth = minimizedContentWidth()
@@ -418,10 +424,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         p.allowsKeyFocus = true
         p.setFrame(clampedToVisibleFrame(p.frame, in: p), display: false)
+        cornerResizeOverlayController.updateFrames()
         p.makeKeyAndOrderFront(nil)
+        cornerResizeOverlayController.parentDidShow()
     }
 
     @objc func hidePanel(_ sender: Any? = nil) {
+        cornerResizeOverlayController.parentWillHide()
         panel?.orderOut(nil)
     }
 
@@ -463,7 +472,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func handleOutsideMouseDownOnMainThread(screenPoint: NSPoint) {
         guard let p = panel, p.isVisible else { return }
-        guard !p.frame.contains(screenPoint) else { return }
+        guard !p.frame.contains(screenPoint),
+              !cornerResizeOverlayController.containsInteractiveControl(at: screenPoint)
+        else { return }
 
         p.allowsKeyFocus = false
         p.endEditing(for: nil)
@@ -677,6 +688,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc private func handleSettingsUpdate() {
         applyTheme(settingsStore.value.theme)
         panel?.level = settingsStore.value.alwaysOnTop ? .statusBar : .normal
+        cornerResizeOverlayController.syncWindowProperties()
     }
 
     // MARK: - Theme
@@ -755,6 +767,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func windowDidMove(_ notification: Notification) {
         recordCurrentFullSizeFrame()
+        cornerResizeOverlayController.updateFrames()
     }
 
     func windowWillResize(_ sender: NSWindow, to frameSize: NSSize) -> NSSize {
@@ -779,6 +792,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func windowDidResize(_ notification: Notification) {
         recordCurrentFullSizeFrame()
+        cornerResizeOverlayController.updateFrames()
     }
 }
 
