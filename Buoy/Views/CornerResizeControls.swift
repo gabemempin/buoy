@@ -72,6 +72,8 @@ final class CornerResizeOverlayController {
         for overlay in overlays.values {
             overlay.panel.level = parentWindow.level
             overlay.panel.collectionBehavior = parentWindow.collectionBehavior
+            overlay.panel.appearance = parentWindow.appearance
+            overlay.view.needsDisplay = true
         }
     }
 
@@ -234,6 +236,8 @@ private enum CornerResizeMetrics {
     static let revealDelay: TimeInterval = 0.16
     static let dismissDelay: TimeInterval = 0.34
     static let strokeWidth: CGFloat = 3.25
+    static let draggingStrokeWidth: CGFloat = 4.25
+    static let draggingRadiusExpansion: CGFloat = 2
     static let topProximityRadius: CGFloat = 22
     static let bottomProximityRadius: CGFloat = 36
 
@@ -298,6 +302,9 @@ private final class CornerResizeOverlayView: NSView {
     private var isDragging = false
     private var dragStartMouseLocation: NSPoint = .zero
     private var dragStartWindowFrame: NSRect = .zero
+    @objc dynamic private var dragEmphasis: CGFloat = 0 {
+        didSet { needsDisplay = true }
+    }
 
     init(corner: ResizeCorner, parentWindow: NSWindow) {
         self.corner = corner
@@ -309,6 +316,7 @@ private final class CornerResizeOverlayView: NSView {
                 height: CornerResizeMetrics.overlaySize
             )
         ))
+        wantsLayer = true
         alphaValue = 0
     }
 
@@ -318,6 +326,18 @@ private final class CornerResizeOverlayView: NSView {
     }
 
     override var mouseDownCanMoveWindow: Bool { false }
+
+    override class func defaultAnimation(forKey key: NSAnimatablePropertyKey) -> Any? {
+        if key == "dragEmphasis" {
+            return CABasicAnimation()
+        }
+        return super.defaultAnimation(forKey: key)
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        needsDisplay = true
+    }
 
     override func resetCursorRects() {
         super.resetCursorRects()
@@ -335,9 +355,15 @@ private final class CornerResizeOverlayView: NSView {
         let path = resizeArcPath()
         path.lineCapStyle = .round
         path.lineJoinStyle = .round
+        let arcColor = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor.white
+            : NSColor.controlAccentColor
+        let strokeWidth = CornerResizeMetrics.strokeWidth
+            + ((CornerResizeMetrics.draggingStrokeWidth - CornerResizeMetrics.strokeWidth)
+                * dragEmphasis)
 
-        NSColor.white.withAlphaComponent(0.2).setStroke()
-        path.lineWidth = CornerResizeMetrics.strokeWidth + 2.5
+        arcColor.withAlphaComponent(0.2).setStroke()
+        path.lineWidth = strokeWidth + 2.5
         path.stroke()
 
         let shadow = NSShadow()
@@ -346,12 +372,17 @@ private final class CornerResizeOverlayView: NSView {
         shadow.shadowOffset = NSSize(width: 0, height: -1)
         shadow.set()
 
-        NSColor.white.setStroke()
-        path.lineWidth = CornerResizeMetrics.strokeWidth
+        arcColor.setStroke()
+        path.lineWidth = strokeWidth
         path.stroke()
     }
 
     func setRevealed(_ revealed: Bool, animated: Bool) {
+        if !revealed {
+            isDragging = false
+            setDraggingAppearance(false)
+        }
+
         let targetAlpha: CGFloat = revealed ? 1 : 0
         guard abs(alphaValue - targetAlpha) > 0.001 else { return }
 
@@ -371,6 +402,7 @@ private final class CornerResizeOverlayView: NSView {
         dragStartMouseLocation = NSEvent.mouseLocation
         dragStartWindowFrame = parentWindow.frame
         isDragging = true
+        setDraggingAppearance(true)
         onDraggingChange?(true)
     }
 
@@ -429,11 +461,24 @@ private final class CornerResizeOverlayView: NSView {
     override func mouseUp(with event: NSEvent) {
         guard isDragging else { return }
         isDragging = false
+        setDraggingAppearance(false)
         onDraggingChange?(false)
+    }
+
+    private func setDraggingAppearance(_ dragging: Bool) {
+        let targetEmphasis: CGFloat = dragging ? 1 : 0
+        guard abs(dragEmphasis - targetEmphasis) > 0.001 else { return }
+
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = dragging ? 0.14 : 0.18
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            animator().dragEmphasis = targetEmphasis
+        }
     }
 
     private func resizeArcPath() -> NSBezierPath {
         let radius = CornerResizeMetrics.arcRadius
+            + (CornerResizeMetrics.draggingRadiusExpansion * dragEmphasis)
         let trim = min(max(CornerResizeMetrics.arcTrimDegrees, 0), 44)
         let parentCorner = NSPoint(
             x: corner.isLeading

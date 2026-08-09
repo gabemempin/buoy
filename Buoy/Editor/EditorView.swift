@@ -3,6 +3,20 @@ import AppKit
 
 /// NSScrollView that never initiates window drag, so text selection works without moving the window.
 private final class DragBlockingScrollView: NSScrollView {
+    private static let edgeFadeDistance: CGFloat = 20
+
+    private let edgeFadeMask = CAGradientLayer()
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        configureEdgeFade()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        configureEdgeFade()
+    }
+
     override var mouseDownCanMoveWindow: Bool { false }
     override var needsPanelToBecomeKey: Bool { true }
 
@@ -47,11 +61,63 @@ private final class DragBlockingScrollView: NSScrollView {
     override func layout() {
         super.layout()
         syncDocumentViewGeometry()
+        updateEdgeFade()
     }
 
     override func tile() {
         super.tile()
         syncDocumentViewGeometry()
+        updateEdgeFade()
+    }
+
+    override func reflectScrolledClipView(_ cView: NSClipView) {
+        super.reflectScrolledClipView(cView)
+        updateEdgeFade()
+    }
+
+    private func configureEdgeFade() {
+        wantsLayer = true
+        edgeFadeMask.startPoint = CGPoint(x: 0.5, y: 0)
+        edgeFadeMask.endPoint = CGPoint(x: 0.5, y: 1)
+        edgeFadeMask.actions = [
+            "bounds": NSNull(),
+            "position": NSNull(),
+            "colors": NSNull(),
+            "locations": NSNull()
+        ]
+        layer?.mask = edgeFadeMask
+    }
+
+    private func updateEdgeFade() {
+        guard bounds.height > 0 else { return }
+        if layer?.mask !== edgeFadeMask {
+            layer?.mask = edgeFadeMask
+        }
+
+        let clipBounds = contentView.bounds
+        let documentRect = contentView.documentRect
+        let maximumOffsetY = max(documentRect.minY, documentRect.maxY - clipBounds.height)
+        let canScrollUp = clipBounds.minY > documentRect.minY + 1
+        let canScrollDown = clipBounds.minY < maximumOffsetY - 1
+        let opaque = NSColor.black.cgColor
+        let transparent = NSColor.clear.cgColor
+        let fadeLocation = min(0.25, Self.edgeFadeDistance / bounds.height)
+
+        edgeFadeMask.frame = bounds
+        // CAGradientLayer runs bottom-to-top here, so the first and final colors
+        // correspond to the editor's bottom and top edges respectively.
+        edgeFadeMask.colors = [
+            canScrollDown ? transparent : opaque,
+            opaque,
+            opaque,
+            canScrollUp ? transparent : opaque
+        ]
+        edgeFadeMask.locations = [
+            0,
+            NSNumber(value: fadeLocation),
+            NSNumber(value: 1 - fadeLocation),
+            1
+        ]
     }
 
     private func syncDocumentViewGeometry() {
@@ -76,6 +142,7 @@ private final class DragBlockingScrollView: NSScrollView {
             textView.textContainer?.containerSize = targetContainerSize
         }
         textView.textContainer?.widthTracksTextView = true
+        updateEdgeFade()
     }
 }
 
@@ -85,7 +152,6 @@ struct EditorView: NSViewRepresentable {
     var usesDarkAppearance: Bool
     var noteID: String
     var placeholder: String = "Start typing… (⌘← ⌘→ to navigate notes)"
-    var onHeightChange: ((CGFloat) -> Void)?
     var onNoteSwitch: ((CGFloat) -> Void)?
     var onSelectionChange: ((String) -> Void)?
     var onContentChange: ((Data) -> Void)?
@@ -93,7 +159,6 @@ struct EditorView: NSViewRepresentable {
 
     func makeCoordinator() -> TextViewCoordinator {
         let c = TextViewCoordinator()
-        c.onHeightChange = onHeightChange
         c.onSelectionChange = onSelectionChange
         c.onContentChange = onContentChange
         return c
@@ -143,7 +208,6 @@ struct EditorView: NSViewRepresentable {
         context.coordinator.setLoadingContent(true)
         textView.loadRTF(rtfData)
         context.coordinator.setLoadingContent(false)
-        context.coordinator.syncTextLength((textView.string as NSString).length)
 
         // Re-enable the scroller after the slide-in transition finishes.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
@@ -178,7 +242,6 @@ struct EditorView: NSViewRepresentable {
             context.coordinator.setLoadingContent(true)
             textView.loadRTF(rtfData)
             context.coordinator.setLoadingContent(false)
-            context.coordinator.syncTextLength((textView.string as NSString).length)
             let h = textView.measureContentHeight()
             onNoteSwitch?(h)
             // Re-enable after AppKit's scroller-flash window has passed.
@@ -187,7 +250,6 @@ struct EditorView: NSViewRepresentable {
             }
         }
 
-        context.coordinator.onHeightChange = onHeightChange
         context.coordinator.onSelectionChange = onSelectionChange
         context.coordinator.onContentChange = onContentChange
     }
@@ -200,12 +262,6 @@ extension TextViewCoordinator: BuoyTextViewDelegate {
         guard !isLoadingContent else { return }
         if let rtf = textView.rtfContent() {
             onContentChange?(rtf)
-        }
-    }
-
-    func textViewHeightDidChange(_ height: CGFloat) {
-        DispatchQueue.main.async { [weak self] in
-            self?.onHeightChange?(height)
         }
     }
 

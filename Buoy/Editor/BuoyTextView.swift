@@ -16,7 +16,6 @@ extension Notification.Name {
 
 protocol BuoyTextViewDelegate: AnyObject {
     func textViewDidChange(_ textView: BuoyTextView)
-    func textViewHeightDidChange(_ height: CGFloat)
     func textViewSelectionDidChange(_ textView: BuoyTextView)
     func textViewRequestShowLinkDialog(selectedText: String)
 }
@@ -77,7 +76,6 @@ final class BuoyTextView: NSTextView {
     private lazy var listReorder = ListReorderController(textView: self)
     var currentEditorTextColor: NSColor { editorTextColor }
 
-    private(set) var measuredHeight: CGFloat = 200
     /// Last known non-zero selection — preserved even after the view resigns first responder.
     private(set) var lastKnownSelection: NSRange = NSRange(location: 0, length: 0)
     /// Last known cursor position (may have length 0).
@@ -337,7 +335,6 @@ final class BuoyTextView: NSTextView {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.buoyDelegate?.textViewDidChange(self)
-            self.measuredHeight = self.measureContentHeight()
             self.needsDisplay = true
         }
     }
@@ -1342,9 +1339,6 @@ final class BuoyTextView: NSTextView {
 
     private func notifyChange() {
         buoyDelegate?.textViewDidChange(self)
-        let h = measureContentHeight()
-        measuredHeight = h
-        buoyDelegate?.textViewHeightDidChange(h)
         needsDisplay = true
     }
 

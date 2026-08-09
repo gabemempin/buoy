@@ -279,9 +279,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             noteStore: noteStore,
             panelPresentation: panelPresentation,
             settings: settingsBinding(),
-            onHeightChange: { [weak self] h in
-                self?.animateHeight(h, allowShrink: false)
-            },
             onNoteSwitchHeight: { [weak self] h in
                 self?.animateNoteSwitchHeight(h)
             },
