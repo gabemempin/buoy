@@ -26,7 +26,6 @@ final class BuoyTextView: NSTextView {
     private enum EditorSpacing {
         static let line: CGFloat = 4
         static let paragraph: CGFloat = 0
-        static let todoParagraph: CGFloat = 4
     }
 
     private enum ListIndent {
@@ -223,12 +222,73 @@ final class BuoyTextView: NSTextView {
 
     private func paragraphStyle(
         basedOn source: NSParagraphStyle? = nil,
-        isTodoParagraph: Bool = false
+        isTodoParagraph _: Bool = false
     ) -> NSMutableParagraphStyle {
         let style = (source?.mutableCopy() as? NSMutableParagraphStyle) ?? NSMutableParagraphStyle()
+        // Rich text copied from browsers and document editors can carry several
+        // independent vertical-spacing values. Reset all of them so imported text
+        // lays out exactly like text typed in Buoy, while preserving non-vertical
+        // paragraph attributes such as list indentation and writing direction.
         style.lineSpacing = EditorSpacing.line
-        style.paragraphSpacing = isTodoParagraph ? EditorSpacing.todoParagraph : EditorSpacing.paragraph
+        // Todo attachments already fit inside the normal line fragment. Giving
+        // them paragraph spacing here makes checklist rows visibly farther apart.
+        style.paragraphSpacing = EditorSpacing.paragraph
+        style.paragraphSpacingBefore = 0
+        style.minimumLineHeight = 0
+        style.maximumLineHeight = 0
+        style.lineHeightMultiple = 0
+        style.textBlocks = []
         return style
+    }
+
+    /// Applies Buoy's vertical-spacing contract to every paragraph touched by `range`.
+    /// Paragraph ranges are expanded to their boundaries because AppKit resolves these
+    /// attributes per paragraph, even when pasted rich text splits one into several runs.
+    private func normalizeParagraphSpacing(
+        in attributedString: NSMutableAttributedString,
+        range: NSRange
+    ) {
+        guard attributedString.length > 0, range.length > 0 else { return }
+
+        let clampedStart = min(max(range.location, 0), attributedString.length - 1)
+        let clampedEnd = min(max(NSMaxRange(range), clampedStart + 1), attributedString.length)
+        let nsString = attributedString.string as NSString
+        let firstParagraph = nsString.paragraphRange(for: NSRange(location: clampedStart, length: 0))
+        let lastParagraph = nsString.paragraphRange(
+            for: NSRange(location: max(clampedStart, clampedEnd - 1), length: 0)
+        )
+        let affectedEnd = NSMaxRange(lastParagraph)
+
+        var updates: [(NSRange, NSMutableParagraphStyle)] = []
+        var paragraphStart = firstParagraph.location
+        while paragraphStart < affectedEnd, paragraphStart < attributedString.length {
+            let paragraphRange = nsString.paragraphRange(
+                for: NSRange(location: paragraphStart, length: 0)
+            )
+            let isTodoParagraph = attributedString.attribute(
+                .attachment,
+                at: paragraphRange.location,
+                effectiveRange: nil
+            ) is TodoAttachment
+
+            attributedString.enumerateAttribute(.paragraphStyle, in: paragraphRange) { value, attributeRange, _ in
+                updates.append((
+                    attributeRange,
+                    paragraphStyle(
+                        basedOn: value as? NSParagraphStyle,
+                        isTodoParagraph: isTodoParagraph
+                    )
+                ))
+            }
+
+            let next = NSMaxRange(paragraphRange)
+            guard next > paragraphStart else { break }
+            paragraphStart = next
+        }
+
+        for (attributeRange, style) in updates {
+            attributedString.addAttribute(.paragraphStyle, value: style, range: attributeRange)
+        }
     }
 
     private func todoAttachmentAttributedString(isChecked: Bool = false, indentLevel: Int = 0) -> NSMutableAttributedString {
@@ -267,6 +327,8 @@ final class BuoyTextView: NSTextView {
         attrs.removeValue(forKey: .attachment)
         attrs.removeValue(forKey: .backgroundColor)
         attrs.removeValue(forKey: .link)
+        attrs.removeValue(forKey: .baselineOffset)
+        attrs.removeValue(forKey: NSAttributedString.Key("NSSuperscript"))
         return attrs
     }
 
@@ -898,11 +960,6 @@ final class BuoyTextView: NSTextView {
 
     override func paste(_ sender: Any?) {
         guard let storage = textStorage else { super.paste(sender); return }
-        guard let pasted = NSPasteboard.general.string(forType: .string) else {
-            super.paste(sender)
-            return
-        }
-
         let sel = selectedRange()
         let nsString = string as NSString
         guard sel.location <= nsString.length else { super.paste(sender); return }
@@ -915,7 +972,8 @@ final class BuoyTextView: NSTextView {
         let isTodoLine = lineStart < storage.length
             && (storage.attributes(at: lineStart, effectiveRange: nil)[.attachment] is TodoAttachment)
 
-        if isBulletLine || isTodoLine {
+        if (isBulletLine || isTodoLine),
+           let pasted = NSPasteboard.general.string(forType: .string) {
             var cleaned = pasted
             if let regex = try? NSRegularExpression(pattern: "^[•☐☑] ") {
                 cleaned = regex.stringByReplacingMatches(
@@ -928,30 +986,60 @@ final class BuoyTextView: NSTextView {
             typingAttributes = insertionAttributes
             notifyChange()
         } else {
-            let beforeLoc = sel.location
             super.paste(sender)
-            let afterLoc = selectedRange().location
-            let pastedRange = NSRange(location: beforeLoc, length: afterLoc - beforeLoc)
-            normalizeFontInRange(pastedRange)
         }
     }
 
-    /// Normalizes fonts in the given range to system font (preserving bold/italic traits)
-    /// and strips foreign colors/backgrounds.
-    private func normalizeFontInRange(_ range: NSRange) {
+    /// Handles every AppKit pasteboard import path, including regular paste, Paste and
+    /// Match Style, rich-text paste, Services, and text dropped into the editor.
+    override func readSelection(
+        from pasteboard: NSPasteboard,
+        type: NSPasteboard.PasteboardType
+    ) -> Bool {
+        guard let storage = textStorage else {
+            return super.readSelection(from: pasteboard, type: type)
+        }
+
+        let replacementRange = rangeForUserTextChange
+        let previousLength = storage.length
+        let didRead = super.readSelection(from: pasteboard, type: type)
+        guard didRead,
+              replacementRange.location != NSNotFound,
+              replacementRange.location <= previousLength,
+              replacementRange.length <= previousLength - replacementRange.location else {
+            return didRead
+        }
+
+        let insertedLength = storage.length - (previousLength - replacementRange.length)
+        guard insertedLength > 0,
+              replacementRange.location + insertedLength <= storage.length else {
+            return didRead
+        }
+
+        normalizeImportedContent(
+            in: NSRange(location: replacementRange.location, length: insertedLength)
+        )
+        return didRead
+    }
+
+    /// Normalizes imported rich text while retaining supported inline formatting and
+    /// non-vertical paragraph details such as list indentation.
+    private func normalizeImportedContent(in range: NSRange) {
         guard let storage = textStorage, range.length > 0,
               NSMaxRange(range) <= storage.length else { return }
         storage.beginEditing()
         storage.enumerateAttribute(.font, in: range) { val, attrRange, _ in
-            guard let font = val as? NSFont else { return }
             storage.addAttribute(
                 .font,
-                value: systemFont(preservingTraitsFrom: font),
+                value: systemFont(preservingTraitsFrom: val as? NSFont),
                 range: attrRange
             )
         }
         storage.addAttribute(.foregroundColor, value: editorTextColor, range: range)
         storage.removeAttribute(.backgroundColor, range: range)
+        storage.removeAttribute(.baselineOffset, range: range)
+        storage.removeAttribute(NSAttributedString.Key("NSSuperscript"), range: range)
+        normalizeParagraphSpacing(in: storage, range: range)
         canonicalizeExternalBulletLists(in: storage, range: range)
         storage.endEditing()
         notifyChange()
@@ -1216,14 +1304,12 @@ final class BuoyTextView: NSTextView {
         guard let storage = textStorage else { return }
         let finalURL = url.hasPrefix("http") ? url : "https://\(url)"
         let display = text.isEmpty ? finalURL : text
-        let attrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: fontSize),
-            .foregroundColor: NSColor.linkColor,
-            .underlineStyle: NSUnderlineStyle.single.rawValue,
-            .link: URL(string: finalURL) as Any
-        ]
-        let atStr = NSAttributedString(string: display, attributes: attrs)
         let sel = position ?? (lastKnownSelection.length > 0 ? lastKnownSelection : lastKnownCursorPosition)
+        var attrs = normalizedPlainTextAttributes(at: min(sel.location, storage.length))
+        attrs[.foregroundColor] = NSColor.linkColor
+        attrs[.underlineStyle] = NSUnderlineStyle.single.rawValue
+        attrs[.link] = URL(string: finalURL) as Any
+        let atStr = NSAttributedString(string: display, attributes: attrs)
         window?.makeFirstResponder(self)
         guard shouldChangeText(in: sel, replacementString: atStr.string) else { return }
         storage.replaceCharacters(in: sel, with: atStr)
@@ -1453,7 +1539,15 @@ final class BuoyTextView: NSTextView {
 
     func rtfContent() -> Data? {
         guard let storage = textStorage else { return nil }
-        let mutable = mutableCopyReplacingTodoAttachments(in: storage) { isChecked, paraStyle in
+        let normalizedStorage = NSMutableAttributedString(attributedString: storage)
+        let normalizedRange = NSRange(location: 0, length: normalizedStorage.length)
+        normalizedStorage.removeAttribute(.baselineOffset, range: normalizedRange)
+        normalizedStorage.removeAttribute(NSAttributedString.Key("NSSuperscript"), range: normalizedRange)
+        normalizeParagraphSpacing(
+            in: normalizedStorage,
+            range: normalizedRange
+        )
+        let mutable = mutableCopyReplacingTodoAttachments(in: normalizedStorage) { isChecked, paraStyle in
             let marker = isChecked ? "\u{2611}" : "\u{2610}"
             return NSAttributedString(string: marker, attributes: [
                 .font: NSFont.systemFont(ofSize: fontSize),
@@ -1471,7 +1565,7 @@ final class BuoyTextView: NSTextView {
     /// The attachment's built-in spacer is consumed too so repeated exports don't duplicate it.
     /// Replacements are applied in reverse order to preserve correct indices.
     private func mutableCopyReplacingTodoAttachments(
-        in storage: NSTextStorage,
+        in storage: NSAttributedString,
         makeReplacement: (Bool, NSParagraphStyle?) -> NSAttributedString
     ) -> NSMutableAttributedString {
         let mutable = NSMutableAttributedString(attributedString:
@@ -1517,6 +1611,7 @@ final class BuoyTextView: NSTextView {
                 documentAttributes: nil
               ) else {
             textStorage?.setAttributedString(NSAttributedString(string: ""))
+            updateDefaultTypingAttributes()
             needsDisplay = true
             return
         }
@@ -1537,20 +1632,12 @@ final class BuoyTextView: NSTextView {
         // Normalize foreground colors to adaptive textColor; re-apply linkColor to link ranges
         mutable.removeAttribute(.foregroundColor, range: fullRange)
         mutable.addAttribute(.foregroundColor, value: editorTextColor, range: fullRange)
+        mutable.removeAttribute(.baselineOffset, range: fullRange)
+        mutable.removeAttribute(NSAttributedString.Key("NSSuperscript"), range: fullRange)
         mutable.enumerateAttribute(.link, in: fullRange) { val, range, _ in
             if val != nil {
                 mutable.addAttribute(.foregroundColor, value: NSColor.linkColor, range: range)
             }
-        }
-
-        // Apply consistent line spacing while preserving other paragraph attributes
-        var styleUpdates: [(NSRange, NSMutableParagraphStyle)] = []
-        mutable.enumerateAttribute(.paragraphStyle, in: fullRange) { val, range, _ in
-            let style = paragraphStyle(basedOn: val as? NSParagraphStyle)
-            styleUpdates.append((range, style))
-        }
-        for (range, style) in styleUpdates {
-            mutable.addAttribute(.paragraphStyle, value: style, range: range)
         }
 
         // RTF round-trip often loses the font attribute on attachment characters (U+FFFC).
@@ -1581,25 +1668,8 @@ final class BuoyTextView: NSTextView {
             }
         }
 
-        // Apply todoParagraph spacing to paragraphs that start with a TodoAttachment,
-        // preserving headIndent so nested todos survive the RTF round-trip.
-        let normalizedString = mutable.string as NSString
-        var paragraphStart = 0
-        while paragraphStart < mutable.length {
-            let paragraphRange = normalizedString.paragraphRange(for: NSRange(location: paragraphStart, length: 0))
-            if paragraphRange.location < mutable.length,
-               mutable.attribute(.attachment, at: paragraphRange.location, effectiveRange: nil) is TodoAttachment {
-                let existingStyle = mutable.attribute(.paragraphStyle, at: paragraphRange.location, effectiveRange: nil) as? NSParagraphStyle
-                mutable.addAttribute(
-                    .paragraphStyle,
-                    value: paragraphStyle(basedOn: existingStyle, isTodoParagraph: true),
-                    range: paragraphRange
-                )
-            }
-            paragraphStart = NSMaxRange(paragraphRange)
-        }
-
         canonicalizeExternalBulletLists(in: mutable, range: NSRange(location: 0, length: mutable.length))
+        normalizeParagraphSpacing(in: mutable, range: NSRange(location: 0, length: mutable.length))
         textStorage?.setAttributedString(mutable)
         updateDefaultTypingAttributes()
         needsDisplay = true

@@ -11,7 +11,6 @@ struct ContentView: View {
     var panelPresentation: PanelPresentationModel
     @Binding var settings: AppSettings
     @Environment(\.colorScheme) private var colorScheme
-    var onNoteSwitchHeight: ((CGFloat) -> Void)?
     var onOnboardingComplete: (() -> Void)?
     var onOverrideHeight: ((CGFloat?) -> Void)?
     var onMinimizedWidthChange: ((CGFloat) -> Void)?
@@ -61,7 +60,6 @@ struct ContentView: View {
         noteStore: NoteStore,
         panelPresentation: PanelPresentationModel,
         settings: Binding<AppSettings>,
-        onNoteSwitchHeight: ((CGFloat) -> Void)? = nil,
         onOnboardingComplete: (() -> Void)? = nil,
         onOverrideHeight: ((CGFloat?) -> Void)? = nil,
         onMinimizedWidthChange: ((CGFloat) -> Void)? = nil,
@@ -74,7 +72,6 @@ struct ContentView: View {
         self.noteStore = noteStore
         self.panelPresentation = panelPresentation
         self._settings = settings
-        self.onNoteSwitchHeight = onNoteSwitchHeight
         self.onOnboardingComplete = onOnboardingComplete
         self.onOverrideHeight = onOverrideHeight
         self.onMinimizedWidthChange = onMinimizedWidthChange
@@ -256,11 +253,6 @@ struct ContentView: View {
                         placeholder: isBugReport
                             ? "Tell me what you want fixed or improved. If something went wrong, detail how to reproduce the bug.\n\nThank you for making Buoy better!"
                             : "Start typing… (⌘← ⌘→ to navigate notes)",
-                        onNoteSwitch: { h in
-                            DispatchQueue.main.async {
-                                onNoteSwitchHeight?(h + 160)
-                            }
-                        },
                         onSelectionChange: { text in
                             editorSelectedText = text
                         },

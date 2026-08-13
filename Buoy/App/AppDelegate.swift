@@ -279,9 +279,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             noteStore: noteStore,
             panelPresentation: panelPresentation,
             settings: settingsBinding(),
-            onNoteSwitchHeight: { [weak self] h in
-                self?.animateNoteSwitchHeight(h)
-            },
             onOnboardingComplete: { [weak self] in
                 self?.animateOnboardingDismiss()
             },
@@ -612,35 +609,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             centerHorizontally: false
         )
         animatePanel(to: targetFrame, duration: duration, timingName: timingName)
-        if overlayOverrideHeight == 0 {
-            lastFullSizeFrame = targetFrame
-        }
-    }
-
-    private func animateNoteSwitchHeight(_ newHeight: CGFloat) {
-        guard let p = panel else { return }
-        guard !panelPresentation.isMinimized, !isMinimizeAnimating else { return }
-        let liveHeight = panelContentHeight(p)
-        if overlayOverrideHeight == 0 {
-            currentHeight = max(PanelLayoutMetrics.minimumWindowHeight, liveHeight)
-        }
-
-        let target = max(
-            PanelLayoutMetrics.minimumWindowHeight,
-            min(PanelLayoutMetrics.maximumAutoHeight, newHeight)
-        )
-        currentHeight = target
-
-        let effectiveTarget = max(target, overlayOverrideHeight)
-        guard abs(liveHeight - effectiveTarget) > 0.5 else { return }
-
-        let targetFrame = resizedFrame(
-            contentSize: NSSize(width: panelContentSize(p).width, height: effectiveTarget),
-            currentFrame: p.frame,
-            in: p,
-            centerHorizontally: false
-        )
-        animatePanel(to: targetFrame, duration: 0.28, timingName: .easeInEaseOut)
         if overlayOverrideHeight == 0 {
             lastFullSizeFrame = targetFrame
         }

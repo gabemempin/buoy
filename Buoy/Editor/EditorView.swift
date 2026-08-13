@@ -96,21 +96,35 @@ private final class DragBlockingScrollView: NSScrollView {
 
         let clipBounds = contentView.bounds
         let documentRect = contentView.documentRect
-        let maximumOffsetY = max(documentRect.minY, documentRect.maxY - clipBounds.height)
         let canScrollUp = clipBounds.minY > documentRect.minY + 1
-        let canScrollDown = clipBounds.minY < maximumOffsetY - 1
+        let canScrollDown: Bool
+        if let textView = documentView as? BuoyTextView,
+           let layoutManager = textView.layoutManager,
+           let textContainer = textView.textContainer {
+            layoutManager.ensureLayout(for: textContainer)
+            let laidOutTextBottom = textView.textContainerOrigin.y
+                + layoutManager.usedRect(for: textContainer).maxY
+            let remainingTextHeight = laidOutTextBottom - textView.visibleRect.maxY
+            canScrollDown = remainingTextHeight > Self.edgeFadeDistance + 1
+        } else {
+            let maximumOffsetY = max(documentRect.minY, documentRect.maxY - clipBounds.height)
+            canScrollDown = clipBounds.minY < maximumOffsetY - 1
+        }
         let opaque = NSColor.black.cgColor
         let transparent = NSColor.clear.cgColor
         let fadeLocation = min(0.25, Self.edgeFadeDistance / bounds.height)
 
         edgeFadeMask.frame = bounds
-        // CAGradientLayer runs bottom-to-top here, so the first and final colors
-        // correspond to the editor's bottom and top edges respectively.
+        // Fade the bottom only while at least one fade-width of actual glyphs
+        // remains below the viewport. AppKit's extra line fragment is only the
+        // caret row after the document; counting it keeps the final line faded.
+        // This scroll view and its backing layer are flipped, so the gradient's
+        // first color is the visual top and its final color is the visual bottom.
         edgeFadeMask.colors = [
-            canScrollDown ? transparent : opaque,
+            canScrollUp ? transparent : opaque,
             opaque,
             opaque,
-            canScrollUp ? transparent : opaque
+            canScrollDown ? transparent : opaque
         ]
         edgeFadeMask.locations = [
             0,
@@ -152,7 +166,6 @@ struct EditorView: NSViewRepresentable {
     var usesDarkAppearance: Bool
     var noteID: String
     var placeholder: String = "Start typing… (⌘← ⌘→ to navigate notes)"
-    var onNoteSwitch: ((CGFloat) -> Void)?
     var onSelectionChange: ((String) -> Void)?
     var onContentChange: ((Data) -> Void)?
     var textViewRef: ((BuoyTextView) -> Void)?
@@ -242,8 +255,6 @@ struct EditorView: NSViewRepresentable {
             context.coordinator.setLoadingContent(true)
             textView.loadRTF(rtfData)
             context.coordinator.setLoadingContent(false)
-            let h = textView.measureContentHeight()
-            onNoteSwitch?(h)
             // Re-enable after AppKit's scroller-flash window has passed.
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                 scrollView.hasVerticalScroller = true
