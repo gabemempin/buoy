@@ -138,6 +138,10 @@ final class NoteStore {
     }
 
     func createNote() {
+        // Commit any in-flight edits against the *outgoing* note before we
+        // repoint currentNote, so a debounced save can't land on the new note.
+        flushPendingSaves()
+
         guard let db else { return }
         let count = notes.count
         let now = Note.currentTimestamp()
@@ -234,8 +238,11 @@ final class NoteStore {
 
     func saveContent(_ rtfData: Data) {
         saveContentWork?.cancel()
+        // Capture the target note *now*; the write must land on the note being
+        // edited, not on whatever currentNote happens to be when the timer fires.
+        let targetID = currentNote?.id
         let work = DispatchWorkItem { [weak self] in
-            self?.persistContent(rtfData)
+            self?.persistContent(rtfData, noteID: targetID)
         }
         saveContentWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: work)
@@ -250,8 +257,11 @@ final class NoteStore {
 
     func saveTitle(_ title: String) {
         saveTitleWork?.cancel()
+        // Capture the target note *now*; the write must land on the note being
+        // edited, not on whatever currentNote happens to be when the timer fires.
+        let targetID = currentNote?.id
         let work = DispatchWorkItem { [weak self] in
-            self?.persistTitle(title)
+            self?.persistTitle(title, noteID: targetID)
         }
         saveTitleWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: work)
@@ -264,24 +274,24 @@ final class NoteStore {
 
     // MARK: - Private persistence
 
-    private func persistContent(_ rtfData: Data) {
-        guard let db, let note = currentNote else { return }
+    private func persistContent(_ rtfData: Data, noteID: String?) {
+        guard let db, let noteID else { return }
         let now = Note.currentTimestamp()
         _ = try? db.write { db in
             try db.execute(
                 sql: "UPDATE notes SET contentRTF = ?, updatedAt = ? WHERE id = ?",
-                arguments: [rtfData, now, note.id]
+                arguments: [rtfData, now, noteID]
             )
         }
     }
 
-    private func persistTitle(_ title: String) {
-        guard let db, let note = currentNote else { return }
+    private func persistTitle(_ title: String, noteID: String?) {
+        guard let db, let noteID else { return }
         let now = Note.currentTimestamp()
         _ = try? db.write { db in
             try db.execute(
                 sql: "UPDATE notes SET title = ?, updatedAt = ? WHERE id = ?",
-                arguments: [title, now, note.id]
+                arguments: [title, now, noteID]
             )
         }
     }
