@@ -1,11 +1,28 @@
 import AppKit
 
 enum PanelLayoutMetrics {
-    static let windowCornerRadius: CGFloat = 20
+    /// macOS 27 unified every window on a single 16pt corner radius
+    /// (measured via `-[NSWindow _cornerRadius]` on 27.0). Buoy's panel is
+    /// borderless, so it has to draw that radius itself.
+    static let windowCornerRadius: CGFloat = 16
+
+    /// Transparent margin between the window's edge and the glass surface.
+    ///
+    /// The panel carries no AppKit window shadow (`hasShadow = false`) — on a
+    /// transparent window that shadow's inner edge is never covered and renders
+    /// as a hard ring. `BuoyRegularGlassModifier.shadowRing` draws the shadow
+    /// into this margin instead. Must stay >= the ring's radius + y-offset, or
+    /// the shadow clips at the window bounds.
+    ///
+    /// Set to 0 for an edge-to-edge surface with no drop shadow at all.
+    static let glassEdgeInset: CGFloat = 12
+
+    /// Inset from the *glass* edge to the content inside it.
     static let windowPadding: CGFloat = 6
     static let stackSpacing: CGFloat = 4
     static let onboardingInset: CGFloat = 2
-    static let onboardingCornerRadius: CGFloat = 15
+    /// Concentric with the window, inset by the content padding.
+    static let onboardingCornerRadius: CGFloat = windowCornerRadius - windowPadding + 1
     static let overlayHorizontalInset: CGFloat = 8
     static let allNotesTopInset: CGFloat = 43
     static let allNotesBottomInset: CGFloat = 43
@@ -30,9 +47,11 @@ enum PanelLayoutMetrics {
         settingsOverlayMinimumWidth
     )
 
-    static let minimumWindowWidth: CGFloat = minimumContentWidth
+    // Minimum size of the glass surface itself — what the SwiftUI content is
+    // framed against, inside the shadow margin.
+    static let minimumGlassWidth: CGFloat = minimumContentWidth
 
-    static let minimumWindowHeight: CGFloat =
+    static let minimumGlassHeight: CGFloat =
         (windowPadding * 2)
         + headerMinimumHeight
         + toolbarMinimumHeight
@@ -40,16 +59,23 @@ enum PanelLayoutMetrics {
         + footerMinimumHeight
         + (stackSpacing * 3)
 
-    static let maximumAutoHeight: CGFloat = 700
+    // Minimum size of the panel *window* — the glass plus its shadow margin on
+    // every side. All AppKit frame math works in these terms.
+    static let minimumWindowWidth: CGFloat = minimumGlassWidth + (glassEdgeInset * 2)
 
-    // Minimum window heights when overlay panels are open
-    static let settingsOverrideHeight: CGFloat = 470
-    static let shortcutsOverrideHeight: CGFloat = 468
-    static let onboardingOverrideHeight: CGFloat = 450
+    static let minimumWindowHeight: CGFloat = minimumGlassHeight + (glassEdgeInset * 2)
+
+    static let maximumAutoHeight: CGFloat = 700 + (glassEdgeInset * 2)
+
+    // Minimum window heights when overlay panels are open. Expressed as glass
+    // heights plus the margin so the visible panel keeps its intended size.
+    static let settingsOverrideHeight: CGFloat = 470 + (glassEdgeInset * 2)
+    static let shortcutsOverrideHeight: CGFloat = 468 + (glassEdgeInset * 2)
+    static let onboardingOverrideHeight: CGFloat = 450 + (glassEdgeInset * 2)
 
     // Minimized pill layout
     static let minimizedPillHeight: CGFloat = 56
-    static let minimizedWindowHeight: CGFloat = minimizedPillHeight + (windowPadding * 2)
+    static let minimizedWindowHeight: CGFloat = minimizedPillHeight + (glassEdgeInset * 2)
     static let minimizedWindowMinimumWidth: CGFloat = 240
     static let minimizedWindowMaximumWidth: CGFloat = minimumWindowWidth
     static let minimizedPillLeadingPadding: CGFloat = 22
@@ -86,11 +112,11 @@ enum PanelLayoutMetrics {
     }
 
     static func minimizedTitleLaneWidth(forWindowWidth windowWidth: CGFloat) -> CGFloat {
-        minimizedTitleLaneWidth(forPillWidth: windowWidth - (windowPadding * 2))
+        minimizedTitleLaneWidth(forPillWidth: windowWidth - (glassEdgeInset * 2))
     }
 
     static func minimizedWindowWidth(forTitle title: String) -> CGFloat {
-        let unclamped = (windowPadding * 2)
+        let unclamped = (glassEdgeInset * 2)
             + minimizedPillLeadingPadding
             + minimizedTitleWidth(forTitle: title)
             + minimizedTitleButtonSpacing

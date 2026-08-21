@@ -166,7 +166,10 @@ final class CornerResizeOverlayController {
 
         var nextCorner = ResizeCorner.allCases
             .map { corner in
-                (corner, corner.screenPoint(in: parentWindow.frame).distance(to: screenPoint))
+                (corner, corner.screenPoint(in: parentWindow.frame.insetBy(
+                    dx: PanelLayoutMetrics.glassEdgeInset,
+                    dy: PanelLayoutMetrics.glassEdgeInset
+                )).distance(to: screenPoint))
             }
             .filter { $0.1 <= $0.0.proximityRadius }
             .min { $0.1 < $1.1 }?
@@ -258,12 +261,18 @@ private enum CornerResizeMetrics {
     static let bottomProximityRadius: CGFloat = 36
 
     static func overlayFrame(for corner: ResizeCorner, around parentFrame: NSRect) -> NSRect {
+        // Anchor to the *glass* corner, not the window corner — the window frame
+        // extends glassEdgeInset past the visible surface on every side.
+        let glass = parentFrame.insetBy(
+            dx: PanelLayoutMetrics.glassEdgeInset,
+            dy: PanelLayoutMetrics.glassEdgeInset
+        )
         let x = corner.isLeading
-            ? parentFrame.minX - outsideExtent
-            : parentFrame.maxX - insideOverlap
+            ? glass.minX - outsideExtent
+            : glass.maxX - insideOverlap
         let y = corner.isTop
-            ? parentFrame.maxY - insideOverlap
-            : parentFrame.minY - outsideExtent
+            ? glass.maxY - insideOverlap
+            : glass.minY - outsideExtent
         return NSRect(x: x, y: y, width: overlaySize, height: overlaySize)
     }
 }
@@ -496,6 +505,9 @@ private final class CornerResizeOverlayView: NSView {
         let radius = CornerResizeMetrics.arcRadius
             + (CornerResizeMetrics.draggingRadiusExpansion * dragEmphasis)
         let trim = min(max(CornerResizeMetrics.arcTrimDegrees, 0), 44)
+        // Overlay frames are anchored to the glass rect (see overlayFrame), so in
+        // local coordinates the glass corner sits exactly where the window corner
+        // used to — the original constants apply unchanged.
         let parentCorner = NSPoint(
             x: corner.isLeading
                 ? CornerResizeMetrics.outsideExtent

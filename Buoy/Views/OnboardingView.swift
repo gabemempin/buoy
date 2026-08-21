@@ -549,7 +549,7 @@ private struct MiniEditorPanel: View {
             )
             .frame(height: 100)
         }
-        .buoyGlassPanel(cornerRadius: 16)
+        .buoyGlassPanel(cornerRadius: 14)
     }
 }
 
@@ -683,7 +683,7 @@ private struct HarborModeDemoPanel: View {
 
             Color.clear.frame(height: 14)
         }
-        .buoyGlassPanel(cornerRadius: 16)
+        .buoyGlassPanel(cornerRadius: 14)
         .shadow(color: .black.opacity(0.16), radius: 14, y: 5)
     }
 }
@@ -751,7 +751,7 @@ private struct BugReportDemoPanel: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 12)
         }
-        .buoyGlassPanel(cornerRadius: 16)
+        .buoyGlassPanel(cornerRadius: 14)
     }
 }
 

@@ -167,12 +167,12 @@ struct ContentView: View {
             .animation(.easeOut(duration: 0.16), value: pendingDeleteNote != nil)
             .padding(PanelLayoutMetrics.windowPadding)
             .frame(
-                minWidth: PanelLayoutMetrics.minimumContentWidth,
-                minHeight: PanelLayoutMetrics.minimumWindowHeight
+                minWidth: PanelLayoutMetrics.minimumGlassWidth,
+                minHeight: PanelLayoutMetrics.minimumGlassHeight
             )
             .background(WindowDragBlocker())
-            .buoyGlass()
             .overlay { deleteConfirmOverlay }
+            .buoyGlass()
     }
 
     @ViewBuilder
@@ -190,14 +190,13 @@ struct ContentView: View {
                 )
             }
             // Clip to the window corner radius so the scrim stays concentric with the glass.
-            .clipShape(RoundedRectangle(cornerRadius: 20))
+            .clipShape(RoundedRectangle(cornerRadius: PanelLayoutMetrics.windowCornerRadius))
             .transition(.opacity)
         }
     }
 
     private var minimizedPanelContent: some View {
         minimizedContent
-            .padding(PanelLayoutMetrics.windowPadding)
             .frame(
                 width: panelPresentation.minimizedContentWidth,
                 height: PanelLayoutMetrics.minimizedWindowHeight

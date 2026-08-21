@@ -16,6 +16,16 @@ private enum BuoyGlassMetrics {
     static let accentHoverBorderOpacity: CGFloat = 0.24
     static let glassButtonHoverBoost: Double = 0.08
     static let glassButtonHoverStrokeBoost: Double = 0.18
+
+    // Panel drop shadow, drawn as a ring in the margin by `shadowRing`.
+    // Keep `radius + offsetY <= PanelLayoutMetrics.glassEdgeInset` so the ring
+    // renders fully inside the window instead of clipping at its bounds.
+    // Directional: the y-offset is a large fraction of the radius so the shadow
+    // sits mostly *below* the panel. A near-symmetric spread (small offset,
+    // large radius) reads as a grey halo around all four edges, not a shadow.
+    static let surfaceShadowOpacity: Double = 0.30
+    static let surfaceShadowRadius: CGFloat = 6
+    static let surfaceShadowOffsetY: CGFloat = 4
 }
 
 extension View {
@@ -377,8 +387,55 @@ private struct BuoyRegularGlassModifier<S: Shape>: ViewModifier {
     @State private var isWindowFocused = true
 
     func body(content: Content) -> some View {
+        glassSurface(content)
+            .padding(PanelLayoutMetrics.glassEdgeInset)
+            .background(shadowRing)
+    }
+
+    /// The panel's drop shadow, drawn only in the margin.
+    ///
+    /// A plain `.shadow()` on the surface is not usable here: it lays a blurred
+    /// dark copy *directly behind* the glass, and because the material is
+    /// translucent that copy shows through as a dark pool inside the panel.
+    /// AppKit's window shadow is no better — a transparent window never covers
+    /// the shadow's inner edge, so it reads as a hard ring.
+    ///
+    /// So cast the shadow from an opaque silhouette, then mask the surface's own
+    /// shape back out. Only the part that falls outside the glass survives, and
+    /// nothing dark is ever composited behind the material.
+    private var shadowRing: some View {
+        let inset = PanelLayoutMetrics.glassEdgeInset
+        return shape
+            .fill(Color.black)
+            .padding(inset)
+            .shadow(
+                color: .black.opacity(BuoyGlassMetrics.surfaceShadowOpacity),
+                radius: BuoyGlassMetrics.surfaceShadowRadius,
+                x: 0,
+                y: BuoyGlassMetrics.surfaceShadowOffsetY
+            )
+            .compositingGroup()
+            .mask {
+                Rectangle()
+                    .fill(Color.white)
+                    .overlay {
+                        shape
+                            .fill(Color.black)
+                            .padding(inset)
+                            .blendMode(.destinationOut)
+                    }
+                    .compositingGroup()
+            }
+            .allowsHitTesting(false)
+    }
+
+    @ViewBuilder
+    private func glassSurface(_ content: Content) -> some View {
         if #available(macOS 26, *) {
             content
+                // The clip is load-bearing: `in: shape` shapes the visible
+                // material, but the backdrop layer behind it is not bounded by
+                // that shape and will spill to the layout rect as a square haze.
                 .glassEffect(.regular, in: shape)
                 .clipShape(shape)
                 .overlay {

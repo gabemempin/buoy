@@ -68,7 +68,13 @@ final class DragEnablingNSView: NSView {
         )
         // Keep the panel inside the screen's visible frame so it can't be dragged
         // up under the menu bar or off any edge into an unreachable position.
-        if let visible = (window.screen ?? NSScreen.main)?.visibleFrame {
+        // Clamp the *glass*, not the window: the frame extends glassEdgeInset
+        // past the visible surface, so let that transparent margin overhang the
+        // screen edge — otherwise the panel stops visibly short of the edge.
+        if let visible = (window.screen ?? NSScreen.main)?.visibleFrame.insetBy(
+            dx: -PanelLayoutMetrics.glassEdgeInset,
+            dy: -PanelLayoutMetrics.glassEdgeInset
+        ) {
             let size = window.frame.size
             let maxX = max(visible.minX, visible.maxX - size.width)
             let maxY = max(visible.minY, visible.maxY - size.height)

@@ -129,7 +129,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let screen = panel.screen
             ?? NSScreen.screens.first { $0.frame.intersects(frame) }
             ?? NSScreen.main
-        guard let visible = screen?.visibleFrame else { return frame }
+        // Clamp the glass to the screen, letting the transparent shadow margin
+        // overhang the edge (the window frame is glassEdgeInset larger per side).
+        guard let visible = screen?.visibleFrame.insetBy(
+            dx: -PanelLayoutMetrics.glassEdgeInset,
+            dy: -PanelLayoutMetrics.glassEdgeInset
+        ) else { return frame }
         var f = frame
         f.size.width  = min(f.size.width,  visible.width)
         f.size.height = min(f.size.height, visible.height)
@@ -320,6 +325,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         p.level = settingsStore.value.alwaysOnTop ? .statusBar : .normal
         p.isOpaque = false
         p.backgroundColor = .clear
+        // No AppKit window shadow. A window shadow's inner portion is normally
+        // hidden behind opaque window content — but this panel is transparent,
+        // so that inner edge is never covered and renders as a hard dark ring:
+        // on the glass edge when the surface filled the window (the original
+        // "black stroke"), and floating at the window bounds once glassEdgeInset
+        // pulled the surface inward. Inactive windows render it stronger still.
+        // Liquid Glass carries its own depth, so let the material supply it.
+        //
+        // If a heavier drop shadow is ever wanted, do NOT use a plain SwiftUI
+        // .shadow() here: it draws behind the surface and shows straight through
+        // the translucent glass as a dark pool. It has to be masked into a ring
+        // with the surface's own shape punched out.
+        p.hasShadow = false
         p.isFloatingPanel = true
         p.hidesOnDeactivate = false
         // Only become key when a clicked view explicitly needs keyboard focus.

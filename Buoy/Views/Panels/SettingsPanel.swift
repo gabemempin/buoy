@@ -144,7 +144,7 @@ struct SettingsPanel: View {
         }
         .frame(width: 260)
         .background(WindowDragBlocker())
-        .buoyGlassPanel(cornerRadius: 16)
+        .buoyGlassPanel(cornerRadius: 14)
         .shadow(radius: 8)
         .transition(.scale(scale: 0.92, anchor: .bottomLeading).combined(with: .opacity))
     }
