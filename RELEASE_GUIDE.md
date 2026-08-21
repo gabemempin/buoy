@@ -19,7 +19,7 @@ Claude does the following (no Xcode interaction needed):
   ```bash
   gh release create vX.X "/path/to/Buoy-X.X.zip" --repo gabemempin/buoy --title "Buoy X.X Beta" --notes "What's new in this beta."
   ```
-- [ ] Update `install.sh` in `buoy-website/public/install.sh` — bump `VERSION="X.X"`
+- [ ] Update `install.sh` in `buoy-website/public/install.sh` — bump `VERSION="X.X"` (script quits Buoy before installing, then relaunches it via `open -a` once the new version is unzipped in)
 - [ ] Commit and push website:
   ```bash
   cd ~/Dev/buoy-website

@@ -164,7 +164,7 @@ final class CornerResizeOverlayController {
               parentWindow.isVisible
         else { return }
 
-        let nextCorner = ResizeCorner.allCases
+        var nextCorner = ResizeCorner.allCases
             .map { corner in
                 (corner, corner.screenPoint(in: parentWindow.frame).distance(to: screenPoint))
             }
@@ -172,12 +172,28 @@ final class CornerResizeOverlayController {
             .min { $0.1 < $1.1 }?
             .0
 
+        // The traffic lights sit inside the top-leading proximity radius (their
+        // nearest corner is ~20pt from the window corner, the radius is 22), and a
+        // revealed overlay is a mouse-opaque child panel overlapping 24pt into the
+        // window — enough to swallow the close button's hover and clicks. Punch the
+        // lights out of that corner's hit region, and dismiss without the usual
+        // delay so the arc can't linger on top of them.
+        var dismissImmediately = false
+        if nextCorner == .topLeading,
+           let trafficLights = TrafficLightGroupView.screenFrame(padding: 4),
+           trafficLights.contains(screenPoint) {
+            nextCorner = nil
+            dismissImmediately = true
+        }
+
         guard nextCorner != hoveredCorner else { return }
         hoveredCorner = nextCorner
         transitionGeneration += 1
         let generation = transitionGeneration
 
-        if let nextCorner {
+        if dismissImmediately {
+            reveal(nil, animated: true)
+        } else if let nextCorner {
             DispatchQueue.main.asyncAfter(deadline: .now() + CornerResizeMetrics.revealDelay) {
                 [weak self] in
                 guard let self,
