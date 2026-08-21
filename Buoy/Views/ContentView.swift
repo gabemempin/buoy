@@ -124,7 +124,7 @@ struct ContentView: View {
             if !showSettings { focusEditor() }
         }
         // Block window dragging whenever any overlay panel is open
-        .onChange(of: showSettings || showShortcuts || showAllNotes) { _, panelOpen in
+        .onChange(of: showSettings || showShortcuts || showAllNotes || pendingDeleteNote != nil) { _, panelOpen in
             NSApp.windows.compactMap { $0 as? NSPanel }.forEach {
                 $0.isMovable = !panelOpen
             }
@@ -261,7 +261,7 @@ struct ContentView: View {
                         },
                         textViewRef: { tv in
                             tvRef.value = tv
-                            tv.suppressesIBeamCursor = showSettings || showShortcuts || showAllNotes || showOnboarding
+                            tv.suppressesIBeamCursor = showSettings || showShortcuts || showAllNotes || showOnboarding || pendingDeleteNote != nil
                         }
                     )
                     .frame(

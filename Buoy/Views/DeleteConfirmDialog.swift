@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// Centered confirmation shown before a note is permanently deleted.
 /// Used by both the ⌘⌫ shortcut and the All Notes panel delete button.
@@ -6,6 +7,12 @@ struct DeleteConfirmDialog: View {
     let noteTitle: String
     var onCancel: () -> Void
     var onConfirm: () -> Void
+
+    /// The panel is non-activating and the editor keeps first responder, so
+    /// SwiftUI's `.defaultAction`/`.cancelAction` shortcuts never fire here.
+    /// A local monitor intercepts Return/Escape and consumes the event so the
+    /// keystroke can't leak into the (blurred) text view behind the dialog.
+    @State private var keyMonitor: Any?
 
     private var displayTitle: String {
         let trimmed = noteTitle.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -36,16 +43,27 @@ struct DeleteConfirmDialog: View {
                     .padding(.horizontal, 12)
                     .padding(.vertical, 5)
                     .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 7))
-                    .keyboardShortcut(.cancelAction)
+                    .pointingHandCursor()
 
-                Button("Delete") { onConfirm() }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 12, weight: .semibold))
+                Button {
+                    onConfirm()
+                } label: {
+                    HStack(spacing: 5) {
+                        Text("Delete")
+                            .font(.system(size: 12, weight: .semibold))
+                        Text("⏎")
+                            .font(.system(size: 10, weight: .semibold))
+                            .frame(width: 15, height: 15)
+                            .background(Color.white.opacity(0.22), in: RoundedRectangle(cornerRadius: 4))
+                    }
                     .foregroundStyle(.white)
-                    .padding(.horizontal, 12)
+                    .padding(.horizontal, 10)
                     .padding(.vertical, 5)
                     .background(Color.red, in: RoundedRectangle(cornerRadius: 7))
-                    .keyboardShortcut(.defaultAction)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .pointingHandCursor()
             }
             .padding(.top, 2)
         }
@@ -58,5 +76,28 @@ struct DeleteConfirmDialog: View {
         )
         .shadow(radius: 12, y: 4)
         .transition(.scale(scale: 0.9).combined(with: .opacity))
+        .onAppear { installKeyMonitor() }
+        .onDisappear { removeKeyMonitor() }
+    }
+
+    private func installKeyMonitor() {
+        guard keyMonitor == nil else { return }
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            switch event.keyCode {
+            case 36, 76: // Return, keypad Enter
+                onConfirm()
+                return nil
+            case 53: // Escape
+                onCancel()
+                return nil
+            default:
+                return event
+            }
+        }
+    }
+
+    private func removeKeyMonitor() {
+        if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
+        keyMonitor = nil
     }
 }
