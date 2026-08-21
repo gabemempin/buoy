@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import QuartzCore
 
 /// The panel's traffic lights, drawn by AppKit itself.
 ///
@@ -83,10 +84,16 @@ final class TrafficLightGroupView: NSView {
         liveGroup?.currentScreenFrame?.insetBy(dx: -padding, dy: -padding)
     }
 
+    /// How long the colored/graphite crossfade runs when the panel takes or
+    /// loses key. Matches the titlebar's own activation fade closely enough that
+    /// Buoy's lights and a neighbouring window's settle together.
+    private static let activeStateFadeDuration: CFTimeInterval = 0.25
+
     private var buttons: [NSButton] = []
     private var isMouseInGroup = false
     private var localMouseMonitor: Any?
     private var globalMouseMonitor: Any?
+    private var keyStateObservers: [NSObjectProtocol] = []
 
     init(coordinator: TrafficLightsView.Coordinator) {
         super.init(frame: .zero)
@@ -113,7 +120,10 @@ final class TrafficLightGroupView: NSView {
         setFrameSize(intrinsicContentSize)
     }
 
-    deinit { removeMouseMonitors() }
+    deinit {
+        removeMouseMonitors()
+        removeKeyStateObservers()
+    }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -134,11 +144,13 @@ final class TrafficLightGroupView: NSView {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        removeKeyStateObservers()
         if let window {
             Self.liveGroup = self
             // Don't rely on the corner-resize controller having set this.
             window.acceptsMouseMovedEvents = true
             installMouseMonitors()
+            installKeyStateObservers(for: window)
         } else {
             removeMouseMonitors()
         }
@@ -215,13 +227,61 @@ final class TrafficLightGroupView: NSView {
     private func setMouseInGroup(_ inside: Bool) {
         guard isMouseInGroup != inside else { return }
         isMouseInGroup = inside
+        buttons.forEach(repaint)
+    }
+
+    private func repaint(_ button: NSButton) {
+        if button.responds(to: Self.repaintSelector) {
+            _ = button.perform(Self.repaintSelector)
+        } else {
+            // Wrong glyphs beat a crash if AppKit ever renames that hook.
+            button.needsDisplay = true
+        }
+    }
+
+    // MARK: - Activation crossfade
+    //
+    // A real titlebar crossfades its lights between the colored and graphite
+    // renderings as the window takes and loses key. These are detached widgets:
+    // AppKit still restates them on a key change (`_windowChangedKeyState` marks
+    // the control dirty), but with nothing driving an animation the swap lands as
+    // a hard cut, which reads as a flicker next to any native window.
+    //
+    // The fix rides the widget's own layer caching rather than fighting it. The
+    // repaint doesn't happen when `needsDisplay` is set — it happens in the
+    // display pass at the end of the runloop iteration. Notifications are
+    // delivered before that pass, so a `CATransition` attached here is already in
+    // place when the layer's contents are replaced, and Core Animation crossfades
+    // the old rendering into the new one for free.
+
+    private func installKeyStateObservers(for window: NSWindow) {
+        let center = NotificationCenter.default
+        for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification] {
+            keyStateObservers.append(
+                center.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
+                    self?.crossfadeActiveState()
+                }
+            )
+        }
+    }
+
+    private func removeKeyStateObservers() {
+        for observer in keyStateObservers {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        keyStateObservers.removeAll()
+    }
+
+    private func crossfadeActiveState() {
         for button in buttons {
-            if button.responds(to: Self.repaintSelector) {
-                _ = button.perform(Self.repaintSelector)
-            } else {
-                // Wrong glyphs beat a crash if AppKit ever renames that hook.
-                button.needsDisplay = true
+            if let layer = button.layer {
+                let fade = CATransition()
+                fade.type = .fade
+                fade.duration = Self.activeStateFadeDuration
+                fade.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                layer.add(fade, forKey: "buoyActiveStateFade")
             }
+            repaint(button)
         }
     }
 }
