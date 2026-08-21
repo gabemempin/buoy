@@ -3,9 +3,27 @@ import AppKit
 
 /// NSScrollView that never initiates window drag, so text selection works without moving the window.
 private final class DragBlockingScrollView: NSScrollView {
-    private static let edgeFadeDistance: CGFloat = 20
+    /// Shortest fade the editor ever draws. Larger font sizes scale past it so the
+    /// fade always covers a comparable slice of a line rather than clipping one.
+    private static let minimumEdgeFadeDistance: CGFloat = 20
+    private static let edgeFadeLineMultiple: CGFloat = 1.25
 
     private let edgeFadeMask = CAGradientLayer()
+    private var textChangeObserver: NSObjectProtocol?
+    private var lastTopFadeStrength: CGFloat = -1
+    private var lastBottomFadeStrength: CGFloat = -1
+    private var lastFadeBounds: CGRect = .null
+    private var lastFadeDistance: CGFloat = -1
+
+    override var documentView: NSView? {
+        didSet { observeDocumentTextChanges() }
+    }
+
+    deinit {
+        if let textChangeObserver {
+            NotificationCenter.default.removeObserver(textChangeObserver)
+        }
+    }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -88,43 +106,107 @@ private final class DragBlockingScrollView: NSScrollView {
         layer?.mask = edgeFadeMask
     }
 
+    /// Height of the fade at each edge, scaled to the current line height so the
+    /// softened band stays proportional across the 11–20pt font-size range.
+    private var edgeFadeDistance: CGFloat {
+        guard let textView = documentView as? BuoyTextView,
+              let layoutManager = textView.layoutManager else {
+            return Self.minimumEdgeFadeDistance
+        }
+        let lineHeight = layoutManager.defaultLineHeight(
+            for: NSFont.systemFont(ofSize: textView.fontSize)
+        )
+        return max(Self.minimumEdgeFadeDistance, lineHeight * Self.edgeFadeLineMultiple)
+    }
+
+    /// Text edits change the scrollable range without moving the clip view, so the
+    /// fade has to be recomputed outside the scroll and layout callbacks too.
+    func refreshEdgeFade() {
+        updateEdgeFade()
+    }
+
+    private func observeDocumentTextChanges() {
+        if let textChangeObserver {
+            NotificationCenter.default.removeObserver(textChangeObserver)
+            self.textChangeObserver = nil
+        }
+        guard let textView = documentView as? BuoyTextView else { return }
+        textChangeObserver = NotificationCenter.default.addObserver(
+            forName: NSText.didChangeNotification,
+            object: textView,
+            queue: .main
+        ) { [weak self] _ in
+            self?.updateEdgeFade()
+        }
+    }
+
+    /// 0 at the very end of the scroll range, ramping to a full fade once one
+    /// fade-width of content sits past the edge. Smoothstepped so the shadow
+    /// builds in softly instead of popping on at the first scroll event.
+    private func fadeStrength(forDistance distance: CGFloat, fadeDistance: CGFloat) -> CGFloat {
+        guard fadeDistance > 0 else { return 0 }
+        let progress = min(max(distance / fadeDistance, 0), 1)
+        let eased = progress * progress * (3 - (2 * progress))
+        // Quantize to the mask's 8-bit alpha resolution so scroll frames that
+        // land on the same visual result can skip the layer update entirely.
+        return (eased * 255).rounded() / 255
+    }
+
     private func updateEdgeFade() {
         guard bounds.height > 0 else { return }
         if layer?.mask !== edgeFadeMask {
             layer?.mask = edgeFadeMask
+            lastFadeBounds = .null
         }
 
         let clipBounds = contentView.bounds
         let documentRect = contentView.documentRect
-        let canScrollUp = clipBounds.minY > documentRect.minY + 1
-        let canScrollDown: Bool
+        let fadeDistance = edgeFadeDistance
+
+        // Both edges are measured the same way — points of travel still available
+        // in that direction — so the top and bottom fades build at the same rate.
+        // Rubber-band overscroll can push either past its limit; the ramp clamps.
+        let travelAbove = clipBounds.minY - documentRect.minY
+        let travelBelow: CGFloat
         if let textView = documentView as? BuoyTextView,
            let layoutManager = textView.layoutManager,
            let textContainer = textView.textContainer {
+            // Measure against laid-out glyphs, not the document view, which is
+            // padded out to fill the clip view. AppKit's extra line fragment is
+            // only the caret row after the document; counting it keeps the final
+            // line faded while it is still genuinely below the viewport.
             layoutManager.ensureLayout(for: textContainer)
             let laidOutTextBottom = textView.textContainerOrigin.y
                 + layoutManager.usedRect(for: textContainer).maxY
-            let remainingTextHeight = laidOutTextBottom - textView.visibleRect.maxY
-            canScrollDown = remainingTextHeight > Self.edgeFadeDistance + 1
+            travelBelow = laidOutTextBottom - textView.visibleRect.maxY
         } else {
             let maximumOffsetY = max(documentRect.minY, documentRect.maxY - clipBounds.height)
-            canScrollDown = clipBounds.minY < maximumOffsetY - 1
+            travelBelow = maximumOffsetY - clipBounds.minY
         }
+
+        let topStrength = fadeStrength(forDistance: travelAbove, fadeDistance: fadeDistance)
+        let bottomStrength = fadeStrength(forDistance: travelBelow, fadeDistance: fadeDistance)
+
+        guard topStrength != lastTopFadeStrength
+                || bottomStrength != lastBottomFadeStrength
+                || fadeDistance != lastFadeDistance
+                || bounds != lastFadeBounds else { return }
+        lastTopFadeStrength = topStrength
+        lastBottomFadeStrength = bottomStrength
+        lastFadeDistance = fadeDistance
+        lastFadeBounds = bounds
+
         let opaque = NSColor.black.cgColor
-        let transparent = NSColor.clear.cgColor
-        let fadeLocation = min(0.25, Self.edgeFadeDistance / bounds.height)
+        let fadeLocation = min(0.25, fadeDistance / bounds.height)
 
         edgeFadeMask.frame = bounds
-        // Fade the bottom only while at least one fade-width of actual glyphs
-        // remains below the viewport. AppKit's extra line fragment is only the
-        // caret row after the document; counting it keeps the final line faded.
         // This scroll view and its backing layer are flipped, so the gradient's
         // first color is the visual top and its final color is the visual bottom.
         edgeFadeMask.colors = [
-            canScrollUp ? transparent : opaque,
+            NSColor.black.withAlphaComponent(1 - topStrength).cgColor,
             opaque,
             opaque,
-            canScrollDown ? transparent : opaque
+            NSColor.black.withAlphaComponent(1 - bottomStrength).cgColor
         ]
         edgeFadeMask.locations = [
             0,
@@ -221,6 +303,7 @@ struct EditorView: NSViewRepresentable {
         context.coordinator.setLoadingContent(true)
         textView.loadRTF(rtfData)
         context.coordinator.setLoadingContent(false)
+        scrollView.refreshEdgeFade()
 
         // Re-enable the scroller after the slide-in transition finishes.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
@@ -238,6 +321,9 @@ struct EditorView: NSViewRepresentable {
 
         if textView.fontSize != fontSize {
             textView.fontSize = fontSize
+            // Line height drives the fade height, and relaid-out text changes how
+            // much is left to scroll.
+            (scrollView as? DragBlockingScrollView)?.refreshEdgeFade()
         }
 
         if textView.usesDarkAppearance != usesDarkAppearance {
@@ -255,6 +341,7 @@ struct EditorView: NSViewRepresentable {
             context.coordinator.setLoadingContent(true)
             textView.loadRTF(rtfData)
             context.coordinator.setLoadingContent(false)
+            (scrollView as? DragBlockingScrollView)?.refreshEdgeFade()
             // Re-enable after AppKit's scroller-flash window has passed.
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                 scrollView.hasVerticalScroller = true

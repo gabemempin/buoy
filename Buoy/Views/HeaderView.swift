@@ -91,7 +91,9 @@ struct HeaderView: View {
         VStack(spacing: 6) {
             HStack(spacing: 0) {
                 TrafficLightsView(onClose: onClose, onMinimize: onMinimize, onExpand: onExpand)
-                    .padding(.leading, 12)
+                    // 15 keeps the close button's centre where the old hand-drawn
+                    // circles sat (native buttons are inset 7pt in their group).
+                    .padding(.leading, 15)
 
                 Spacer()
 
