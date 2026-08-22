@@ -125,6 +125,27 @@ The phrases **"invoke onboarding"** or **"reset onboarding"** mean run this comm
 ### Carousel Onboarding
 `OnboardingView.swift` — 4 slides: Welcome (skeumorphic key caps + ShortcutRecorderView), Formatting (live BuoyTextView demo), Harbor Mode (⌘M animates a mini panel to pill), Bug Report (shimmer title via `AnimatedBugTitle`). A local `NSEvent` monitor captures ⌘M during onboarding — on slide 3 it toggles the demo, on all other slides it consumes the event to prevent accidental Harbor Mode. `AnimatedBugTitle` in `HeaderView.swift` is `internal` (not private) so it can be reused in Slide 4. `hasSeenHarborModeTip` remains in `AppSettings` for backwards-compat but is never set.
 
+### Scrolling Note Titles
+`Views/MarqueeText.swift` is shared by the Harbor pill (`MinimizedNotePillView`)
+and the main header (`HeaderView`) — both render the same title in
+`PanelLayoutMetrics.minimizedTitleFont`, so they measure against one font and one
+set of `marquee*` timing constants. It scrolls only when the text overflows its
+lane, and renders static truncated text under Reduce Motion.
+
+Scroll phase is shared through `MarqueeClock`, keyed on the text. The header and
+the pill are separate views, so without it, morphing into Harbor Mode mid-scroll
+would snap the title back and re-run the opening pause. Entries linger 1s after
+`onDisappear` — long enough to cover the ~0.26s morph, short enough that
+returning to a note later starts cleanly from the pause. A title *change* calls
+`restart` instead, since there's no phase worth keeping.
+
+In the header it is an *overlay*: the real `NSTextField` stays in place for
+editing, and `hidesText` blanks its glyphs while the marquee stands in — the same
+trick Bug Report mode uses for `AnimatedBugTitle`. The overlay is suppressed while
+`isEditingTitle` (driven by `controlTextDidBeginEditing`/`DidEndEditing`), because
+text sliding out from under the caret is unusable. `TitleTextField.textColor(for:)`
+is the single source for the colour so the field and the overlay can't drift.
+
 ### Keyboard Shortcuts Panel
 `ShortcutsPanel.swift` — shortcuts list ends with `("⌘M", "Harbor Mode")`. Does not include auto-bullet or auto-todo entries.
 

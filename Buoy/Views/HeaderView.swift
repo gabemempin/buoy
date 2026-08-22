@@ -23,7 +23,10 @@ private struct TitleTextField: NSViewRepresentable {
     var placeholder: String
     var onSubmit: () -> Void
     var isFocused: Bool
-    var isBugReport: Bool = false
+    /// Blanks the field's own glyphs so an overlay (the bug-report shimmer, or
+    /// the scrolling title) can stand in for them without doubling up.
+    var hidesText: Bool = false
+    var onEditingChanged: (Bool) -> Void = { _ in }
     @Environment(\.colorScheme) var colorScheme
 
     func makeNSView(context: Context) -> TitleNSTextField {
@@ -35,7 +38,7 @@ private struct TitleTextField: NSViewRepresentable {
         field.isSelectable = true
         field.placeholderString = placeholder
         field.font = NSFont.systemFont(ofSize: 19, weight: .semibold, width: .expanded)
-        field.textColor = colorScheme == .dark ? .white : .controlAccentColor
+        field.textColor = TitleTextField.textColor(for: colorScheme)
         field.alignment = .center
         // No focus ring by design. AppKit's masks to the cell frame, which on a
         // field spanning the whole panel is a heavy box around mostly empty
@@ -54,10 +57,16 @@ private struct TitleTextField: NSViewRepresentable {
 
     func updateNSView(_ nsView: TitleNSTextField, context: Context) {
         if nsView.stringValue != text { nsView.stringValue = text }
-        nsView.textColor = isBugReport ? .clear : (colorScheme == .dark ? .white : .controlAccentColor)
+        nsView.textColor = hidesText ? .clear : TitleTextField.textColor(for: colorScheme)
         if isFocused && nsView.window?.firstResponder !== nsView.currentEditor() {
             nsView.window?.makeFirstResponder(nsView)
         }
+    }
+
+    /// Single source for the title colour, so the field and any overlay standing
+    /// in for it cannot drift apart.
+    static func textColor(for colorScheme: ColorScheme) -> NSColor {
+        colorScheme == .dark ? .white : .controlAccentColor
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
@@ -70,6 +79,14 @@ private struct TitleTextField: NSViewRepresentable {
             if let field = obj.object as? NSTextField {
                 parent.text = field.stringValue
             }
+        }
+
+        func controlTextDidBeginEditing(_ obj: Notification) {
+            parent.onEditingChanged(true)
+        }
+
+        func controlTextDidEndEditing(_ obj: Notification) {
+            parent.onEditingChanged(false)
         }
 
         @objc func submitted(_ sender: Any?) { parent.onSubmit() }
@@ -92,6 +109,19 @@ struct HeaderView: View {
     var isBugReport: Bool = false
 
     @FocusState private var titleFocused: Bool
+    @State private var isEditingTitle = false
+    @State private var titleLaneWidth: CGFloat = 0
+    @Environment(\.colorScheme) private var colorScheme
+
+    /// Scroll the title only when it cannot fit *and* nobody is editing it —
+    /// text sliding out from under the caret would be unusable.
+    private var showsScrollingTitle: Bool {
+        guard !isBugReport, !isEditingTitle, titleLaneWidth > 0 else { return false }
+        return PanelLayoutMetrics.textWidth(
+            title,
+            font: PanelLayoutMetrics.minimizedTitleFont
+        ) > titleLaneWidth
+    }
 
     var body: some View {
         VStack(spacing: 6) {
@@ -120,9 +150,14 @@ struct HeaderView: View {
                     placeholder: "Untitled",
                     onSubmit: focusEditor,
                     isFocused: titleFocused,
-                    isBugReport: isBugReport
+                    hidesText: isBugReport || showsScrollingTitle,
+                    onEditingChanged: { isEditingTitle = $0 }
                 )
                 .frame(maxWidth: .infinity, minHeight: 26)
+                // Measured *inside* the padding: the marquee below re-applies the
+                // same padding, so reading the outer width would make the overlay
+                // 24pt wider than the row and push the whole panel out of shape.
+                .background(TitleLaneWidthReader(width: $titleLaneWidth))
                 .padding(.horizontal, 12)
 
                 if isBugReport {
@@ -130,6 +165,17 @@ struct HeaderView: View {
                         .frame(maxWidth: .infinity, minHeight: 26)
                         .padding(.horizontal, 12)
                         .allowsHitTesting(false)
+                } else if showsScrollingTitle {
+                    MarqueeText(
+                        text: title,
+                        font: PanelLayoutMetrics.minimizedTitleFont,
+                        color: Color(nsColor: TitleTextField.textColor(for: colorScheme)),
+                        availableWidth: titleLaneWidth,
+                        restingAlignment: .center
+                    )
+                    .frame(minHeight: 26)
+                    .padding(.horizontal, 12)
+                    .allowsHitTesting(false)
                 }
             }
             .padding(.bottom, 4)
@@ -140,6 +186,20 @@ struct HeaderView: View {
             DispatchQueue.main.async {
                 (NSApp.keyWindow?.firstResponder as? NSText)?.selectAll(nil)
             }
+        }
+    }
+}
+
+/// Reports the width the title actually gets, so the header can tell whether the
+/// title overflows it. Sits in the background so it never affects layout.
+private struct TitleLaneWidthReader: View {
+    @Binding var width: CGFloat
+
+    var body: some View {
+        GeometryReader { proxy in
+            Color.clear
+                .onAppear { width = proxy.size.width }
+                .onChange(of: proxy.size.width) { _, newWidth in width = newWidth }
         }
     }
 }

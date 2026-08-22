@@ -47,108 +47,15 @@ private struct MinimizedTitleLane: View {
     let theme: AppTheme
     let availableWidth: CGFloat
     @Environment(\.colorScheme) private var colorScheme
-    /// A title too long for the pill normally scrolls past. That is continuous
-    /// motion in the corner of the screen, which is exactly what Reduce Motion
-    /// is meant to stop, so it falls back to a truncated static title.
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    private var measuredTitleWidth: CGFloat {
-        PanelLayoutMetrics.minimizedTitleWidth(forTitle: title)
-    }
 
     var body: some View {
-        Group {
-            if measuredTitleWidth > availableWidth && !reduceMotion {
-                MarqueeTitleView(
-                    title: title,
-                    theme: theme,
-                    textWidth: measuredTitleWidth,
-                    availableWidth: availableWidth
-                )
-            } else {
-                truncatedTitleText
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-        }
-        .frame(width: availableWidth, alignment: .leading)
-        .clipped()
+        MarqueeText(
+            text: PanelLayoutMetrics.minimizedDisplayTitle(title),
+            font: PanelLayoutMetrics.minimizedTitleFont,
+            color: minimizedTitleColor(theme: theme, colorScheme: colorScheme),
+            availableWidth: availableWidth
+        )
         .allowsHitTesting(false)
-    }
-
-    private var titleText: some View {
-        Text(PanelLayoutMetrics.minimizedDisplayTitle(title))
-            .font(Font(PanelLayoutMetrics.minimizedTitleFont))
-            .foregroundStyle(titleColor)
-            .lineLimit(1)
-            .fixedSize(horizontal: true, vertical: false)
-    }
-
-    /// Same title without `fixedSize`, so an over-long one ellipsises rather
-    /// than running past the lane. Used when the marquee is suppressed.
-    private var truncatedTitleText: some View {
-        Text(PanelLayoutMetrics.minimizedDisplayTitle(title))
-            .font(Font(PanelLayoutMetrics.minimizedTitleFont))
-            .foregroundStyle(titleColor)
-            .lineLimit(1)
-            .truncationMode(.tail)
-    }
-
-    private var titleColor: Color {
-        minimizedTitleColor(theme: theme, colorScheme: colorScheme)
-    }
-}
-
-private struct MarqueeTitleView: View {
-    let title: String
-    let theme: AppTheme
-    let textWidth: CGFloat
-    let availableWidth: CGFloat
-
-    @State private var cycleAnchor = Date()
-    @Environment(\.colorScheme) private var colorScheme
-
-    var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: false)) { context in
-            HStack(spacing: PanelLayoutMetrics.minimizedMarqueeGap) {
-                titleText
-                titleText
-            }
-            .offset(x: marqueeOffset(at: context.date))
-        }
-        .frame(width: availableWidth, alignment: .leading)
-        .clipped()
-        .mask(EdgeFadeMaskView(width: availableWidth))
-        .onAppear { cycleAnchor = Date() }
-        .onChange(of: title) { _, _ in
-            cycleAnchor = Date()
-        }
-    }
-
-    private var titleText: some View {
-        Text(PanelLayoutMetrics.minimizedDisplayTitle(title))
-            .font(Font(PanelLayoutMetrics.minimizedTitleFont))
-            .foregroundStyle(titleColor)
-            .lineLimit(1)
-            .fixedSize(horizontal: true, vertical: false)
-    }
-
-    private var titleColor: Color {
-        minimizedTitleColor(theme: theme, colorScheme: colorScheme)
-    }
-
-    private func marqueeOffset(at date: Date) -> CGFloat {
-        let travel = textWidth + PanelLayoutMetrics.minimizedMarqueeGap
-        guard travel > 0 else { return 0 }
-
-        let speed = Double(PanelLayoutMetrics.minimizedMarqueePointsPerSecond)
-        let motionDuration = Double(travel) / speed
-        let cycleDuration = PanelLayoutMetrics.minimizedMarqueePause + motionDuration
-        let elapsed = date.timeIntervalSince(cycleAnchor)
-            .truncatingRemainder(dividingBy: cycleDuration)
-
-        guard elapsed > PanelLayoutMetrics.minimizedMarqueePause else { return 0 }
-        let movingTime = elapsed - PanelLayoutMetrics.minimizedMarqueePause
-        return -CGFloat(movingTime * speed)
     }
 }
 
@@ -160,25 +67,5 @@ private func minimizedTitleColor(theme: AppTheme, colorScheme: ColorScheme) -> C
         return .white
     case .system:
         return colorScheme == .dark ? .white : .accentColor
-    }
-}
-
-private struct EdgeFadeMaskView: View {
-    let width: CGFloat
-
-    var body: some View {
-        let fadeWidth = min(PanelLayoutMetrics.minimizedTitleEdgeFadeWidth, width / 3)
-        let fadeFraction = width > 0 ? fadeWidth / width : 0
-
-        LinearGradient(
-            stops: [
-                .init(color: .clear, location: 0),
-                .init(color: .black, location: fadeFraction),
-                .init(color: .black, location: 1 - fadeFraction),
-                .init(color: .clear, location: 1)
-            ],
-            startPoint: .leading,
-            endPoint: .trailing
-        )
     }
 }

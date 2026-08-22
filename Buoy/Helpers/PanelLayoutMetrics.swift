@@ -82,13 +82,21 @@ enum PanelLayoutMetrics {
     static let minimizedPillTrailingPadding: CGFloat = 12
     static let minimizedTitleButtonSpacing: CGFloat = 14
     static let minimizedRestoreButtonSize: CGFloat = 28
-    static let minimizedMarqueeGap: CGFloat = 32
-    static let minimizedTitleEdgeFadeWidth: CGFloat = 24
+    /// Marquee tuning, shared by the Harbor pill and the main header.
+    static let marqueeGap: CGFloat = 32
+    static let marqueeEdgeFadeWidth: CGFloat = 24
     static let minimizedTransitionDuration: TimeInterval = 0.22
     static let minimizedFrameAnimationDuration: TimeInterval = 0.26
-    static let minimizedMarqueePause: TimeInterval = 1.2
-    static let minimizedMarqueePointsPerSecond: CGFloat = 34
+    static let marqueePause: TimeInterval = 1.2
+    static let marqueePointsPerSecond: CGFloat = 34
+
+    /// The note title face. The Harbor pill and the main header render the same
+    /// title at the same size, so they measure against one font.
     static let minimizedTitleFont = NSFont.systemFont(ofSize: 19, weight: .semibold, width: .expanded)
+
+    static func textWidth(_ text: String, font: NSFont) -> CGFloat {
+        ceil((text as NSString).size(withAttributes: [.font: font]).width)
+    }
 
     static func minimizedDisplayTitle(_ title: String) -> String {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -96,10 +104,7 @@ enum PanelLayoutMetrics {
     }
 
     static func minimizedTitleWidth(forTitle title: String) -> CGFloat {
-        let measured = (minimizedDisplayTitle(title) as NSString).size(
-            withAttributes: [.font: minimizedTitleFont]
-        )
-        return ceil(measured.width)
+        textWidth(minimizedDisplayTitle(title), font: minimizedTitleFont)
     }
 
     static func minimizedTitleLaneWidth(forPillWidth pillWidth: CGFloat) -> CGFloat {
