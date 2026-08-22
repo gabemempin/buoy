@@ -105,13 +105,19 @@ final class BuoyPanel: NSPanel {
             return true
         }
 
+        if modifiers == [.command, .option, .shift], commandCharacter == "v" {
+            return fr.tryToPerform(#selector(NSTextView.pasteAsPlainText(_:)), with: nil)
+        }
+
         guard modifiers == .command else { return false }
+
         let action: Selector? = switch commandCharacter ?? "" {
         case "c": #selector(NSText.copy(_:))
         case "v": #selector(NSText.paste(_:))
         case "x": #selector(NSText.cut(_:))
         case "a": #selector(NSText.selectAll(_:))
         case "z": Selector(("undo:"))
+        case "j": #selector(NSResponder.centerSelectionInVisibleArea(_:))
         default: nil
         }
         guard let action else { return false }

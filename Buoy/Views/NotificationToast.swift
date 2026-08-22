@@ -6,13 +6,15 @@ struct NotificationToast: View {
 
     var body: some View {
         Text(message)
-            .font(.system(size: 11, weight: .medium))
-            .foregroundStyle(.white)
+            .font(BuoyFont.secondaryEmphasized)
+            .foregroundStyle(Color.buoyOnAccent)
             .padding(.horizontal, 12)
             .padding(.vertical, 7)
             .background(
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(isError ? Color(hex: "#FF3B30") : Color.accentColor)
+                    // System red rather than a literal hex, so it tracks the
+                    // appearance and Increase Contrast like every other alert.
+                    .fill(isError ? Color(nsColor: .systemRed) : Color.accentColor)
             )
             .shadow(radius: 4)
     }
@@ -32,12 +34,12 @@ final class ToastState {
         hideTask?.cancel()
         self.message = message
         self.isError = isError
-        withAnimation(.easeIn(duration: 0.15)) {
+        withAnimation(BuoyMotion.easeIn(0.15)) {
             isShowing = true
         }
         hideTask = Task { @MainActor in
             try? await Task.sleep(for: .seconds(2))
-            withAnimation(.easeOut(duration: 0.3)) {
+            withAnimation(BuoyMotion.easeOut(0.3)) {
                 isShowing = false
             }
         }
@@ -56,22 +58,13 @@ struct ToastContainer: View {
                 Spacer()
                 if state.isShowing {
                     NotificationToast(message: state.message, isError: state.isError)
-                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                        .transition(BuoyMotion.transition(.opacity.combined(with: .move(edge: .bottom))))
                         .padding(12)
+                        // Spoken as soon as it appears; it is the only feedback
+                        // for actions like Copy and Transfer.
+                        .accessibilityAddTraits(.isStaticText)
                 }
             }
         }
-    }
-}
-
-private extension Color {
-    init(hex: String) {
-        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
-        var int: UInt64 = 0
-        Scanner(string: hex).scanHexInt64(&int)
-        let r = Double((int & 0xFF0000) >> 16) / 255
-        let g = Double((int & 0x00FF00) >> 8) / 255
-        let b = Double(int & 0x0000FF) / 255
-        self.init(red: r, green: g, blue: b)
     }
 }

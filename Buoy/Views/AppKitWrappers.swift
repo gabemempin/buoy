@@ -12,11 +12,24 @@ struct SearchFieldWrapper: NSViewRepresentable {
         let searchField = NSSearchField()
         searchField.placeholderString = placeholder
         searchField.delegate = context.coordinator
+        // No focus ring by design, matching the title field: AppKit's masks to
+        // the cell frame and lands as a hard box on this borderless field, and a
+        // drawn substitute read as clutter. The caret marks focus, and the
+        // accessibility label carries it for VoiceOver.
         searchField.focusRingType = .none
+        searchField.setAccessibilityLabel("Search notes")
         searchField.isBordered = false
         searchField.drawsBackground = false
         searchField.font = NSFont.systemFont(ofSize: 12)
         searchField.controlSize = .small
+
+        // Drop the magnifier. NSSearchFieldCell sizes its button rect against the
+        // bezel, and this field has none, so the glyph lands *on* the text rect
+        // and overlaps the placeholder and anything typed. The placeholder
+        // already reads "Search notes…", so the button carries no information
+        // worth fighting the cell's layout for.
+        (searchField.cell as? NSSearchFieldCell)?.searchButtonCell = nil
+
         return searchField
     }
 

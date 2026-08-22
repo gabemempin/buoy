@@ -14,7 +14,7 @@ struct LinkDialog: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("Insert Link")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(BuoyFont.secondaryProminent)
                     .foregroundStyle(.secondary)
                 Spacer()
                 Button {
@@ -25,6 +25,8 @@ struct LinkDialog: View {
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
+                .help("Close")
+                .accessibilityLabel("Close Insert Link")
             }
 
             VStack(spacing: 6) {
@@ -40,7 +42,7 @@ struct LinkDialog: View {
                 Spacer()
                 Button("Cancel") { dismiss() }
                     .buttonStyle(.plain)
-                    .font(.system(size: 11))
+                    .font(BuoyFont.secondary)
                     .foregroundStyle(.secondary)
                     .keyboardShortcut(.cancelAction)
 
@@ -53,6 +55,8 @@ struct LinkDialog: View {
         .padding(10)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
         .shadow(radius: 4)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Insert Link")
         .onAppear {
             linkText = selectedText
             textFocused = true
@@ -79,10 +83,11 @@ private struct LinkField: View {
     var body: some View {
         TextField(placeholder, text: $text)
             .textFieldStyle(.plain)
-            .font(.system(size: 12))
+            .font(BuoyFont.control)
+            .accessibilityLabel(placeholder)
             .padding(.horizontal, 8)
             .padding(.vertical, 5)
-            .background(Color.primary.opacity(0.06))
+            .background(Color.buoyControlFill)
             .clipShape(RoundedRectangle(cornerRadius: 5))
             .focused(isFocused)
             .onSubmit(onSubmit)

@@ -18,12 +18,12 @@ struct UpdateBubble: View {
                 .foregroundStyle(Color.accentColor)
 
             Text("Buoy v\(version) is available")
-                .font(.system(size: 12, weight: .medium))
+                .font(BuoyFont.control.weight(.medium))
                 .fixedSize()
 
             Button(action: onUpdate) {
                 Text("Update")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(BuoyFont.secondaryProminent)
                     .lineLimit(1)
                     .fixedSize()
                     .padding(.horizontal, 12)
@@ -32,6 +32,7 @@ struct UpdateBubble: View {
             }
             .buttonStyle(.plain)
             .onHover { isUpdateHovering = $0 }
+            .accessibilityLabel("Install Buoy \(version)")
             .pointingHandCursor()
 
             Button(action: onDismiss) {
@@ -39,9 +40,11 @@ struct UpdateBubble: View {
                     .font(.system(size: 9, weight: .bold))
                     .foregroundStyle(.secondary)
                     .frame(width: 18, height: 18)
-                    .background(Circle().fill(Color.primary.opacity(0.08)))
+                    .background(Circle().fill(Color.buoyControlFill))
             }
             .buttonStyle(.plain)
+            .help("Dismiss")
+            .accessibilityLabel("Dismiss update notice")
             .pointingHandCursor()
         }
         .padding(.horizontal, 12)
@@ -71,11 +74,11 @@ struct UpdateBubbleOverlay: View {
                     onDismiss: { dismissUpdate(update.version) }
                 )
                 .padding(.bottom, PanelLayoutMetrics.footerOverlayBottomInset)
-                .transition(.opacity.combined(with: .move(edge: .bottom)))
+                .transition(BuoyMotion.transition(.opacity.combined(with: .move(edge: .bottom))))
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-        .animation(.easeOut(duration: 0.16), value: updateInfo?.version)
+        .animation(BuoyMotion.easeOut(0.16), value: updateInfo?.version)
         .task {
             // Auto-check at launch, then re-check daily while the app stays running.
             while !Task.isCancelled {
@@ -90,20 +93,20 @@ struct UpdateBubbleOverlay: View {
         let result = await UpdateService.shared.checkForUpdates()
         guard case let .available(version, url) = result else { return }
         guard version != settings.dismissedUpdateVersion else { return }
-        withAnimation(.easeOut(duration: 0.16)) {
+        withAnimation(BuoyMotion.easeOut(0.16)) {
             updateInfo = (version: version, url: url)
         }
     }
 
     private func openUpdate(_ url: URL) {
         NSWorkspace.shared.open(url)
-        withAnimation(.easeOut(duration: 0.16)) { updateInfo = nil }
+        withAnimation(BuoyMotion.easeOut(0.16)) { updateInfo = nil }
     }
 
     private func dismissUpdate(_ version: String) {
         settings.dismissedUpdateVersion = version
         settings.save()
-        withAnimation(.easeOut(duration: 0.16)) { updateInfo = nil }
+        withAnimation(BuoyMotion.easeOut(0.16)) { updateInfo = nil }
     }
 }
 

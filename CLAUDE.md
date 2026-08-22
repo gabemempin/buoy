@@ -97,6 +97,10 @@ The `View+Glass.swift` helper abstracts this behind `.buoyGlass()`.
 | `Views/OnboardingView.swift` | 4-slide carousel onboarding (Welcome, Formatting, Harbor Mode, Bug Report) |
 | `Helpers/WindowDragBlocker.swift` | DragBlockingNSView + ArrowCursorOverlay NSViewRepresentables |
 | `Helpers/PanelLayoutMetrics.swift` | All window/panel sizing constants |
+| `App/MainMenu.swift` | Whole main menu bar (App/Edit/Format/Window) + `EditMenuDelegate` |
+| `Helpers/BuoyMotion.swift` | Reduce Motion gate for every movement animation |
+| `Helpers/BuoyAppearance.swift` | `BuoyContrast`, semantic `Color.buoy*` tokens, `BuoyFont` scale |
+| `Helpers/NotePlainText.swift` | Memoised RTF→plain-text; use instead of decoding inline |
 
 ## Developer Workflows
 
@@ -123,6 +127,86 @@ The phrases **"invoke onboarding"** or **"reset onboarding"** mean run this comm
 
 ### Keyboard Shortcuts Panel
 `ShortcutsPanel.swift` — shortcuts list ends with `("⌘M", "Harbor Mode")`. Does not include auto-bullet or auto-todo entries.
+
+### Accessibility & Menu Conventions
+Added in the HIG pass (2026-08-22):
+- **Reduce Motion:** never write a bare `withAnimation(.spring/.easeOut/...)` for
+  anything that *moves or scales*. Route it through `BuoyMotion.spring/easeOut/…`,
+  transitions through `BuoyMotion.transition(_:)`, and AppKit frame animations
+  through `BuoyMotion.duration(_:)`. `AppDelegate.animatePanel` is already gated,
+  so every panel frame animation inherits it. Pure opacity fades are left alone —
+  Reduce Motion is not an animation kill switch. Continuously-rendering SwiftUI
+  views (Harbor pill marquee, `AnimatedBugTitle`) use
+  `@Environment(\.accessibilityReduceMotion)` instead, so they react live.
+- **Reduce Transparency:** all four glass entry points (`buoyGlass`,
+  `buoyInsetGlass`, `buoyGlassPanel`, `buoyGlassCapsule`) branch on
+  `@Environment(\.accessibilityReduceTransparency)` **first**, falling back to
+  `BuoyOpaqueSurfaceBackground` (flat `windowBackgroundColor`/`controlBackgroundColor`
+  + full-strength `separatorColor` border). With the setting off, the glass paths
+  are unchanged — never make the opaque surface unconditional. A new glass
+  surface must add the same leading branch or it will stay translucent.
+- **Colors:** use the `Color.buoy*` tokens in `BuoyAppearance.swift` rather than
+  `Color.primary.opacity(0.08)`-style literals — they boost themselves under
+  Increase Contrast. `Color.buoyOnAccent` replaces literal `.white` on any
+  accent-filled control. Known limitation: the tokens read `NSWorkspace` at body
+  evaluation, so toggling Increase Contrast mid-session applies on the next
+  re-render rather than instantly.
+- **Type:** chrome text uses the `BuoyFont` roles (they resolve to the macOS text
+  styles that already render at Buoy's sizes). SF Symbol sizing stays as explicit
+  `.system(size:)` — those are icon metrics, not type.
+- **Every clickable control needs `.accessibilityLabel`.** Icon-only buttons reach
+  VoiceOver unnamed otherwise. Tooltips are not labels: `ToolbarPillButton` takes
+  `label` and `shortcut` separately so the spoken name isn't "Bold (⌘B)".
+- **No focus rings, by design.** Both the title and All Notes search fields set
+  `focusRingType = .none` and draw no substitute. AppKit's ring masks to the
+  *cell frame*, so on a borderless field it lands as a hard-edged box — on the
+  full-width title field, a box around mostly empty space. A tighter ring and a
+  2pt underline were both tried and rejected as clutter. The insertion caret
+  marks focus for sighted keyboard users and the accessibility labels carry it
+  for VoiceOver, so don't reintroduce a drawn indicator without asking.
+  Two gotchas if you ever do: `.default` on a borderless field gives no sensible
+  shape, and `NSTextField` is flipped so its visual bottom is `maxY`.
+- **No AppKit find bar.** `usesFindBar` was tried and reverted: the find bar's
+  intrinsic minimum width (search field + prev/next + Done) exceeds Buoy's 292pt
+  `minimumContentWidth`, so it cannot compress — it overflows the scroll view and,
+  since the editor is not clipped to the glass shape, paints *outside* the window
+  while the panel is resized. A find feature here has to be built to Buoy's own
+  chrome.
+- **Menus need Dock mode.** With "Show in Dock" off, Buoy is `.accessory` and has
+  no menu bar at all, so `NSApp.mainMenu` is never displayed. The status item's
+  right-click menu (`AppDelegate.showContextMenu`) is the always-available
+  surface — put app-level commands in both.
+- **`ContentView.body` is at the type-checker limit.** Adding even one
+  `.onReceive` tipped it into "unable to type-check in reasonable time". Simple
+  notification handlers go in `BuoyNotificationRouter`'s dictionary (one merged
+  publisher, one modifier), not as new modifiers on the chain.
+- **Non-activating panel caveat:** `NSApp.mainMenu` key equivalents do *not*
+  reliably fire, because the panel is a `.nonactivatingPanel` and the app usually
+  runs `.accessory`. Any new menu shortcut must also be routed in
+  `BuoyPanel.performKeyEquivalent` (see the selector table and
+  `performTextFinderAction(_:on:)` there) or it will be dead outside Dock mode.
+- **Never decode RTF in a view body.** Use `NotePlainText.of(note)` — it memoises
+  on `id` + `updatedAt`. Two call sites were decoding on paths that run
+  constantly: the footer's word/character readout re-decoded the current note on
+  every `ContentView.body` evaluation, and All Notes' search re-decoded *every*
+  note on every keystroke.
+- **Placeholder text must be opaque.** The editor sits on glass, so any
+  `foregroundColor` below 100% alpha lets the desktop show *through the
+  letterforms* and the text dissolves into the backdrop. `editorPlaceholderColor`
+  is a solid grey at alpha 1 — "faded" comes from the colour, never from alpha.
+  `placeholderTextColor`/`secondaryLabelColor` both fail here. A halo shadow was
+  tried and reverted: at any blur wide enough to separate 13pt glyphs from the
+  backdrop it also bleeds over them and washes the text out.
+- **Ephemeral notes use `createNote(titled:)` + `discardNote(_:)`.** The Bug
+  Report note is a real DB row. Titling it at insert avoids a debounced write
+  landing on a row that is about to be deleted, and keeps it from consuming a
+  number in the "Note N" sequence. `discardNote` skips `deleteNote`'s
+  "keep at least one note" guard, which otherwise strands a permanent note
+  titled "Bug Report" when it is the only note.
+- **Text checking:** `BuoyTextView` remounts on every note switch, so the Edit ▸
+  Spelling/Substitutions toggles persist through `BuoyTextView.TextCheckingOption`
+  (UserDefaults) and replay in `commonInit`. Add new toggles there, not as bare
+  property assignments.
 
 ### .gitignore Notes
 Build artifacts (`*.app/`, `*.zip`, `build.log`, `Buoy */`), VS Code config, and AGENTS.md are gitignored. CLAUDE.md is tracked. Never commit compiled app bundles or build logs.

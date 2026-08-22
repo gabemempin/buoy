@@ -18,8 +18,7 @@ struct AllNotesPanel: View {
         } else {
             matches = notes.filter {
                 $0.title.localizedCaseInsensitiveContains(searchText)
-                    || Self.plainTextContent(from: $0.contentRTF)
-                    .localizedCaseInsensitiveContains(searchText)
+                    || NotePlainText.of($0).localizedCaseInsensitiveContains(searchText)
             }
         }
         let pinned = matches.filter(\.isPinned).sorted { lhs, rhs in
@@ -32,35 +31,24 @@ struct AllNotesPanel: View {
         return pinned + matches.filter { !$0.isPinned }
     }
 
-    private static func plainTextContent(from rtfData: Data) -> String {
-        guard !rtfData.isEmpty else { return "" }
-        guard let attributed = try? NSAttributedString(
-            data: rtfData,
-            options: [.documentType: NSAttributedString.DocumentType.rtf],
-            documentAttributes: nil
-        ) else {
-            return ""
-        }
-        return attributed.string.replacingOccurrences(of: "\u{FFFC}", with: "")
-    }
-
     var body: some View {
         VStack(spacing: 0) {
             // Header
             HStack {
                 Text("All Notes")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(BuoyFont.sectionTitle)
                 Spacer()
                 Button {
-                    withAnimation(.easeOut(duration: 0.16)) { isShowing = false }
+                    withAnimation(BuoyMotion.easeOut(0.16)) { isShowing = false }
                 } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 9, weight: .bold))
                         .foregroundStyle(.secondary)
                         .frame(width: 18, height: 18)
-                        .background(Circle().fill(Color.primary.opacity(0.08)))
+                        .background(Circle().fill(Color.buoyControlFill))
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Close All Notes")
                 .pointingHandCursor()
             }
             .padding(.horizontal, 10)
@@ -78,7 +66,7 @@ struct AllNotesPanel: View {
 
             if filteredNotes.isEmpty {
                 Text("No matching notes")
-                    .font(.system(size: 12))
+                    .font(BuoyFont.control)
                     .foregroundStyle(.tertiary)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.vertical, 20)
@@ -89,7 +77,7 @@ struct AllNotesPanel: View {
                     currentNoteID: currentNoteID,
                     onSelect: { note in
                         onSelect(note)
-                        withAnimation(.easeOut(duration: 0.16)) { isShowing = false }
+                        withAnimation(BuoyMotion.easeOut(0.16)) { isShowing = false }
                     },
                     onDelete: onDelete,
                     onTogglePin: onTogglePin,
@@ -103,7 +91,7 @@ struct AllNotesPanel: View {
         .background(WindowDragBlocker())
         .buoyGlassPanel(cornerRadius: 14)
         .shadow(radius: 8)
-        .transition(.scale(scale: 0.92, anchor: .topTrailing).combined(with: .opacity))
+        .transition(BuoyMotion.transition(.scale(scale: 0.92, anchor: .topTrailing).combined(with: .opacity)))
         .onChange(of: isShowing) { _, showing in
             if !showing { searchText = "" }
         }
@@ -122,7 +110,7 @@ struct NoteRow: View {
 
     private var title: some View {
         Text(note.title.isEmpty ? "Untitled" : note.title)
-            .font(.system(size: 12, weight: isActive ? .semibold : .regular))
+            .font(isActive ? BuoyFont.sectionTitle : BuoyFont.control)
             .foregroundStyle(isActive ? Color.primary : Color.secondary)
             .lineLimit(1)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -153,9 +141,11 @@ struct NoteRow: View {
                         .font(.system(size: 9))
                         .foregroundStyle(note.isPinned ? Color.accentColor : Color.secondary)
                         .frame(width: 18, height: 18)
-                        .background(Circle().fill(Color.primary.opacity(0.08)))
+                        .background(Circle().fill(Color.buoyControlFill))
                 }
                 .buttonStyle(.plain)
+                .help(note.isPinned ? "Unpin note" : "Pin note")
+                .accessibilityLabel(note.isPinned ? "Unpin note" : "Pin note")
                 .pointingHandCursor()
                 .transition(.opacity)
             }
@@ -166,9 +156,11 @@ struct NoteRow: View {
                         .font(.system(size: 9))
                         .foregroundStyle(.secondary)
                         .frame(width: 18, height: 18)
-                        .background(Circle().fill(Color.primary.opacity(0.08)))
+                        .background(Circle().fill(Color.buoyControlFill))
                 }
                 .buttonStyle(.plain)
+                .help("Delete note")
+                .accessibilityLabel("Delete note")
                 .pointingHandCursor()
                 .transition(.opacity)
             }
@@ -177,7 +169,7 @@ struct NoteRow: View {
         .padding(.vertical, 7)
         .background(
             RoundedRectangle(cornerRadius: 7)
-                .fill(isActive ? Color.primary.opacity(0.08) : Color.clear)
+                .fill(isActive ? Color.buoySelectionFill : Color.clear)
         )
         .contentShape(Rectangle())
         .onTapGesture { onSelect() }
@@ -185,5 +177,8 @@ struct NoteRow: View {
             withAnimation(.easeInOut(duration: 0.1)) { isHovering = h }
         }
         .animation(.easeInOut(duration: 0.1), value: isHovering)
+        .accessibilityAddTraits(isActive ? [.isButton, .isSelected] : .isButton)
+        .accessibilityLabel(note.title.isEmpty ? "Untitled" : note.title)
+        .accessibilityValue(note.isPinned ? "Pinned" : "")
     }
 }

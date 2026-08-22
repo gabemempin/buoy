@@ -5,7 +5,9 @@ import KeyboardShortcuts
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var panel: BuoyPanel?
     private var statusItem: NSStatusItem?
-    private var minimizeRestoreMenuItem: NSMenuItem?
+    var minimizeRestoreMenuItem: NSMenuItem?
+    /// Retained so the Edit menu keeps a live delegate for its Undo/Redo titles.
+    let editMenuDelegate = EditMenuDelegate()
     private var globalMouseMonitor: Any?
     private var localMouseMonitor: Any?
     private let cornerResizeOverlayController = CornerResizeOverlayController()
@@ -228,7 +230,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             return
         }
         NSAnimationContext.runAnimationGroup({ ctx in
-            ctx.duration = duration
+            // Single choke point for every panel frame animation — Harbor Mode,
+            // auto-height, overlay height overrides and pill width all land
+            // here — so Reduce Motion only needs gating once. At duration 0 the
+            // frame is set outright and the completion handler still runs, which
+            // the minimize generation guards depend on.
+            ctx.duration = BuoyMotion.duration(duration)
             ctx.timingFunction = CAMediaTimingFunction(name: timingName)
             p.animator().setFrame(frame, display: true)
         }, completionHandler: {
@@ -392,6 +399,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         button.target = self
         button.action = #selector(statusButtonClicked(_:))
         button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        // The menu bar item is the app's only permanent affordance, and a bare
+        // image reaches VoiceOver as an unnamed button without this.
+        button.setAccessibilityLabel("Buoy")
+        button.setAccessibilityHelp("Show or hide the Buoy note panel")
     }
 
     @objc private func statusButtonClicked(_ sender: NSStatusBarButton) {
@@ -403,15 +414,54 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
     }
 
+    /// Right-click menu on the menu bar icon.
+    ///
+    /// With "Show in Dock" off, Buoy is an `.accessory` app and therefore has no
+    /// menu bar at all — `NSApp.mainMenu` exists but is never displayed. This is
+    /// the only always-available menu, so it carries the app-level commands
+    /// rather than just Settings and Quit.
     private func showContextMenu() {
         let menu = NSMenu()
-        let settingsItem = menu.addItem(withTitle: "Settings", action: #selector(openSettings), keyEquivalent: "")
-        settingsItem.target = self
+
+        let newNote = menu.addItem(withTitle: "New Note", action: #selector(newNoteFromMenu), keyEquivalent: "n")
+        newNote.target = self
+
+        let shortcuts = menu.addItem(
+            withTitle: "Keyboard Shortcuts",
+            action: #selector(openShortcutsFromMenu),
+            keyEquivalent: ""
+        )
+        shortcuts.target = self
+
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Quit Buoy", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
+
+        let settingsItem = menu.addItem(withTitle: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
+        settingsItem.target = self
+
+        menu.addItem(
+            withTitle: "About Buoy",
+            action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)),
+            keyEquivalent: ""
+        )
+
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Quit Buoy", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+
         statusItem?.menu = menu
         statusItem?.button?.performClick(nil)
         statusItem?.menu = nil
+    }
+
+    @objc private func newNoteFromMenu() {
+        showPanel()
+        if panelPresentation.isMinimized { exitMinimizedMode() }
+        NotificationCenter.default.post(name: .buoyNewNote, object: nil)
+    }
+
+    @objc private func openShortcutsFromMenu() {
+        showPanel()
+        if panelPresentation.isMinimized { exitMinimizedMode() }
+        NotificationCenter.default.post(name: .openShortcuts, object: nil)
     }
 
     // MARK: - Panel Show/Hide
@@ -545,7 +595,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             : topCenteredFrame(forContentSize: pillSize, around: p.frame, in: p)
         let targetFrame = clampedToVisibleFrame(anchoredFrame, in: p)
 
-        withAnimation(.easeInOut(duration: PanelLayoutMetrics.minimizedTransitionDuration)) {
+        withAnimation(BuoyMotion.easeInOut(PanelLayoutMetrics.minimizedTransitionDuration)) {
             panelPresentation.isMinimized = true
         }
         refreshMinimizeMenuItem()
@@ -565,7 +615,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         let targetFrame = restoredFullSizeFrame(around: p.frame, in: p)
 
-        withAnimation(.easeInOut(duration: PanelLayoutMetrics.minimizedTransitionDuration)) {
+        withAnimation(BuoyMotion.easeInOut(PanelLayoutMetrics.minimizedTransitionDuration)) {
             panelPresentation.isMinimized = false
         }
         refreshMinimizeMenuItem()
@@ -686,56 +736,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         panel?.appearance = appearance
     }
 
-    // MARK: - Main Menu
-
-    private func buildMainMenu() {
-        let mainMenu = NSMenu()
-
-        // App menu
-        let appItem = NSMenuItem()
-        mainMenu.addItem(appItem)
-        let appMenu = NSMenu()
-        appItem.submenu = appMenu
-        appMenu.addItem(withTitle: "About Buoy", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
-        appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "Hide Buoy", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
-        let hideOthers = appMenu.addItem(withTitle: "Hide Others", action: #selector(NSApplication.hideOtherApplications(_:)), keyEquivalent: "h")
-        hideOthers.keyEquivalentModifierMask = [.command, .option]
-        appMenu.addItem(withTitle: "Show All", action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: "")
-        appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "Quit Buoy", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-
-        // Edit menu
-        let editItem = NSMenuItem()
-        mainMenu.addItem(editItem)
-        let editMenu = NSMenu(title: "Edit")
-        editItem.submenu = editMenu
-        editMenu.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
-        let redo = editMenu.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "z")
-        redo.keyEquivalentModifierMask = [.command, .shift]
-        editMenu.addItem(.separator())
-        editMenu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
-        editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
-        editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
-        editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
-
-        // Window menu
-        let windowItem = NSMenuItem()
-        mainMenu.addItem(windowItem)
-        let windowMenu = NSMenu(title: "Window")
-        windowItem.submenu = windowMenu
-        let minimizeItem = windowMenu.addItem(withTitle: "Minimize", action: #selector(toggleMinimizedMode(_:)), keyEquivalent: "m")
-        minimizeItem.target = self
-        minimizeRestoreMenuItem = minimizeItem
-        windowMenu.addItem(withTitle: "Zoom", action: #selector(NSWindow.zoom(_:)), keyEquivalent: "")
-        windowMenu.addItem(.separator())
-        windowMenu.addItem(withTitle: "Bring All to Front", action: #selector(NSApplication.arrangeInFront(_:)), keyEquivalent: "")
-
-        NSApp.mainMenu = mainMenu
-        refreshMinimizeMenuItem()
-    }
-
-    private func refreshMinimizeMenuItem() {
+    func refreshMinimizeMenuItem() {
         minimizeRestoreMenuItem?.title = panelPresentation.isMinimized ? "Restore" : "Minimize"
     }
 
@@ -792,4 +793,5 @@ extension AppDelegate {
 
 extension Notification.Name {
     static let openSettings = Notification.Name("Buoy2OpenSettings")
+    static let openShortcuts = Notification.Name("Buoy2OpenShortcuts")
 }

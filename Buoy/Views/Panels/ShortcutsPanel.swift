@@ -21,18 +21,19 @@ struct ShortcutsPanel: View {
         VStack(spacing: 0) {
             HStack {
                 Text("Keyboard Shortcuts")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(BuoyFont.sectionTitle)
                 Spacer()
                 Button {
-                    withAnimation(.easeOut(duration: 0.16)) { isShowing = false }
+                    withAnimation(BuoyMotion.easeOut(0.16)) { isShowing = false }
                 } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 9, weight: .bold))
                         .foregroundStyle(.secondary)
                         .frame(width: 18, height: 18)
-                        .background(Circle().fill(Color.primary.opacity(0.08)))
+                        .background(Circle().fill(Color.buoyControlFill))
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Close Keyboard Shortcuts")
                 .pointingHandCursor()
             }
             .padding(.horizontal, 10)
@@ -54,7 +55,7 @@ struct ShortcutsPanel: View {
         .background(WindowDragBlocker())
         .buoyGlassPanel(cornerRadius: 14)
         .shadow(radius: 8)
-        .transition(.scale(scale: 0.92, anchor: .bottomLeading).combined(with: .opacity))
+        .transition(BuoyMotion.transition(.scale(scale: 0.92, anchor: .bottomLeading).combined(with: .opacity)))
     }
 }
 
@@ -65,18 +66,21 @@ private struct ShortcutRow: View {
     var body: some View {
         HStack {
             Text(action)
-                .font(.system(size: 11))
+                .font(BuoyFont.secondary)
                 .foregroundStyle(.secondary)
             Spacer()
             Text(key)
-                .font(.system(size: 11, weight: .medium))
+                .font(BuoyFont.secondaryEmphasized)
                 .foregroundStyle(.primary)
                 .padding(.horizontal, 5)
                 .padding(.vertical, 2)
-                .background(Color.primary.opacity(0.08))
+                .background(Color.buoyControlFill)
                 .clipShape(RoundedRectangle(cornerRadius: 4))
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
+        // Announced as one phrase; the two Texts read as unrelated fragments.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(action), \(key)")
     }
 }

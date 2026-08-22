@@ -37,7 +37,13 @@ private struct TitleTextField: NSViewRepresentable {
         field.font = NSFont.systemFont(ofSize: 19, weight: .semibold, width: .expanded)
         field.textColor = colorScheme == .dark ? .white : .controlAccentColor
         field.alignment = .center
+        // No focus ring by design. AppKit's masks to the cell frame, which on a
+        // field spanning the whole panel is a heavy box around mostly empty
+        // space, and a drawn substitute (ring or underline) read as clutter above
+        // the title. The insertion caret already marks focus for sighted keyboard
+        // users, and VoiceOver reports it from the accessibility label either way.
         field.focusRingType = .none
+        field.setAccessibilityLabel("Note title")
         field.cell?.wraps = false
         field.cell?.isScrollable = true
         field.delegate = context.coordinator
@@ -144,9 +150,18 @@ struct AnimatedBugTitle: View {
     let title: String
     var fontSize: CGFloat = 19
 
+    /// The sweeping highlight is continuous movement, so Reduce Motion parks it
+    /// mid-title instead of animating. Read from the environment rather than
+    /// `BuoyMotion` so flipping the setting re-renders immediately.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { timeline in
-            frame(phase: Self.phase(for: timeline.date))
+        if reduceMotion {
+            frame(phase: 0.5)
+        } else {
+            TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { timeline in
+                frame(phase: Self.phase(for: timeline.date))
+            }
         }
     }
 
@@ -198,13 +213,14 @@ private struct HeaderButton: View {
         Button(action: action) {
             Image(systemName: systemImage)
                 .font(.system(size: 12))
-                .foregroundStyle(isHovering ? Color.white : Color.white.opacity(0.85))
+                .foregroundStyle(Color.buoyOnAccent(isProminent: isHovering))
                 .frame(width: 28, height: 28)
                 .contentShape(Circle())
                 .buoyAccentCircle(isHovering: isHovering)
         }
         .buttonStyle(.plain)
         .help(tooltip)
+        .accessibilityLabel(tooltip)
         .onHover { isHovering = $0 }
     }
 }

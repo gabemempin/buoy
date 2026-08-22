@@ -24,16 +24,16 @@ struct OnboardingView: View {
                 ZStack {
                     slideContent
                         .id(currentSlide)
-                        .transition(.asymmetric(
+                        .transition(BuoyMotion.transition(.asymmetric(
                             insertion: .move(edge: goingForward ? .trailing : .leading)
                                 .combined(with: .opacity),
                             removal: .move(edge: goingForward ? .leading : .trailing)
                                 .combined(with: .opacity)
-                        ))
+                        )))
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .clipped()
-                .animation(.spring(response: 0.42, dampingFraction: 0.86), value: currentSlide)
+                .animation(BuoyMotion.spring(response: 0.42, dampingFraction: 0.86), value: currentSlide)
 
                 bottomNav
             }
@@ -54,7 +54,7 @@ struct OnboardingView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .onboardingCmdM)) { _ in
             guard currentSlide == 2 else { return }
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+            withAnimation(BuoyMotion.spring(response: 0.3, dampingFraction: 0.8)) {
                 isDemoMinimized.toggle()
             }
         }
@@ -71,7 +71,7 @@ struct OnboardingView: View {
             HarborModeSlide(
                 isDemoMinimized: isDemoMinimized,
                 onToggleDemo: {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    withAnimation(BuoyMotion.spring(response: 0.3, dampingFraction: 0.8)) {
                         isDemoMinimized.toggle()
                     }
                 }
@@ -92,12 +92,12 @@ struct OnboardingView: View {
                         .frame(width: i == currentSlide ? 18 : 6, height: 6)
                 }
             }
-            .animation(.spring(response: 0.38, dampingFraction: 0.8), value: currentSlide)
+            .animation(BuoyMotion.spring(response: 0.38, dampingFraction: 0.8), value: currentSlide)
 
             Button {
                 if currentSlide < 3 {
                     goingForward = true
-                    withAnimation(.spring(response: 0.42, dampingFraction: 0.86)) {
+                    withAnimation(BuoyMotion.spring(response: 0.42, dampingFraction: 0.86)) {
                         currentSlide += 1
                     }
                 } else {
@@ -117,7 +117,7 @@ struct OnboardingView: View {
             Button("Back") {
                 guard currentSlide > 0 else { return }
                 goingForward = false
-                withAnimation(.spring(response: 0.42, dampingFraction: 0.86)) {
+                withAnimation(BuoyMotion.spring(response: 0.42, dampingFraction: 0.86)) {
                     currentSlide -= 1
                 }
             }
@@ -314,13 +314,13 @@ private struct WelcomeSlide: View {
             }
             do {
                 try await Task.sleep(for: .milliseconds(60))
-                withAnimation(.spring(response: 0.52, dampingFraction: 0.7)) { iconAppeared = true }
+                withAnimation(BuoyMotion.spring(response: 0.52, dampingFraction: 0.7)) { iconAppeared = true }
                 try await Task.sleep(for: .milliseconds(120))
-                withAnimation(.spring(response: 0.52, dampingFraction: 0.7)) { titleAppeared = true }
+                withAnimation(BuoyMotion.spring(response: 0.52, dampingFraction: 0.7)) { titleAppeared = true }
                 try await Task.sleep(for: .milliseconds(140))
-                withAnimation(.spring(response: 0.52, dampingFraction: 0.7)) { keyCapsAppeared = true }
+                withAnimation(BuoyMotion.spring(response: 0.52, dampingFraction: 0.7)) { keyCapsAppeared = true }
                 try await Task.sleep(for: .milliseconds(140))
-                withAnimation(.spring(response: 0.52, dampingFraction: 0.7)) { hintAppeared = true }
+                withAnimation(BuoyMotion.spring(response: 0.52, dampingFraction: 0.7)) { hintAppeared = true }
             } catch { return }
         }
         .onDisappear {
@@ -465,11 +465,11 @@ private struct FormattingSlide: View {
         .task {
             do {
                 try await Task.sleep(for: .milliseconds(50))
-                withAnimation(.spring(response: 0.52, dampingFraction: 0.7)) { headerAppeared = true }
+                withAnimation(BuoyMotion.spring(response: 0.52, dampingFraction: 0.7)) { headerAppeared = true }
                 try await Task.sleep(for: .milliseconds(80))
-                withAnimation(.spring(response: 0.52, dampingFraction: 0.7)) { panelAppeared = true }
+                withAnimation(BuoyMotion.spring(response: 0.52, dampingFraction: 0.7)) { panelAppeared = true }
                 try await Task.sleep(for: .milliseconds(100))
-                withAnimation(.spring(response: 0.52, dampingFraction: 0.7)) { subheadingAppeared = true }
+                withAnimation(BuoyMotion.spring(response: 0.52, dampingFraction: 0.7)) { subheadingAppeared = true }
             } catch { return }
         }
     }
@@ -616,7 +616,7 @@ private struct HarborModeSlide: View {
             }
             .frame(maxWidth: 300)
             .padding(.horizontal, 20)
-            .animation(.spring(response: 0.35, dampingFraction: 0.82), value: isDemoMinimized)
+            .animation(BuoyMotion.spring(response: 0.35, dampingFraction: 0.82), value: isDemoMinimized)
 
             Group {
                 if hasTriggeredOnce || isDemoMinimized {

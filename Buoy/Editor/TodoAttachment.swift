@@ -49,7 +49,7 @@ final class TodoAttachment: NSTextAttachment {
                 NSColor.controlAccentColor.setFill()
                 NSBezierPath(ovalIn: c).fill()
 
-                NSColor.white.setStroke()
+                NSColor.alternateSelectedControlTextColor.setStroke()
                 let check = NSBezierPath()
                 check.lineWidth = lineWidth
                 check.lineCapStyle = .round
@@ -68,6 +68,10 @@ final class TodoAttachment: NSTextAttachment {
             }
             return true
         }
+        // An image attachment otherwise reaches VoiceOver as an anonymous
+        // "attachment", so a to-do list is unusable — the checked state is the
+        // whole point of the glyph. AppKit reads this off the attachment's image.
+        image.accessibilityDescription = isChecked ? "Checked to-do" : "Unchecked to-do"
         self.image = image
         self.bounds = CGRect(origin: CGPoint(x: 0, y: yOffset), size: displaySize)
     }

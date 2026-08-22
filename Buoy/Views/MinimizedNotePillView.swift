@@ -17,7 +17,7 @@ struct MinimizedNotePillView: View {
                 Button(action: onRestore) {
                     Image(systemName: "chevron.down")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(isRestoreHovering ? .white : .white.opacity(0.9))
+                        .foregroundStyle(Color.buoyOnAccent(isProminent: isRestoreHovering))
                         .frame(
                             width: PanelLayoutMetrics.minimizedRestoreButtonSize,
                             height: PanelLayoutMetrics.minimizedRestoreButtonSize
@@ -27,6 +27,7 @@ struct MinimizedNotePillView: View {
                 }
                 .buttonStyle(.plain)
                 .help("Restore note")
+                .accessibilityLabel("Restore note")
                 .onHover { isRestoreHovering = $0 }
             }
             .padding(.leading, PanelLayoutMetrics.minimizedPillLeadingPadding)
@@ -36,6 +37,8 @@ struct MinimizedNotePillView: View {
         .frame(height: PanelLayoutMetrics.minimizedPillHeight)
         .background(WindowDragHandle())
         .buoyGlassCapsule()
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Harbor Mode: \(title.isEmpty ? "Untitled" : title)")
     }
 }
 
@@ -44,6 +47,10 @@ private struct MinimizedTitleLane: View {
     let theme: AppTheme
     let availableWidth: CGFloat
     @Environment(\.colorScheme) private var colorScheme
+    /// A title too long for the pill normally scrolls past. That is continuous
+    /// motion in the corner of the screen, which is exactly what Reduce Motion
+    /// is meant to stop, so it falls back to a truncated static title.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var measuredTitleWidth: CGFloat {
         PanelLayoutMetrics.minimizedTitleWidth(forTitle: title)
@@ -51,7 +58,7 @@ private struct MinimizedTitleLane: View {
 
     var body: some View {
         Group {
-            if measuredTitleWidth > availableWidth {
+            if measuredTitleWidth > availableWidth && !reduceMotion {
                 MarqueeTitleView(
                     title: title,
                     theme: theme,
@@ -59,11 +66,12 @@ private struct MinimizedTitleLane: View {
                     availableWidth: availableWidth
                 )
             } else {
-                titleText
+                truncatedTitleText
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .frame(width: availableWidth, alignment: .leading)
+        .clipped()
         .allowsHitTesting(false)
     }
 
@@ -73,6 +81,16 @@ private struct MinimizedTitleLane: View {
             .foregroundStyle(titleColor)
             .lineLimit(1)
             .fixedSize(horizontal: true, vertical: false)
+    }
+
+    /// Same title without `fixedSize`, so an over-long one ellipsises rather
+    /// than running past the lane. Used when the marquee is suppressed.
+    private var truncatedTitleText: some View {
+        Text(PanelLayoutMetrics.minimizedDisplayTitle(title))
+            .font(Font(PanelLayoutMetrics.minimizedTitleFont))
+            .foregroundStyle(titleColor)
+            .lineLimit(1)
+            .truncationMode(.tail)
     }
 
     private var titleColor: Color {

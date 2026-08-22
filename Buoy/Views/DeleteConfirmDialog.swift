@@ -27,22 +27,24 @@ struct DeleteConfirmDialog: View {
 
             VStack(spacing: 3) {
                 Text("Delete “\(displayTitle)”?")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(BuoyFont.headline)
                     .multilineTextAlignment(.center)
                     .lineLimit(2)
                 Text("This can’t be undone.")
-                    .font(.system(size: 11))
+                    .font(BuoyFont.secondary)
                     .foregroundStyle(.secondary)
             }
 
             HStack(spacing: 8) {
                 Button("Cancel") { onCancel() }
                     .buttonStyle(.plain)
-                    .font(.system(size: 12))
+                    .font(BuoyFont.control)
                     .foregroundStyle(.primary)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 5)
-                    .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 7))
+                    .background(Color.buoyControlFill, in: RoundedRectangle(cornerRadius: 7))
+                    .accessibilityLabel("Cancel")
+                    .accessibilityHint("Keeps the note. Escape does the same.")
                     .pointingHandCursor()
 
                 Button {
@@ -50,32 +52,37 @@ struct DeleteConfirmDialog: View {
                 } label: {
                     HStack(spacing: 5) {
                         Text("Delete")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(BuoyFont.control.weight(.semibold))
                         Text("⏎")
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(BuoyFont.caption.weight(.semibold))
                             .frame(width: 15, height: 15)
-                            .background(Color.white.opacity(0.22), in: RoundedRectangle(cornerRadius: 4))
+                            .background(Color.buoyOnAccent.opacity(0.22), in: RoundedRectangle(cornerRadius: 4))
+                            .accessibilityHidden(true)
                     }
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Color.buoyOnAccent)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
-                    .background(Color.red, in: RoundedRectangle(cornerRadius: 7))
+                    .background(Color(nsColor: .systemRed), in: RoundedRectangle(cornerRadius: 7))
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Delete")
+                .accessibilityHint("Permanently deletes “\(displayTitle)”. Return does the same.")
                 .pointingHandCursor()
             }
             .padding(.top, 2)
         }
         .padding(16)
         .frame(width: 220)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Delete “\(displayTitle)”?")
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
         .overlay(
             RoundedRectangle(cornerRadius: 14)
-                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+                .strokeBorder(Color.buoyOverlayStroke, lineWidth: 1)
         )
         .shadow(radius: 12, y: 4)
-        .transition(.scale(scale: 0.9).combined(with: .opacity))
+        .transition(BuoyMotion.transition(.scale(scale: 0.9).combined(with: .opacity)))
         .onAppear { installKeyMonitor() }
         .onDisappear { removeKeyMonitor() }
     }

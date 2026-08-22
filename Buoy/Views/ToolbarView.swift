@@ -13,52 +13,63 @@ struct ToolbarView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            ToolbarPillButton(systemImage: "bold",        tooltip: "Bold (⌘B)",        action: onBold)
+            ToolbarPillButton(systemImage: "bold",        label: "Bold",          shortcut: "⌘B",  action: onBold)
             pillDivider
-            ToolbarPillButton(systemImage: "italic",      tooltip: "Italic (⌘I)",      action: onItalic)
+            ToolbarPillButton(systemImage: "italic",      label: "Italic",        shortcut: "⌘I",  action: onItalic)
             pillDivider
-            ToolbarPillButton(systemImage: "underline",   tooltip: "Underline (⌘U)",   action: onUnderline)
+            ToolbarPillButton(systemImage: "underline",   label: "Underline",     shortcut: "⌘U",  action: onUnderline)
             pillDivider
-            ToolbarPillButton(systemImage: "strikethrough", tooltip: "Strikethrough (⌘⇧X)", action: onStrikethrough)
+            ToolbarPillButton(systemImage: "strikethrough", label: "Strikethrough", shortcut: "⌘⇧X", action: onStrikethrough)
             pillDivider
-            ToolbarPillButton(systemImage: "list.bullet", tooltip: "Bullet List",       action: onBullet)
+            ToolbarPillButton(systemImage: "list.bullet", label: "Bullet List",   action: onBullet)
             pillDivider
-            ToolbarPillButton(systemImage: "checklist",   tooltip: "To-Do",             action: onTodo, iconSize: 15)
+            ToolbarPillButton(systemImage: "checklist",   label: "To-Do",         action: onTodo, iconSize: 15)
             pillDivider
-            ToolbarPillButton(systemImage: "link",        tooltip: "Insert Link (⌘K)", action: onLink)
+            ToolbarPillButton(systemImage: "link",        label: "Insert Link",   shortcut: "⌘K",  action: onLink)
         }
         .clipShape(Capsule())
         .buoyAccentCapsule(color: isBugReport ? .blue : .accentColor)
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Formatting")
     }
 
     private var pillDivider: some View {
         Rectangle()
-            .fill(Color.white.opacity(0.3))
+            .fill(Color.buoyOnAccentSeparator)
             .frame(width: 1, height: 14)
+            .accessibilityHidden(true)
     }
 }
 
 private struct ToolbarPillButton: View {
     let systemImage: String
-    let tooltip: String
+    /// Spoken name. Kept separate from the tooltip so VoiceOver announces
+    /// "Bold" rather than reading the key equivalent out as part of the name.
+    let label: String
+    var shortcut: String? = nil
     let action: () -> Void
     var iconSize: CGFloat = 12
 
     @State private var isHovering = false
 
+    private var tooltip: String {
+        shortcut.map { "\(label) (\($0))" } ?? label
+    }
+
     var body: some View {
         Button(action: action) {
             Image(systemName: systemImage)
                 .font(.system(size: iconSize))
-                .foregroundStyle(isHovering ? Color.white : Color.white.opacity(0.85))
+                .foregroundStyle(Color.buoyOnAccent(isProminent: isHovering))
                 .frame(width: 30, height: 28)
                 .contentShape(Rectangle())
                 .buoyAccentHoverPlate(isHovering: isHovering, cornerRadius: 7)
         }
         .buttonStyle(.plain)
         .help(tooltip)
+        .accessibilityLabel(label)
         .onHover { isHovering = $0 }
     }
 }

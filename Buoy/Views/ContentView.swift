@@ -1,5 +1,26 @@
 import SwiftUI
 import AppKit
+import Combine
+
+/// Subscribes to several notifications through a single merged publisher and
+/// dispatches by name.
+///
+/// Purely a compile-time measure: `ContentView.body` is at the type-checker's
+/// time budget, so seven separate `.onReceive` modifiers in the chain are enough
+/// to tip it into "unable to type-check this expression in reasonable time".
+private struct BuoyNotificationRouter: ViewModifier {
+    let routes: [Notification.Name: () -> Void]
+
+    func body(content: Content) -> some View {
+        content.onReceive(
+            Publishers.MergeMany(
+                routes.keys.map { NotificationCenter.default.publisher(for: $0) }
+            )
+        ) { notification in
+            routes[notification.name]?()
+        }
+    }
+}
 
 // Class wrapper so the NSTextView reference survives SwiftUI re-renders without triggering update cycles.
 private final class TextViewRef {
@@ -88,13 +109,13 @@ struct ContentView: View {
         ZStack {
             if panelPresentation.isMinimized {
                 minimizedPanelContent
-                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                    .transition(BuoyMotion.transition(.opacity.combined(with: .scale(scale: 0.96))))
             } else {
                 fullPanelContent
-                    .transition(.scale(scale: 0.7, anchor: .center).combined(with: .opacity))
+                    .transition(BuoyMotion.transition(.scale(scale: 0.7, anchor: .center).combined(with: .opacity)))
             }
         }
-        .animation(.easeInOut(duration: PanelLayoutMetrics.minimizedTransitionDuration), value: panelPresentation.isMinimized)
+        .animation(BuoyMotion.easeInOut(PanelLayoutMetrics.minimizedTransitionDuration), value: panelPresentation.isMinimized)
         // Auto-focus the editor when the panel becomes key (fixes macOS 15 where
         // NSHostingView doesn't automatically route keyboard events to the text view).
         .onReceive(NotificationCenter.default.publisher(for: .buoyPanelBecameKey)) { _ in
@@ -105,23 +126,23 @@ struct ContentView: View {
                 focusEditor()
             }
         }
-        // App-level shortcut notifications from BuoyTextView
-        .onReceive(NotificationCenter.default.publisher(for: .buoyNewNote))         { _ in createNote() }
-        .onReceive(NotificationCenter.default.publisher(for: .buoyDeleteNote))      { _ in deleteCurrentNote() }
-        .onReceive(NotificationCenter.default.publisher(for: .buoyCopyToClipboard)) { _ in copyToClipboard() }
-        .onReceive(NotificationCenter.default.publisher(for: .buoyPreviousNote))    { _ in navigateNote(forward: false) }
-        .onReceive(NotificationCenter.default.publisher(for: .buoyNextNote))        { _ in navigateNote(forward: true) }
+        // App-level commands, posted by BuoyTextView, BuoyPanel and the status
+        // item menu. Routed through one merged subscription rather than one
+        // `.onReceive` each: ContentView.body sits at the Swift type-checker's
+        // time budget and every modifier in the chain counts against it.
+        .modifier(BuoyNotificationRouter(routes: [
+            .buoyNewNote:         { createNote() },
+            .buoyDeleteNote:      { deleteCurrentNote() },
+            .buoyCopyToClipboard: { copyToClipboard() },
+            .buoyPreviousNote:    { navigateNote(forward: false) },
+            .buoyNextNote:        { navigateNote(forward: true) },
+            .openShortcuts:       { toggleShortcuts() },
+            .openSettings:        { toggleSettings() }
+        ]))
         .onReceive(NotificationCenter.default.publisher(for: .showLinkDialog)) { notif in
             guard !panelPresentation.isMinimized else { return }
             linkDialogSelectedText = notif.object as? String ?? ""
             withAnimation { showLinkDialog = true }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .openSettings)) { _ in
-            withAnimation(.easeOut(duration: 0.16)) {
-                showSettings.toggle()
-                if showSettings { showAllNotes = false; showShortcuts = false }
-            }
-            if !showSettings { focusEditor() }
         }
         // Block window dragging whenever any overlay panel is open
         .onChange(of: showSettings || showShortcuts || showAllNotes || pendingDeleteNote != nil) { _, panelOpen in
@@ -164,7 +185,7 @@ struct ContentView: View {
     private var fullPanelContent: some View {
         fullContent
             .blur(radius: pendingDeleteNote != nil ? 9 : 0)
-            .animation(.easeOut(duration: 0.16), value: pendingDeleteNote != nil)
+            .animation(BuoyMotion.easeOut(0.16), value: pendingDeleteNote != nil)
             .padding(PanelLayoutMetrics.windowPadding)
             .frame(
                 minWidth: PanelLayoutMetrics.minimumGlassWidth,
@@ -270,9 +291,11 @@ struct ContentView: View {
                     )
                     .id(slideID)
                     .transition(
-                        .asymmetric(
-                            insertion: .move(edge: slideDirection == .forward ? .trailing : .leading),
-                            removal: .move(edge: slideDirection == .forward ? .leading : .trailing)
+                        BuoyMotion.transition(
+                            .asymmetric(
+                                insertion: .move(edge: slideDirection == .forward ? .trailing : .leading),
+                                removal: .move(edge: slideDirection == .forward ? .leading : .trailing)
+                            )
                         )
                     )
                 }
@@ -280,9 +303,7 @@ struct ContentView: View {
                 FooterView(
                     createdAt: noteStore.currentNote?.createdAt ?? 0,
                     updatedAt: noteStore.currentNote?.updatedAt ?? 0,
-                    plainText: noteStore.currentNote.flatMap {
-                        NSAttributedString(rtf: $0.contentRTF, documentAttributes: nil)?.string
-                    } ?? "",
+                    plainText: noteStore.currentNote.map(NotePlainText.of) ?? "",
                     selectedText: editorSelectedText,
                     onShortcuts: toggleShortcuts,
                     onSettings:  toggleSettings,
@@ -304,7 +325,7 @@ struct ContentView: View {
                 Color.clear
                     .contentShape(Rectangle())
                     .onTapGesture {
-                        withAnimation(.easeOut(duration: 0.16)) {
+                        withAnimation(BuoyMotion.easeOut(0.16)) {
                             showAllNotes = false
                             showSettings = false
                             showShortcuts = false
@@ -345,7 +366,7 @@ struct ContentView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
             }
-            .animation(.easeOut(duration: 0.16), value: showAllNotes)
+            .animation(BuoyMotion.easeOut(0.16), value: showAllNotes)
             .allowsHitTesting(showAllNotes)
 
             ZStack(alignment: .bottomLeading) {
@@ -372,8 +393,8 @@ struct ContentView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
-            .animation(.easeOut(duration: 0.16), value: showSettings)
-            .animation(.easeOut(duration: 0.16), value: showShortcuts)
+            .animation(BuoyMotion.easeOut(0.16), value: showSettings)
+            .animation(BuoyMotion.easeOut(0.16), value: showShortcuts)
             .allowsHitTesting(showSettings || showShortcuts)
 
             UpdateBubbleOverlay(settings: $settings, isSuppressed: !canShowUpdateBubble)
@@ -397,7 +418,7 @@ struct ContentView: View {
                         }
                     }
                 )
-                .padding(2)
+                .padding(PanelLayoutMetrics.onboardingInset)
                 .transition(.opacity)
             }
         }
@@ -482,7 +503,7 @@ struct ContentView: View {
         if forward { noteStore.nextNote() } else { noteStore.previousNote() }
         if previousID != noteStore.currentNote?.id {
             slideDirection = noteStore.lastNavigationDirection
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+            withAnimation(BuoyMotion.spring(response: 0.3, dampingFraction: 0.8)) {
                 slideID = UUID()
             }
         }
@@ -495,7 +516,7 @@ struct ContentView: View {
     }
 
     private func dismissTransientUI() {
-        withAnimation(.easeOut(duration: 0.16)) {
+        withAnimation(BuoyMotion.easeOut(0.16)) {
             showAllNotes = false
             showSettings = false
             showShortcuts = false
@@ -504,7 +525,7 @@ struct ContentView: View {
     }
 
     private func toggleAllNotes() {
-        withAnimation(.easeOut(duration: 0.16)) {
+        withAnimation(BuoyMotion.easeOut(0.16)) {
             showAllNotes.toggle()
             if showAllNotes { showSettings = false; showShortcuts = false }
         }
@@ -512,7 +533,7 @@ struct ContentView: View {
     }
 
     private func toggleSettings() {
-        withAnimation(.easeOut(duration: 0.16)) {
+        withAnimation(BuoyMotion.easeOut(0.16)) {
             showSettings.toggle()
             if showSettings { showAllNotes = false; showShortcuts = false }
         }
@@ -520,7 +541,7 @@ struct ContentView: View {
     }
 
     private func toggleShortcuts() {
-        withAnimation(.easeOut(duration: 0.16)) {
+        withAnimation(BuoyMotion.easeOut(0.16)) {
             showShortcuts.toggle()
             if showShortcuts { showAllNotes = false; showSettings = false }
         }
@@ -539,18 +560,18 @@ struct ContentView: View {
             toastState.show("Cannot delete the last note", isError: true)
             return
         }
-        withAnimation(.easeOut(duration: 0.16)) { pendingDeleteNote = note }
+        withAnimation(BuoyMotion.easeOut(0.16)) { pendingDeleteNote = note }
     }
 
     private func confirmDeleteNote() {
         guard let note = pendingDeleteNote else { return }
-        withAnimation(.easeOut(duration: 0.16)) { pendingDeleteNote = nil }
+        withAnimation(BuoyMotion.easeOut(0.16)) { pendingDeleteNote = nil }
         noteStore.deleteNote(note)
         focusEditor()
     }
 
     private func cancelDeleteNote() {
-        withAnimation(.easeOut(duration: 0.16)) { pendingDeleteNote = nil }
+        withAnimation(BuoyMotion.easeOut(0.16)) { pendingDeleteNote = nil }
         focusEditor()
     }
 
@@ -585,19 +606,16 @@ struct ContentView: View {
         withAnimation { showLinkDialog = true }
     }
 
+    /// Live text from the editor when it is mounted, falling back to the stored
+    /// RTF. The editor is authoritative because it holds edits that have not hit
+    /// their debounce yet.
+    private var currentPlainText: String {
+        if let tv = tvRef.value { return tv.plainTextContent() }
+        return noteStore.currentNote.map(NotePlainText.of) ?? ""
+    }
+
     private func copyToClipboard() {
-        let text: String
-        if let tv = tvRef.value {
-            text = tv.plainTextContent()
-        } else if let note = noteStore.currentNote,
-                  let atStr = try? NSAttributedString(
-                    data: note.contentRTF,
-                    options: [.documentType: NSAttributedString.DocumentType.rtf],
-                    documentAttributes: nil) {
-            text = atStr.string
-        } else {
-            text = ""
-        }
+        let text = currentPlainText
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
         toastState.show("Copied to clipboard")
@@ -606,33 +624,26 @@ struct ContentView: View {
     private func cancelBugReport() {
         guard let note = noteStore.currentNote, isBugReport else { return }
         bugReportNoteID = nil
-        noteStore.deleteNote(note)
+        noteStore.discardNote(note)
         focusEditor()
     }
 
     private func createBugReportNote() {
-        withAnimation(.easeOut(duration: 0.16)) { showSettings = false }
-        noteStore.createNote()
-        noteStore.saveTitle("Bug Report")
+        withAnimation(BuoyMotion.easeOut(0.16)) { showSettings = false }
+        // Titled at insert rather than through the debounced saveTitle path: the
+        // note is discarded on Cancel or Send, and a title still in flight then
+        // is a write aimed at a deleted row. It also keeps the scratch note from
+        // consuming a number in the "Note N" sequence.
+        noteStore.createNote(titled: "Bug Report")
         bugReportNoteID = noteStore.currentNote?.id
         focusEditor()
     }
 
     private func sendBugReport() {
         guard let note = noteStore.currentNote, isBugReport else { return }
-        let text: String
-        if let tv = tvRef.value {
-            text = tv.plainTextContent()
-        } else if let atStr = try? NSAttributedString(
-            data: note.contentRTF,
-            options: [.documentType: NSAttributedString.DocumentType.rtf],
-            documentAttributes: nil) {
-            text = atStr.string
-        } else {
-            text = ""
-        }
+        let text = currentPlainText
         bugReportNoteID = nil
-        noteStore.deleteNote(note)
+        noteStore.discardNote(note)
 
         var components = URLComponents(string: "https://tally.so/r/J98A7K")!
         components.queryItems = [URLQueryItem(name: "report", value: text)]

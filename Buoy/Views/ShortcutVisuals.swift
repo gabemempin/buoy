@@ -45,11 +45,11 @@ struct ShortcutKeyCapsView: View {
                         group.addTask { @MainActor in
                             do {
                                 try await Task.sleep(for: .milliseconds(index * 60))
-                                withAnimation(.spring(response: 0.2, dampingFraction: 0.7)) {
+                                withAnimation(BuoyMotion.spring(response: 0.2, dampingFraction: 0.7)) {
                                     pressedIndex = index
                                 }
                                 try await Task.sleep(for: .milliseconds(120))
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                                withAnimation(BuoyMotion.spring(response: 0.35, dampingFraction: 0.75)) {
                                     if pressedIndex == index { pressedIndex = nil }
                                 }
                             } catch {}

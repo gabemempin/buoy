@@ -137,17 +137,24 @@ final class NoteStore {
         switchNote(to: note)
     }
 
-    func createNote() {
+    /// Creates a note and makes it current.
+    ///
+    /// - Parameter title: an explicit title, or `nil` for the next "Note N".
+    ///   Passing one writes it with the insert rather than through the debounced
+    ///   `saveTitle` path, which matters for short-lived notes: a title still in
+    ///   flight when the note is discarded is a write aimed at a row that no
+    ///   longer exists. It also keeps scratch notes from consuming a number in
+    ///   the "Note N" sequence.
+    func createNote(titled title: String? = nil) {
         // Commit any in-flight edits against the *outgoing* note before we
         // repoint currentNote, so a debounced save can't land on the new note.
         flushPendingSaves()
 
         guard let db else { return }
-        let count = notes.count
         let now = Note.currentTimestamp()
         let newNote = Note(
             id: Note.newID(),
-            title: "Note \(count + 1)",
+            title: title ?? "Note \(notes.count + 1)",
             contentRTF: Data(),
             createdAt: now,
             updatedAt: now,
@@ -232,6 +239,36 @@ final class NoteStore {
         loadNoteList()
         if wasDeletingCurrent, !notes.isEmpty {
             let fallbackIndex = deletedIndex.map { min($0, notes.count - 1) } ?? 0
+            switchNote(to: notes[fallbackIndex])
+        }
+    }
+
+    /// Deletes a note that was never meant to be kept — today, the Bug Report
+    /// scratch note.
+    ///
+    /// Differs from `deleteNote` in two ways that matter for an ephemeral note.
+    /// It drops pending debounced writes instead of flushing them, because a
+    /// discarded note's edits should not be persisted at all. And it has no
+    /// "keep at least one note" guard: that guard silently turns a cancelled bug
+    /// report into a permanent note titled "Bug Report" whenever it is the only
+    /// note in the store. A replacement is created instead so the app still has
+    /// somewhere to type.
+    func discardNote(_ note: Note) {
+        guard let db else { return }
+        cancelPendingSaves()
+
+        let discardedID = note.id
+        let discardedIndex = notes.firstIndex { $0.id == discardedID }
+        _ = try? db.write { db in
+            try Note.deleteOne(db, key: discardedID)
+        }
+        loadNoteList()
+
+        guard currentNote?.id == discardedID else { return }
+        if notes.isEmpty {
+            createNote()
+        } else {
+            let fallbackIndex = discardedIndex.map { min($0, notes.count - 1) } ?? 0
             switchNote(to: notes[fallbackIndex])
         }
     }
@@ -321,5 +358,14 @@ final class NoteStore {
         saveContentWork?.cancel()
         saveTitleWork?.perform()
         saveTitleWork?.cancel()
+    }
+
+    /// Drops in-flight edits without writing them. Used when the note they
+    /// target is about to stop existing.
+    func cancelPendingSaves() {
+        saveContentWork?.cancel()
+        saveContentWork = nil
+        saveTitleWork?.cancel()
+        saveTitleWork = nil
     }
 }

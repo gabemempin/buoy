@@ -24,15 +24,16 @@ struct SettingsPanel: View {
                     .font(.system(size: 14, weight: .semibold))
                 Spacer()
                 Button {
-                    withAnimation(.easeOut(duration: 0.16)) { isShowing = false }
+                    withAnimation(BuoyMotion.easeOut(0.16)) { isShowing = false }
                 } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 9, weight: .bold))
                         .foregroundStyle(.secondary)
                         .frame(width: 18, height: 18)
-                        .background(Circle().fill(Color.primary.opacity(0.08)))
+                        .background(Circle().fill(Color.buoyControlFill))
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Close Settings")
                 .pointingHandCursor()
             }
             .padding(.horizontal, 10)
@@ -62,6 +63,8 @@ struct SettingsPanel: View {
                     HStack(spacing: 6) {
                         Slider(value: $settings.fontSize, in: 11...20, step: 1)
                             .frame(width: 100)
+                            .accessibilityLabel("Editor font size")
+                            .accessibilityValue("\(Int(settings.fontSize)) points")
                             .background {
                                 GeometryReader { geo in
                                     let inset: CGFloat = 9
@@ -74,9 +77,10 @@ struct SettingsPanel: View {
                                 .allowsHitTesting(false)
                             }
                         Text("\(Int(settings.fontSize))pt")
-                            .font(.system(size: 11))
+                            .font(BuoyFont.secondary)
                             .foregroundStyle(.secondary)
                             .frame(width: 28, alignment: .leading)
+                            .accessibilityHidden(true)
                     }
                 }
 
@@ -98,7 +102,7 @@ struct SettingsPanel: View {
                 VStack(spacing: 6) {
                     Button { onReportBug() } label: {
                         Label("Report a Bug", systemImage: "ladybug")
-                            .font(.system(size: 12))
+                            .font(BuoyFont.control)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 6)
                             .buoySettingsActionButton(
@@ -112,6 +116,7 @@ struct SettingsPanel: View {
                     .buttonStyle(.plain)
                     .foregroundStyle(reportBugForegroundColor)
                     .onHover { isReportBugHovering = $0 }
+                    .accessibilityLabel("Report a Bug")
                     .pointingHandCursor()
 
                     Button { checkForUpdates() } label: {
@@ -119,17 +124,19 @@ struct SettingsPanel: View {
                             if let status = updateStatus { Text(status) }
                             else { Text("Check for Updates") }
                         }
-                        .font(.system(size: 12))
+                        .font(BuoyFont.control)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6)
                         .buoySettingsActionButton(tint: .gray, role: .neutral, isHovering: isCheckUpdatesHovering)
                     }
                     .buttonStyle(.plain)
                     .onHover { isCheckUpdatesHovering = $0 }
+                    .accessibilityLabel("Check for Updates")
+                    .accessibilityValue(updateStatus ?? "")
                     .pointingHandCursor()
 
                     Button("Quit Buoy") { onQuit() }
-                        .font(.system(size: 12))
+                        .font(BuoyFont.control)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6)
                         .buoySettingsActionButton(tint: .red, role: .destructive, isHovering: isQuitHovering)
@@ -146,7 +153,7 @@ struct SettingsPanel: View {
         .background(WindowDragBlocker())
         .buoyGlassPanel(cornerRadius: 14)
         .shadow(radius: 8)
-        .transition(.scale(scale: 0.92, anchor: .bottomLeading).combined(with: .opacity))
+        .transition(BuoyMotion.transition(.scale(scale: 0.92, anchor: .bottomLeading).combined(with: .opacity)))
     }
 
     private func checkForUpdates() {
@@ -184,13 +191,16 @@ private struct SettingsToggle: View {
     var body: some View {
         HStack {
             Text(label)
-                .font(.system(size: 12))
+                .font(BuoyFont.control)
                 .foregroundStyle(.secondary)
             Spacer()
             Toggle("", isOn: $isOn)
                 .labelsHidden()
                 .toggleStyle(.switch)
                 .controlSize(.small)
+                // The visible label is a sibling Text, so the switch itself
+                // reaches VoiceOver unnamed without this.
+                .accessibilityLabel(label)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
@@ -204,7 +214,7 @@ private struct SettingsRow<Content: View>: View {
     var body: some View {
         HStack {
             Text(label)
-                .font(.system(size: 12))
+                .font(BuoyFont.control)
                 .foregroundStyle(.secondary)
             Spacer()
             content()
@@ -225,24 +235,28 @@ private struct ThemeSegmentedPicker: View {
                     selection = theme
                 } label: {
                     Text(label)
-                        .font(.system(size: 11, weight: .medium))
+                        .font(BuoyFont.secondaryEmphasized)
                         .padding(.horizontal, 9)
                         .padding(.vertical, 3)
                         .background {
                             if selection == theme {
                                 Capsule()
-                                    .fill(Color.primary.opacity(0.15))
+                                    .fill(Color.buoySegmentSelection)
                             }
                         }
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(selection == theme ? Color.primary : Color.secondary)
+                .accessibilityLabel(label)
+                .accessibilityAddTraits(selection == theme ? [.isButton, .isSelected] : .isButton)
                 .pointingHandCursor()
             }
         }
         .padding(3)
-        .background(Capsule().fill(Color.primary.opacity(0.07)))
+        .background(Capsule().fill(Color.buoySegmentTrack))
         .animation(.easeInOut(duration: 0.15), value: selection)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Theme")
     }
 }
 

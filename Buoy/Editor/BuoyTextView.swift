@@ -8,7 +8,6 @@ extension Notification.Name {
     static let buoyCopyToClipboard = Notification.Name("BuoyCopyToClipboard")
     static let buoyPreviousNote    = Notification.Name("BuoyPreviousNote")
     static let buoyNextNote        = Notification.Name("BuoyNextNote")
-    static let buoyFocusTitle      = Notification.Name("BuoyFocusTitle")
     static let buoyPanelBecameKey  = Notification.Name("BuoyPanelBecameKey")
 }
 
@@ -102,11 +101,14 @@ final class BuoyTextView: NSTextView {
         isEditable = true
         isSelectable = true
         allowsUndo = true
-        isAutomaticSpellingCorrectionEnabled = false
-        isAutomaticQuoteSubstitutionEnabled = false
-        isAutomaticDashSubstitutionEnabled = false
-        isAutomaticTextReplacementEnabled = false
-        isAutomaticLinkDetectionEnabled = true
+        applyTextCheckingPreferences()
+
+        // No `usesFindBar`. AppKit's find bar has a hard intrinsic minimum width
+        // (search field + prev/next + Done) that is wider than Buoy's 292pt
+        // minimum panel, so it cannot compress: it overflows the scroll view and,
+        // because the editor is not clipped to the glass shape, paints outside
+        // the window entirely while the panel is resized. A find UI here has to
+        // be built to Buoy's own chrome rather than inherited.
         textContainerInset = NSSize(width: 4, height: 4)
         backgroundColor = .clear
         drawsBackground = false
@@ -127,7 +129,98 @@ final class BuoyTextView: NSTextView {
             .cursor: NSCursor.pointingHand
         ]
         insertionPointColor = editorTextColor
+        setAccessibilityLabel("Note")
         updateDefaultTypingAttributes()
+    }
+
+    // MARK: - Text Checking Preferences
+    //
+    // NSTextView's spelling and substitution flags live on the instance, and
+    // Buoy remounts the editor whenever the note changes, so anything the user
+    // switched on from Edit ▸ Spelling and Grammar would silently revert on the
+    // next note. These persist the flags and replay them onto each new instance.
+
+    enum TextCheckingOption: String, CaseIterable {
+        case continuousSpellChecking
+        case grammarChecking
+        case automaticSpellingCorrection
+        case smartInsertDelete
+        case automaticQuoteSubstitution
+        case automaticDashSubstitution
+        case automaticLinkDetection
+        case automaticTextReplacement
+
+        /// Buoy's shipped defaults. Spell checking matches every other macOS
+        /// text editor; the substitution options stay off because reformatting
+        /// what someone typed into a scratch note is rarely wanted. All of them
+        /// are now reachable from the Edit menu either way.
+        var defaultValue: Bool {
+            switch self {
+            case .continuousSpellChecking, .automaticLinkDetection: return true
+            default: return false
+            }
+        }
+
+        fileprivate var defaultsKey: String { "buoy.textChecking.\(rawValue)" }
+
+        fileprivate var current: Bool {
+            UserDefaults.standard.object(forKey: defaultsKey) as? Bool ?? defaultValue
+        }
+
+        fileprivate func store(_ value: Bool) {
+            UserDefaults.standard.set(value, forKey: defaultsKey)
+        }
+    }
+
+    private func applyTextCheckingPreferences() {
+        isContinuousSpellCheckingEnabled = TextCheckingOption.continuousSpellChecking.current
+        isGrammarCheckingEnabled = TextCheckingOption.grammarChecking.current
+        isAutomaticSpellingCorrectionEnabled = TextCheckingOption.automaticSpellingCorrection.current
+        smartInsertDeleteEnabled = TextCheckingOption.smartInsertDelete.current
+        isAutomaticQuoteSubstitutionEnabled = TextCheckingOption.automaticQuoteSubstitution.current
+        isAutomaticDashSubstitutionEnabled = TextCheckingOption.automaticDashSubstitution.current
+        isAutomaticLinkDetectionEnabled = TextCheckingOption.automaticLinkDetection.current
+        isAutomaticTextReplacementEnabled = TextCheckingOption.automaticTextReplacement.current
+    }
+
+    override func toggleContinuousSpellChecking(_ sender: Any?) {
+        super.toggleContinuousSpellChecking(sender)
+        TextCheckingOption.continuousSpellChecking.store(isContinuousSpellCheckingEnabled)
+    }
+
+    override func toggleGrammarChecking(_ sender: Any?) {
+        super.toggleGrammarChecking(sender)
+        TextCheckingOption.grammarChecking.store(isGrammarCheckingEnabled)
+    }
+
+    override func toggleAutomaticSpellingCorrection(_ sender: Any?) {
+        super.toggleAutomaticSpellingCorrection(sender)
+        TextCheckingOption.automaticSpellingCorrection.store(isAutomaticSpellingCorrectionEnabled)
+    }
+
+    override func toggleSmartInsertDelete(_ sender: Any?) {
+        super.toggleSmartInsertDelete(sender)
+        TextCheckingOption.smartInsertDelete.store(smartInsertDeleteEnabled)
+    }
+
+    override func toggleAutomaticQuoteSubstitution(_ sender: Any?) {
+        super.toggleAutomaticQuoteSubstitution(sender)
+        TextCheckingOption.automaticQuoteSubstitution.store(isAutomaticQuoteSubstitutionEnabled)
+    }
+
+    override func toggleAutomaticDashSubstitution(_ sender: Any?) {
+        super.toggleAutomaticDashSubstitution(sender)
+        TextCheckingOption.automaticDashSubstitution.store(isAutomaticDashSubstitutionEnabled)
+    }
+
+    override func toggleAutomaticLinkDetection(_ sender: Any?) {
+        super.toggleAutomaticLinkDetection(sender)
+        TextCheckingOption.automaticLinkDetection.store(isAutomaticLinkDetectionEnabled)
+    }
+
+    override func toggleAutomaticTextReplacement(_ sender: Any?) {
+        super.toggleAutomaticTextReplacement(sender)
+        TextCheckingOption.automaticTextReplacement.store(isAutomaticTextReplacementEnabled)
     }
 
     private var editorTextColor: NSColor {
@@ -138,14 +231,19 @@ final class BuoyTextView: NSTextView {
         }
     }
 
+    /// Placeholder colour: muted, but fully opaque.
+    ///
+    /// Translucency is what fails here. Buoy's editor sits on glass, so below
+    /// 100% alpha the desktop shows *through the letterforms* and the text takes
+    /// on whatever is behind the window — which is why `placeholderTextColor`
+    /// (~25%) and `secondaryLabelColor` (~55%) both disappeared over a bright
+    /// backdrop. The "faded" reading comes from the colour being grey, never
+    /// from alpha, so every glyph stays solid regardless of the backdrop.
     private var editorPlaceholderColor: NSColor {
-        if #available(macOS 26, *) {
-            return NSColor.placeholderTextColor
-        } else {
-            return usesDarkAppearance
-                ? NSColor.white.withAlphaComponent(0.45)
-                : NSColor.black.withAlphaComponent(0.35)
-        }
+        let level: CGFloat = usesDarkAppearance
+            ? (BuoyContrast.isIncreased ? 0.82 : 0.64)
+            : (BuoyContrast.isIncreased ? 0.20 : 0.38)
+        return NSColor(white: level, alpha: 1)
     }
 
     private func refreshResolvedEditorColors() {
@@ -1320,14 +1418,6 @@ final class BuoyTextView: NSTextView {
 
     // MARK: - Height Measurement
 
-    func measureContentHeight() -> CGFloat {
-        guard let layout = layoutManager, let container = textContainer else { return 200 }
-        layout.ensureLayout(for: container)
-        let used = layout.usedRect(for: container)
-        let chrome = textContainerInset.height * 2
-        return max(200, min(700, used.height + chrome + 20))
-    }
-
     // MARK: - Helpers
 
     /// Clamps a raw cursor/selection range to valid storage bounds.
@@ -1736,16 +1826,23 @@ final class BuoyTextView: NSTextView {
             #selector(strikethroughAction(_:))
         ]
         if let action = item.action, formattingActions.contains(action) {
-            return selectedRange().length > 0
+            // With no selection these toggle `typingAttributes` for whatever is
+            // typed next — the same thing ⌘B does — so they stay enabled.
+            return isEditable
         }
         return super.validateMenuItem(item)
     }
 
-    @objc private func boldAction(_ sender: Any?)      { applyBold() }
-    @objc private func italicAction(_ sender: Any?)    { applyItalic() }
-    @objc private func underlineAction(_ sender: Any?) { applyUnderline() }
-    @objc private func strikethroughAction(_ sender: Any?) { applyStrikethrough() }
-    @objc private func linkAction(_ sender: Any?) {
+    // Internal rather than private so the Format menu in `MainMenu.swift` can
+    // build selectors for them; they are reached through the responder chain, so
+    // AppKit enables the menu items only while the editor is focused.
+    @objc func boldAction(_ sender: Any?)      { applyBold() }
+    @objc func italicAction(_ sender: Any?)    { applyItalic() }
+    @objc func underlineAction(_ sender: Any?) { applyUnderline() }
+    @objc func strikethroughAction(_ sender: Any?) { applyStrikethrough() }
+    @objc func bulletListAction(_ sender: Any?) { applyBullet() }
+    @objc func todoListAction(_ sender: Any?)   { applyTodo() }
+    @objc func linkAction(_ sender: Any?) {
         let sel = selectedRange()
         let selected = sel.length > 0 ? (string as NSString).substring(with: sel) : ""
         buoyDelegate?.textViewRequestShowLinkDialog(selectedText: selected)

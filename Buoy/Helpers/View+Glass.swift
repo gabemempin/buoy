@@ -41,41 +41,9 @@ extension View {
         )
     }
 
-    /// Rounded glass inset from the main window edge. Keeps corners aligned with the
-    /// host window by deriving the inner radius from the outer window radius.
-    @ViewBuilder
-    func buoyInsetGlass(
-        inset: CGFloat,
-        cornerRadius: CGFloat? = nil,
-        material: NSVisualEffectView.Material = .menu
-    ) -> some View {
-        modifier(
-            BuoyRoundedGlassModifier(
-                cornerRadius: cornerRadius ?? max(0, PanelLayoutMetrics.windowCornerRadius - inset),
-                fallbackMaterial: material
-            )
-        )
-    }
-
     /// More opaque glass for overlay panels (Settings, Shortcuts, AllNotes).
-    @ViewBuilder
     func buoyGlassPanel(cornerRadius: CGFloat = 14) -> some View {
-        if #available(macOS 26, *) {
-            self.glassEffect(in: RoundedRectangle(cornerRadius: cornerRadius))
-                .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
-                .overlay(
-                    RoundedRectangle(cornerRadius: cornerRadius)
-                        .strokeBorder(.white.opacity(0.18), lineWidth: 0.5)
-                )
-        } else {
-            self.background(
-                Pre26StaticGlassBackground(
-                    shape: RoundedRectangle(cornerRadius: cornerRadius),
-                    surface: .panel
-                )
-            )
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
-        }
+        modifier(BuoyPanelGlassModifier(cornerRadius: cornerRadius))
     }
 
     /// Solid accent-colored circle button with specular highlight and shadow.
@@ -210,11 +178,55 @@ extension View {
     }
 }
 
+/// Opaque stand-in for a glass surface, used only while Reduce Transparency is on.
+///
+/// Not a "more opaque glass": the point of the setting is that there is no
+/// backdrop sampling at all, so this is a flat system background color. The
+/// border is drawn at full separator strength because with the blur gone it is
+/// the only thing separating the panel from whatever is behind the window.
+private struct BuoyOpaqueSurfaceBackground<S: InsettableShape>: View {
+    let shape: S
+    /// Overlay panels sit *on* the window, so they take the raised control
+    /// background; the window surface itself takes the window background.
+    var isRaised: Bool = false
+
+    var body: some View {
+        shape
+            .fill(Color(nsColor: isRaised ? .controlBackgroundColor : .windowBackgroundColor))
+            .overlay(
+                shape.strokeBorder(Color(nsColor: .separatorColor), lineWidth: 1)
+            )
+    }
+}
+
+private struct BuoyPanelGlassModifier: ViewModifier {
+    let cornerRadius: CGFloat
+
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius)
+        if reduceTransparency {
+            content
+                .background(BuoyOpaqueSurfaceBackground(shape: shape, isRaised: true))
+                .clipShape(shape)
+        } else if #available(macOS 26, *) {
+            content
+                .glassEffect(in: shape)
+                .clipShape(shape)
+                .overlay(shape.strokeBorder(.white.opacity(0.18), lineWidth: 0.5))
+        } else {
+            content
+                .background(Pre26StaticGlassBackground(shape: shape, surface: .panel))
+                .clipShape(shape)
+        }
+    }
+}
+
 private enum Pre26GlassSurface {
     case window
     case popover
     case panel
-    case inset
 
     static func regularSurface(for material: NSVisualEffectView.Material) -> Self {
         switch material {
@@ -244,8 +256,6 @@ private struct Pre26StaticGlassBackground<S: Shape>: View {
             return isDark ? 0.86 : 0.96
         case .panel:
             return isDark ? 0.9 : 0.985
-        case .inset:
-            return isDark ? 0.84 : 0.93
         }
     }
 
@@ -257,8 +267,6 @@ private struct Pre26StaticGlassBackground<S: Shape>: View {
             return isDark ? 0.15 : 0.38
         case .panel:
             return isDark ? 0.14 : 0.3
-        case .inset:
-            return isDark ? 0.1 : 0.26
         }
     }
 
@@ -270,8 +278,6 @@ private struct Pre26StaticGlassBackground<S: Shape>: View {
             return isDark ? 0.05 : 0.038
         case .panel:
             return isDark ? 0.03 : 0.022
-        case .inset:
-            return isDark ? 0.045 : 0.032
         }
     }
 
@@ -283,8 +289,6 @@ private struct Pre26StaticGlassBackground<S: Shape>: View {
             return isDark ? 0.18 : 0.28
         case .panel:
             return isDark ? 0.18 : 0.22
-        case .inset:
-            return isDark ? 0.14 : 0.22
         }
     }
 
@@ -296,8 +300,6 @@ private struct Pre26StaticGlassBackground<S: Shape>: View {
             return 0.12
         case .panel:
             return 0.1
-        case .inset:
-            return 0.07
         }
     }
 
@@ -380,11 +382,12 @@ private struct Pre26StaticGlassBackground<S: Shape>: View {
     }
 }
 
-private struct BuoyRegularGlassModifier<S: Shape>: ViewModifier {
+private struct BuoyRegularGlassModifier<S: InsettableShape>: ViewModifier {
     let shape: S
     let fallbackMaterial: NSVisualEffectView.Material
 
     @State private var isWindowFocused = true
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     func body(content: Content) -> some View {
         glassSurface(content)
@@ -431,7 +434,13 @@ private struct BuoyRegularGlassModifier<S: Shape>: ViewModifier {
 
     @ViewBuilder
     private func glassSurface(_ content: Content) -> some View {
-        if #available(macOS 26, *) {
+        if reduceTransparency {
+            // No backdrop sampling at all — neither Liquid Glass nor the pre-26
+            // translucent stack — so the window reads as a solid surface.
+            content
+                .background(BuoyOpaqueSurfaceBackground(shape: shape))
+                .clipShape(shape)
+        } else if #available(macOS 26, *) {
             content
                 // The clip is load-bearing: `in: shape` shapes the visible
                 // material, but the backdrop layer behind it is not bounded by
@@ -473,76 +482,6 @@ private struct BuoyRegularGlassModifier<S: Shape>: ViewModifier {
                     )
                 )
                 .clipShape(shape)
-        }
-    }
-}
-
-private struct BuoyRoundedGlassModifier: ViewModifier {
-    let cornerRadius: CGFloat
-    let fallbackMaterial: NSVisualEffectView.Material
-    @State private var isWindowFocused = true
-
-    func body(content: Content) -> some View {
-        if #available(macOS 26, *) {
-            let shape = RoundedRectangle(cornerRadius: cornerRadius)
-            let focusPolishEnabled = BuoyGlassMetrics.enableWindowFocusPolish
-            let showsInactivePolish = focusPolishEnabled && !isWindowFocused
-            let backdropOpacity = showsInactivePolish
-                ? BuoyGlassMetrics.liquidGlassBackdropInactiveOpacity
-                : BuoyGlassMetrics.liquidGlassBackdropActiveOpacity
-            let tintOpacity = showsInactivePolish
-                ? BuoyGlassMetrics.liquidGlassInactiveTintOpacity
-                : BuoyGlassMetrics.liquidGlassActiveTintOpacity
-
-            content
-                .background(
-                    ZStack {
-                        VisualEffectBackground(material: .underPageBackground, blendingMode: .behindWindow)
-                            .opacity(backdropOpacity)
-                        shape
-                            .fill(Color.accentColor.opacity(tintOpacity))
-                        if showsInactivePolish {
-                            shape
-                                .fill(Color.white.opacity(BuoyGlassMetrics.inactiveFrostVeilOpacity))
-                        }
-                    }
-                    .clipShape(shape)
-                    .animation(BuoyGlassMetrics.windowFocusAnimation, value: isWindowFocused)
-                )
-                .background(
-                    Group {
-                        if focusPolishEnabled {
-                            BuoyWindowFocusObserver { isFocused in
-                                withAnimation(BuoyGlassMetrics.windowFocusAnimation) {
-                                    isWindowFocused = isFocused
-                                }
-                            }
-                            .frame(width: 0, height: 0)
-                        }
-                    }
-                )
-                .glassEffect(.clear, in: shape)
-                .clipShape(shape)
-                .overlay(
-                    shape
-                        .strokeBorder(
-                            LinearGradient(
-                                colors: [.white.opacity(0.25), .clear, .white.opacity(0.08)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            lineWidth: 1
-                        )
-                )
-        } else {
-            content
-                .background(
-                    Pre26StaticGlassBackground(
-                        shape: RoundedRectangle(cornerRadius: cornerRadius),
-                        surface: fallbackMaterial == .popover ? .panel : .inset
-                    )
-                )
-                .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
         }
     }
 }

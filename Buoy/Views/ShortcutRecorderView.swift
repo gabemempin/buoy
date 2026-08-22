@@ -25,7 +25,7 @@ struct ShortcutRecorderView: View {
 
             VStack(spacing: 4) {
                 Text("Keyboard Shortcut")
-                    .font(.system(size: 12))
+                    .font(BuoyFont.control)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .center)
@@ -45,6 +45,9 @@ struct ShortcutRecorderView: View {
             .frame(width: controlsWidth)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Keyboard Shortcut")
+        .accessibilityValue(isRecording ? "Recording, type a new shortcut" : shortcut)
         .onDisappear { stopRecording() }
     }
 
@@ -74,10 +77,11 @@ struct ShortcutRecorderView: View {
                     .padding(.vertical, 5)
                     .background(
                         RoundedRectangle(cornerRadius: 9)
-                            .fill(Color.primary.opacity(0.06))
+                            .fill(Color.buoyControlFill)
                     )
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Cancel recording shortcut")
             .transition(.opacity)
         } else {
             Button(action: startRecording) {
@@ -88,10 +92,12 @@ struct ShortcutRecorderView: View {
                     .padding(.vertical, 5)
                     .background(
                         RoundedRectangle(cornerRadius: 9)
-                            .fill(Color.primary.opacity(0.06))
+                            .fill(Color.buoyControlFill)
                     )
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Change global shortcut")
+            .accessibilityValue(shortcut)
             .transition(.opacity)
         }
     }
