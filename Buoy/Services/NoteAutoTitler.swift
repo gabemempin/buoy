@@ -6,9 +6,9 @@ import FoundationModels
 /// Generates short, on-device titles for a brand-new note as it grows, and
 /// hands each result to `NoteStore` for a guarded apply.
 ///
-/// Runs in up to two stages, tracked by `Note.autoTitleStage`: a first title
-/// once the note reaches `thresholds[0]` characters, and a refinement once it
-/// reaches `thresholds[1]`. `NoteStore` locks the note (`autoTitleLocked`) the
+/// Runs in stages, tracked by `Note.autoTitleStage`: a first title once the
+/// note reaches `thresholds[0]` characters, then a refinement at each later
+/// threshold. `NoteStore` locks the note (`autoTitleLocked`) the
 /// moment the user types a title by hand, which this class checks before
 /// every request — a locked note is never touched again.
 ///
@@ -31,9 +31,14 @@ final class NoteAutoTitler {
     /// and must not touch `activeTask`/`activeNoteID`/`titleThinking` again.
     private var generation = 0
 
-    /// Character counts that arm stage 0 (first title) and stage 1
-    /// (refinement). `Note.autoTitleStage` indexes into this.
-    private static let thresholds = [50, 300]
+    /// Character counts that arm stage 0 (first title) and each later
+    /// refinement. `Note.autoTitleStage` indexes into this; a note whose
+    /// stage has reached `thresholds.count` is finished.
+    ///
+    /// Changing this array changes what "finished" means for notes already in
+    /// the database — add a migration alongside it (see `v7_autoTitleRestage`)
+    /// so previously-completed notes aren't re-armed by the longer array.
+    private static let thresholds = [50, 100, 500]
 
     /// How long to let typing settle before considering a run. Short enough
     /// to feel responsive right at the threshold rather than after a pause.

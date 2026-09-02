@@ -66,7 +66,7 @@ manually and reports any failures. Static inspection is the default verification
 | Notes | `~/.buoy/notes.db` | GRDB SQLite (RTF binary) |
 | Settings | `~/.buoy/settings.json` | JSON (Codable) |
 
-GRDB migrations are defined in `NoteStore.swift` (`v1_initial`, `v2_contentRTF`, `v3_isPinned`, `v4_pinnedOrder`, `v5_autoTitlePending`, `v6_autoTitleStages`).
+GRDB migrations are defined in `NoteStore.swift` (`v1_initial`, `v2_contentRTF`, `v3_isPinned`, `v4_pinnedOrder`, `v5_autoTitlePending`, `v6_autoTitleStages`, `v7_autoTitleRestage`).
 
 ### Key Services
 
@@ -99,11 +99,16 @@ so a lock that lands mid-flight (or a stage that's since moved on — the
 `stage` parameter threaded through `applyAutoTitle`/`spendAutoTitleStage`)
 drops a stale result instead of misapplying it.
 
-**Thresholds:** stage 0 fires at 50 plain-text characters, stage 1 (a
-refinement — the prompt shows the model the current title and lets it keep
-it) at 300; `NoteAutoTitler.thresholds` is the source of truth. Past stage 1
-the note is done — `autoTitleStage == thresholds.count` blocks further runs
-without locking the note.
+**Thresholds:** `NoteAutoTitler.thresholds` (`[50, 100, 500]` plain-text
+characters) is the source of truth. Stage 0 names the note; every later stage
+is a refinement — the prompt shows the model the current title and lets it
+keep it. Past the last threshold the note is done: `autoTitleStage ==
+thresholds.count` blocks further runs without locking the note. **Editing
+this array needs a paired migration**, because it redefines "done" for rows
+already in the DB — a note finished under the old array reads as eligible
+again under a longer one and renames itself on the next keystroke. That is
+what `v7_autoTitleRestage` does for the `[50, 300]` → `[50, 100, 500]`
+change (old stage ≥ 2 → 3); follow the same pattern for any future change.
 
 **Revert on empty:** `NoteStore.saveContent` restores `autoTitleDefaultTitle`
 and resets `autoTitleStage` to 0 when a note whose title was AI-applied

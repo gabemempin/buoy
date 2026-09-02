@@ -182,6 +182,16 @@ final class NoteStore {
             }
         }
 
+        // `NoteAutoTitler.thresholds` grew from [50, 300] to [50, 100, 500],
+        // which moves the "finished" mark from stage 2 to stage 3. Rows that
+        // had already spent both of the old stages are done and must stay
+        // done — without this they'd read as eligible again and rename
+        // themselves on the owner's next keystroke. Rows at stage 1 are left
+        // alone: they legitimately still have refinements ahead of them.
+        migrator.registerMigration("v7_autoTitleRestage") { db in
+            try db.execute(sql: "UPDATE notes SET autoTitleStage = 3 WHERE autoTitleStage >= 2")
+        }
+
         try? migrator.migrate(db)
     }
 
