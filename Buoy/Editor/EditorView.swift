@@ -367,8 +367,8 @@ extension TextViewCoordinator: BuoyTextViewDelegate {
         onSelectionChange?(textView.selectedPlainText(for: textView.selectedRange()))
     }
 
-    func textViewRequestShowLinkDialog(selectedText: String) {
-        NotificationCenter.default.post(name: .showLinkDialog, object: selectedText)
+    func textViewRequestShowLinkDialog(context: LinkEditingContext) {
+        NotificationCenter.default.post(name: .showLinkDialog, object: context)
     }
 }
 

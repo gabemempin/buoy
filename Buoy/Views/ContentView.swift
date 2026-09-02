@@ -51,7 +51,9 @@ struct ContentView: View {
 
     // Link dialog
     @State private var showLinkDialog = false
-    @State private var linkDialogSelectedText = ""
+    @State private var showSelectionLinkDialog = false
+    @State private var linkDialogContext = LinkEditingContext.empty
+    @State private var selectionLinkPopoverController = SelectionLinkPopoverController()
 
     // Delete confirmation
     @State private var pendingDeleteNote: Note? = nil
@@ -68,9 +70,6 @@ struct ContentView: View {
 
     // Title focus trigger
     @State private var focusTitleTrigger = false
-
-    // Cursor position captured before link dialog opens (avoids stale selection overwriting it)
-    @State private var savedInsertionPoint: NSRange = NSRange(location: 0, length: 0)
 
     // Tracks the editor's current selection for the footer word/char count
     @State private var editorSelectedText: String = ""
@@ -141,11 +140,11 @@ struct ContentView: View {
         ]))
         .onReceive(NotificationCenter.default.publisher(for: .showLinkDialog)) { notif in
             guard !panelPresentation.isMinimized else { return }
-            linkDialogSelectedText = notif.object as? String ?? ""
-            withAnimation { showLinkDialog = true }
+            guard let context = notif.object as? LinkEditingContext else { return }
+            presentLinkDialog(context)
         }
         // Block window dragging whenever any overlay panel is open
-        .onChange(of: showSettings || showShortcuts || showAllNotes || pendingDeleteNote != nil) { _, panelOpen in
+        .onChange(of: showSettings || showShortcuts || showAllNotes || isLinkDialogPresented || pendingDeleteNote != nil) { _, panelOpen in
             NSApp.windows.compactMap { $0 as? NSPanel }.forEach {
                 $0.isMovable = !panelOpen
             }
@@ -237,32 +236,14 @@ struct ContentView: View {
                     onAllNotes: toggleAllNotes,
                     onNewNote: createNote,
                     focusEditor: focusEditor,
-                    dragEnabled: !showSettings && !showShortcuts && !showAllNotes,
-                    isBugReport: isBugReport
+                    dragEnabled: !showSettings && !showShortcuts && !showAllNotes && !isLinkDialogPresented,
+                    isBugReport: isBugReport,
+                    titleReveal: noteStore.titleReveal,
+                    onRevealFinished: { noteStore.titleReveal = nil },
+                    titleThinking: noteStore.titleThinking != nil && noteStore.titleThinking == noteStore.currentNote?.id
                 )
 
-                ToolbarView(
-                    onBold:      { applyEditorFormat { $0.applyBold() } },
-                    onItalic:    { applyEditorFormat { $0.applyItalic() } },
-                    onUnderline: { applyEditorFormat { $0.applyUnderline() } },
-                    onStrikethrough: { applyEditorFormat { $0.applyStrikethrough() } },
-                    onBullet:    { applyEditorCursorAction { $0.applyBullet($1) } },
-                    onTodo:      { applyEditorCursorAction { $0.applyTodo($1) } },
-                    onLink:      { showLinkDialogFromToolbar() },
-                    isBugReport: isBugReport
-                )
-
-                if showLinkDialog {
-                    LinkDialog(
-                        isShowing: $showLinkDialog,
-                        selectedText: linkDialogSelectedText
-                    ) { text, url in
-                        tvRef.value?.insertLink(text: text, url: url, at: savedInsertionPoint)
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 6)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-                }
+                formattingToolbar
 
                 if let note = noteStore.currentNote {
                     EditorView(
@@ -281,7 +262,7 @@ struct ContentView: View {
                         },
                         textViewRef: { tv in
                             tvRef.value = tv
-                            tv.suppressesIBeamCursor = showSettings || showShortcuts || showAllNotes || showOnboarding || pendingDeleteNote != nil
+                            tv.suppressesIBeamCursor = showSettings || showShortcuts || showAllNotes || isLinkDialogPresented || showOnboarding || pendingDeleteNote != nil
                         }
                     )
                     .frame(
@@ -424,6 +405,42 @@ struct ContentView: View {
         }
     }
 
+    /// Kept out of `fullContent` so the native popover's generic view tree does
+    /// not push `ContentView.body` back over Swift's type-checking time limit.
+    private var formattingToolbar: some View {
+        ToolbarView(
+            onBold:      { applyEditorFormat { $0.applyBold() } },
+            onItalic:    { applyEditorFormat { $0.applyItalic() } },
+            onUnderline: { applyEditorFormat { $0.applyUnderline() } },
+            onStrikethrough: { applyEditorFormat { $0.applyStrikethrough() } },
+            onBullet:    { applyEditorCursorAction { $0.applyBullet($1) } },
+            onTodo:      { applyEditorCursorAction { $0.applyTodo($1) } },
+            onLink:      { showLinkDialogFromToolbar() },
+            isBugReport: isBugReport,
+            linkPopover: LinkPopoverPresentation(
+                isPresented: $showLinkDialog,
+                content: {
+                    AnyView(linkDialogContent)
+                }
+            )
+        )
+    }
+
+    private var linkDialogContent: some View {
+        LinkDialog(
+            context: linkDialogContext,
+            onCancel: { dismissLinkDialog(restoringSelection: true) },
+            onInsert: { text, url in
+                tvRef.value?.insertLink(
+                    text: text,
+                    url: url,
+                    at: linkDialogContext.range
+                )
+                dismissLinkDialog(restoringSelection: false)
+            }
+        )
+    }
+
     private var usesDarkAppearance: Bool {
         switch settings.theme {
         case .light:
@@ -468,6 +485,10 @@ struct ContentView: View {
         return nil
     }
 
+    private var isLinkDialogPresented: Bool {
+        showLinkDialog || showSelectionLinkDialog
+    }
+
     private var canUseCornerResizeControls: Bool {
         !panelPresentation.isMinimized
             && showMainContent
@@ -475,7 +496,7 @@ struct ContentView: View {
             && !showAllNotes
             && !showSettings
             && !showShortcuts
-            && !showLinkDialog
+            && !isLinkDialogPresented
             && pendingDeleteNote == nil
     }
 
@@ -487,7 +508,7 @@ struct ContentView: View {
     /// the bottom edge, so it never stacks on top of them.
     private var canShowUpdateBubble: Bool {
         !showOnboarding && !showSettings && !showShortcuts && !showAllNotes
-            && !showLinkDialog && !isBugReport && pendingDeleteNote == nil
+            && !isLinkDialogPresented && !isBugReport && pendingDeleteNote == nil
     }
 
     // MARK: - Actions
@@ -516,11 +537,15 @@ struct ContentView: View {
     }
 
     private func dismissTransientUI() {
+        // The system popover owns its materialize/dematerialize animation and
+        // its Reduce Motion adaptation; don't wrap that state change ourselves.
+        selectionLinkPopoverController.dismiss()
+        showSelectionLinkDialog = false
+        showLinkDialog = false
         withAnimation(BuoyMotion.easeOut(0.16)) {
             showAllNotes = false
             showSettings = false
             showShortcuts = false
-            showLinkDialog = false
         }
     }
 
@@ -600,10 +625,44 @@ struct ContentView: View {
     }
 
     private func showLinkDialogFromToolbar() {
-        let tv = tvRef.value
-        savedInsertionPoint = tv?.lastKnownCursorPosition ?? NSRange(location: 0, length: 0)
-        linkDialogSelectedText = (savedInsertionPoint.length > 0 ? tv.map { ($0.string as NSString).substring(with: savedInsertionPoint) } : nil) ?? ""
-        withAnimation { showLinkDialog = true }
+        presentLinkDialog(tvRef.value?.linkEditingContext() ?? .empty)
+    }
+
+    private func presentLinkDialog(_ context: LinkEditingContext) {
+        linkDialogContext = context
+        showLinkDialog = false
+
+        guard let highlightedRange = context.highlightedRange,
+              let textView = tvRef.value,
+              let anchorRect = textView.linkPopoverAnchorRect(for: highlightedRange) else {
+            selectionLinkPopoverController.dismiss()
+            showSelectionLinkDialog = false
+            showLinkDialog = true
+            return
+        }
+
+        showSelectionLinkDialog = true
+        let presentation = $showSelectionLinkDialog
+        selectionLinkPopoverController.onClose = {
+            presentation.wrappedValue = false
+        }
+        selectionLinkPopoverController.present(
+            content: AnyView(linkDialogContent),
+            relativeTo: anchorRect,
+            of: textView
+        )
+    }
+
+    private func dismissLinkDialog(restoringSelection: Bool) {
+        let context = linkDialogContext
+        selectionLinkPopoverController.dismiss()
+        showSelectionLinkDialog = false
+        showLinkDialog = false
+        guard restoringSelection, let tv = tvRef.value else { return }
+        DispatchQueue.main.async {
+            tv.window?.makeFirstResponder(tv)
+            tv.setSelectedRange(context.range)
+        }
     }
 
     /// Live text from the editor when it is mounted, falling back to the stored

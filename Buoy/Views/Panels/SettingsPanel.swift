@@ -56,6 +56,12 @@ struct SettingsPanel: View {
                         LaunchAtLogin.isEnabled = val
                         settings.save()
                     }
+                // Hidden outright rather than shown-disabled: it only ever
+                // applies on Apple Silicon Macs with Apple Intelligence on.
+                if NoteAutoTitler.isSupported {
+                    SettingsToggle(label: "Auto-name New Notes", isOn: $settings.autoTitleEnabled)
+                        .onChange(of: settings.autoTitleEnabled) { _, _ in settings.save() }
+                }
 
                 Divider().padding(.horizontal, 10).padding(.vertical, 4)
 

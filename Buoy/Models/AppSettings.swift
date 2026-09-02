@@ -16,6 +16,7 @@ struct AppSettings: Codable {
     var hasSeenHarborModeTip: Bool = false
     var lastSelectedNoteID: String? = nil
     var dismissedUpdateVersion: String? = nil
+    var autoTitleEnabled: Bool = true
 
     private static var fileURL: URL {
         let home = FileManager.default.homeDirectoryForCurrentUser

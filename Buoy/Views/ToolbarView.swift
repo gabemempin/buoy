@@ -1,6 +1,11 @@
 import SwiftUI
 import AppKit
 
+struct LinkPopoverPresentation {
+    let isPresented: Binding<Bool>
+    let content: () -> AnyView
+}
+
 struct ToolbarView: View {
     var onBold: () -> Void
     var onItalic: () -> Void
@@ -10,6 +15,7 @@ struct ToolbarView: View {
     var onTodo: () -> Void
     var onLink: () -> Void
     var isBugReport: Bool = false
+    var linkPopover: LinkPopoverPresentation? = nil
 
     var body: some View {
         HStack(spacing: 0) {
@@ -25,7 +31,7 @@ struct ToolbarView: View {
             pillDivider
             ToolbarPillButton(systemImage: "checklist",   label: "To-Do",         action: onTodo, iconSize: 15)
             pillDivider
-            ToolbarPillButton(systemImage: "link",        label: "Insert Link",   shortcut: "⌘K",  action: onLink)
+            linkButton
         }
         .clipShape(Capsule())
         .buoyAccentCapsule(color: isBugReport ? .blue : .accentColor)
@@ -40,6 +46,32 @@ struct ToolbarView: View {
             .fill(Color.buoyOnAccentSeparator)
             .frame(width: 1, height: 14)
             .accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    private var linkButton: some View {
+        if let linkPopover {
+            ToolbarPillButton(
+                systemImage: "link",
+                label: "Insert Link",
+                shortcut: "⌘K",
+                action: onLink
+            )
+            .popover(
+                isPresented: linkPopover.isPresented,
+                attachmentAnchor: .rect(.bounds),
+                arrowEdge: .top
+            ) {
+                linkPopover.content()
+            }
+        } else {
+            ToolbarPillButton(
+                systemImage: "link",
+                label: "Insert Link",
+                shortcut: "⌘K",
+                action: onLink
+            )
+        }
     }
 }
 

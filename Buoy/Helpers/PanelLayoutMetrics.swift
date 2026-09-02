@@ -69,7 +69,16 @@ enum PanelLayoutMetrics {
 
     // Minimum window heights when overlay panels are open. Expressed as glass
     // heights plus the margin so the visible panel keeps its intended size.
-    static let settingsOverrideHeight: CGFloat = 470 + (glassEdgeInset * 2)
+    //
+    // "Auto-name New Notes" only appears in Settings on Macs that support it
+    // (see `NoteAutoTitler.isSupported`), so the override height grows by one
+    // toggle row only there — a fixed constant would leave dead space on
+    // unsupported Macs.
+    private static let settingsToggleRowHeight: CGFloat = 28
+    static var settingsOverrideHeight: CGFloat {
+        let autoTitleRow = NoteAutoTitler.isSupported ? settingsToggleRowHeight : 0
+        return 470 + autoTitleRow + (glassEdgeInset * 2)
+    }
     static let shortcutsOverrideHeight: CGFloat = 468 + (glassEdgeInset * 2)
     static let onboardingOverrideHeight: CGFloat = 450 + (glassEdgeInset * 2)
 

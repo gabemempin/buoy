@@ -66,12 +66,83 @@ manually and reports any failures. Static inspection is the default verification
 | Notes | `~/.buoy/notes.db` | GRDB SQLite (RTF binary) |
 | Settings | `~/.buoy/settings.json` | JSON (Codable) |
 
-GRDB migrations are defined in `NoteStore.swift` (`v1_initial`, `v2_contentRTF`, `v3_isPinned`, `v4_pinnedOrder`).
+GRDB migrations are defined in `NoteStore.swift` (`v1_initial`, `v2_contentRTF`, `v3_isPinned`, `v4_pinnedOrder`, `v5_autoTitlePending`, `v6_autoTitleStages`).
 
 ### Key Services
 
 - **`HotkeyService`** — singleton wrapping `KeyboardShortcuts`. Parses Electron-style shortcut strings (`"Option+Cmd+N"`) into `KeyboardShortcuts.Shortcut`.
 - **`AppleNotesService`** — writes plain text to a temp file, then runs AppleScript via `osascript` (background queue) to create a new note in Apple Notes.
+- **`NoteAutoTitler`** — see "Auto-Title New Notes" below.
+
+### Auto-Title New Notes
+
+On-device AI naming for brand-new notes, via Apple's `FoundationModels`
+framework (macOS 26+, Apple Silicon, Apple Intelligence on). Everything that
+touches `FoundationModels` symbols in `NoteAutoTitler.swift` is gated behind
+`#available(macOS 26, *)` and `#if canImport(FoundationModels)`; on any
+unsupported Mac `NoteAutoTitler.isSupported` is `false` and the whole feature
+is inert — no fallback keyword generator, no partial UI. `SettingsPanel` and
+`PanelLayoutMetrics.settingsOverrideHeight` both check `isSupported` so the
+toggle row (and the extra height it needs) simply doesn't exist there.
+
+**Two-stage state machine, tracked in the DB.** `Note.autoTitleStage` (0/1/2)
+counts attempts spent; `Note.autoTitleLocked` (default `true`) permanently
+opts a note out; `Note.autoTitleDefaultTitle` remembers the original
+"Note N" (migration `v6_autoTitleStages` — `createNote(titled:)` sets all
+three; pre-v6 rows migrate `autoTitleLocked = NOT` their old `autoTitlePending`,
+so a note that was still mid-flight under the old single-shot model keeps
+going under the new one). `saveTitle` — the user typing a real title — sets
+`autoTitleLocked = true` in the same `UPDATE` as the title write and calls
+`NoteAutoTitler.cancel(noteID:)`; a locked note is never touched again.
+`NoteAutoTitler.evaluate` re-checks `!autoTitleLocked` before every request,
+so a lock that lands mid-flight (or a stage that's since moved on — the
+`stage` parameter threaded through `applyAutoTitle`/`spendAutoTitleStage`)
+drops a stale result instead of misapplying it.
+
+**Thresholds:** stage 0 fires at 50 plain-text characters, stage 1 (a
+refinement — the prompt shows the model the current title and lets it keep
+it) at 300; `NoteAutoTitler.thresholds` is the source of truth. Past stage 1
+the note is done — `autoTitleStage == thresholds.count` blocks further runs
+without locking the note.
+
+**Revert on empty:** `NoteStore.saveContent` restores `autoTitleDefaultTitle`
+and resets `autoTitleStage` to 0 when a note whose title was AI-applied
+(`autoTitleStage > 0`) is edited back down to empty text — the size-gated
+plain-text check (`nearEmptyRTFSizeThreshold`) keeps this from decoding RTF
+on every keystroke of a note that already has substance; it only fires near
+the empty boundary. Reverting re-arms stage 0, so typing again re-triggers at
+50 chars. A locked (hand-titled) note is never reverted.
+
+**Trigger path:** `NoteStore.saveContent` calls
+`NoteAutoTitler.noteContentDidChange(noteID:)` on every keystroke while the
+note is unlocked, `AppSettings.autoTitleEnabled` is on, and content isn't
+empty. That method is cheap — it just resets a 0.3s coalescing debounce keyed
+by note id (same "capture the target id at schedule time" rule as
+`saveTitle`/`saveContent` above — see the debounced-save bug pattern), and
+prewarms the model once the note reaches 20 characters. When the debounce
+fires, `evaluate` checks the current stage's threshold and runs one
+`LanguageModelSession` request with `@Generable`/`@Guide` guided generation.
+Only one request runs at a time (`activeTask`); its completion re-calls
+`evaluate` so a note that crossed the next threshold mid-request doesn't wait
+for another keystroke. The `@Guide` word-count hint on the model output is
+advisory only — the real "3 words max" guarantee is
+`NoteAutoTitler.sanitize(_:)`, which trims punctuation/quotes and hard-caps
+at 3 words / 40 characters after the model responds.
+
+**Reveal + thinking animations:** `NoteStore.applyAutoTitle` sets
+`titleReveal: TitleReveal?` (noteID + title) the instant a title lands, and
+the title field's binding already has the new string — only the *glyphs* are
+hidden. `HeaderView`'s `TitleRevealText` (same `hidesText`-on-`TitleTextField`
+trick as the shimmer and the marquee) stripes in each character left-to-right
+(0.18s per character, 20ms stagger), then calls back to clear
+`noteStore.titleReveal`. While a request is running, `noteStore.titleThinking`
+(the note id) drives `ShimmerTitle` — the sweep `AnimatedBugTitle` used to own
+outright, now extracted so both share it: `AnimatedBugTitle` passes fixed
+blue/yellow, the thinking shimmer uses `TitleTextField.thinkingColors(for:)`
+(title colour as the base, accent blended toward white as the highlight — a
+coloured glint that never clashes with the system accent). Reduce Motion
+collapses both the reveal and the shimmer to short crossfades — same pattern
+as everywhere else, see `BuoyMotion.swift`.
 
 ### Bug Report Mode
 
@@ -101,6 +172,7 @@ The `View+Glass.swift` helper abstracts this behind `.buoyGlass()`.
 | `Helpers/BuoyMotion.swift` | Reduce Motion gate for every movement animation |
 | `Helpers/BuoyAppearance.swift` | `BuoyContrast`, semantic `Color.buoy*` tokens, `BuoyFont` scale |
 | `Helpers/NotePlainText.swift` | Memoised RTF→plain-text; use instead of decoding inline |
+| `Services/NoteAutoTitler.swift` | On-device AI auto-titling for new notes (FoundationModels, macOS 26+) |
 
 ## Developer Workflows
 

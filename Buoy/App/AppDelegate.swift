@@ -351,6 +351,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         // This makes text inputs inside Buoy focusable while reducing accidental
         // key capture when the user is interacting with another app's dialogs.
         p.becomesKeyOnlyIfNeeded = true
+        // The link editor and other transient panels add and remove controls at
+        // runtime. Let AppKit rebuild the Tab/Shift-Tab order with the hierarchy.
+        p.autorecalculatesKeyViewLoop = true
         p.isMovableByWindowBackground = false
         p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         p.delegate = self

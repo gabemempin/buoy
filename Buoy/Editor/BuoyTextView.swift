@@ -1,5 +1,55 @@
 import AppKit
 
+// MARK: - Link Editing
+
+/// Immutable editor state captured before the floating link panel takes focus.
+/// Keeping the range with the text prevents a later responder change from
+/// redirecting the insertion to the start of the note.
+struct LinkEditingContext {
+    /// Range that will receive the link. This may expand to an existing link.
+    let range: NSRange
+    /// The user's literal highlighted range, kept separate from `range` so a
+    /// caret inside an existing link does not masquerade as a selection.
+    let highlightedRange: NSRange?
+    let text: String
+    let url: String
+
+    static let empty = LinkEditingContext(
+        range: NSRange(location: 0, length: 0),
+        highlightedRange: nil,
+        text: "",
+        url: ""
+    )
+
+    var hasText: Bool { range.length > 0 && !text.isEmpty }
+    var isEditingExistingLink: Bool { !url.isEmpty }
+}
+
+/// Shared URL normalization for the dialog's validation and the editor write.
+enum LinkDestination {
+    static func normalizedURL(from input: String) -> URL? {
+        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        let parsedScheme = URLComponents(string: trimmed)?.scheme
+        // URLComponents interprets `localhost:3000` as a custom scheme. Treat
+        // that common development-host form as a schemeless web destination.
+        let needsWebScheme = parsedScheme?.isEmpty != false
+            || parsedScheme?.lowercased() == "localhost"
+        let candidate = needsWebScheme ? "https://\(trimmed)" : trimmed
+        guard let url = URL(string: candidate), let scheme = url.scheme, !scheme.isEmpty else {
+            return nil
+        }
+
+        // Web destinations need a host. Other explicit schemes (for example,
+        // mailto:) remain available and are handed to NSWorkspace on click.
+        if ["http", "https"].contains(scheme.lowercased()), url.host?.isEmpty != false {
+            return nil
+        }
+        return url
+    }
+}
+
 // MARK: - App-level shortcut notifications
 
 extension Notification.Name {
@@ -16,7 +66,7 @@ extension Notification.Name {
 protocol BuoyTextViewDelegate: AnyObject {
     func textViewDidChange(_ textView: BuoyTextView)
     func textViewSelectionDidChange(_ textView: BuoyTextView)
-    func textViewRequestShowLinkDialog(selectedText: String)
+    func textViewRequestShowLinkDialog(context: LinkEditingContext)
 }
 
 // MARK: - BuoyTextView
@@ -615,9 +665,7 @@ final class BuoyTextView: NSTextView {
         }
 
         if chars == "k" && onlyCmd {
-            let sel = selectedRange()
-            let selected = sel.length > 0 ? (string as NSString).substring(with: sel) : ""
-            buoyDelegate?.textViewRequestShowLinkDialog(selectedText: selected)
+            buoyDelegate?.textViewRequestShowLinkDialog(context: linkEditingContext())
             return
         }
 
@@ -1398,20 +1446,163 @@ final class BuoyTextView: NSTextView {
         notifyChange()
     }
 
+    /// Captures the current cursor/selection and, when it sits on one link,
+    /// expands to that link's full range so invoking Add Link edits it in place.
+    func linkEditingContext() -> LinkEditingContext {
+        guard let storage = textStorage else { return .empty }
+        let capturedRange = clampedSelection(lastKnownCursorPosition, to: storage)
+        let highlightedRange = capturedRange.length > 0 ? capturedRange : nil
+        var range = capturedRange
+        var existingLink: Any?
+
+        if storage.length > 0 {
+            if range.length > 0 {
+                var effectiveRange = NSRange(location: 0, length: 0)
+                let candidate = storage.attribute(
+                    .link,
+                    at: range.location,
+                    longestEffectiveRange: &effectiveRange,
+                    in: NSRange(location: 0, length: storage.length)
+                )
+                if candidate != nil,
+                   effectiveRange.location <= range.location,
+                   NSMaxRange(effectiveRange) >= NSMaxRange(range) {
+                    range = effectiveRange
+                    existingLink = candidate
+                }
+            } else {
+                // A caret inside a link, at its leading edge, or immediately
+                // after its final character edits the whole link.
+                let locations = [
+                    range.location < storage.length ? range.location : nil,
+                    range.location > 0 ? range.location - 1 : nil
+                ].compactMap { $0 }
+                for attributeLocation in locations {
+                    var effectiveRange = NSRange(location: 0, length: 0)
+                    let candidate = storage.attribute(
+                        .link,
+                        at: attributeLocation,
+                        longestEffectiveRange: &effectiveRange,
+                        in: NSRange(location: 0, length: storage.length)
+                    )
+                    if candidate != nil,
+                       range.location >= effectiveRange.location,
+                       range.location <= NSMaxRange(effectiveRange) {
+                        range = effectiveRange
+                        existingLink = candidate
+                        break
+                    }
+                }
+            }
+        }
+
+        let selectedText = range.length > 0
+            ? (storage.string as NSString).substring(with: range)
+            : ""
+        let existingURL: String
+        if let url = existingLink as? URL {
+            existingURL = url.absoluteString
+        } else if let url = existingLink as? String {
+            existingURL = url
+        } else {
+            existingURL = ""
+        }
+        return LinkEditingContext(
+            range: range,
+            highlightedRange: highlightedRange,
+            text: selectedText,
+            url: existingURL
+        )
+    }
+
+    /// Returns a tiny anchor at the visual center of the selected glyphs that
+    /// are currently visible. Weighting each line fragment by its highlighted
+    /// area keeps multi-line selections centered on the selection itself rather
+    /// than on the empty space inside its overall bounding box.
+    func linkPopoverAnchorRect(for range: NSRange) -> NSRect? {
+        guard range.length > 0,
+              let storage = textStorage,
+              let layoutManager,
+              let textContainer else { return nil }
+
+        let selection = clampedSelection(range, to: storage)
+        guard selection.length > 0 else { return nil }
+
+        layoutManager.ensureLayout(forCharacterRange: selection)
+        let glyphRange = layoutManager.glyphRange(
+            forCharacterRange: selection,
+            actualCharacterRange: nil
+        )
+        guard glyphRange.length > 0 else { return nil }
+
+        let containerOrigin = textContainerOrigin
+        let viewport = visibleRect
+        var weightedX: CGFloat = 0
+        var weightedY: CGFloat = 0
+        var totalArea: CGFloat = 0
+
+        func include(_ containerRect: NSRect) {
+            let viewRect = containerRect.offsetBy(
+                dx: containerOrigin.x,
+                dy: containerOrigin.y
+            )
+            let visibleSelection = viewRect.intersection(viewport)
+            guard !visibleSelection.isNull, !visibleSelection.isEmpty else { return }
+            let area = max(visibleSelection.width, 2) * max(visibleSelection.height, 2)
+            weightedX += visibleSelection.midX * area
+            weightedY += visibleSelection.midY * area
+            totalArea += area
+        }
+
+        layoutManager.enumerateEnclosingRects(
+            forGlyphRange: glyphRange,
+            withinSelectedGlyphRange: glyphRange,
+            in: textContainer
+        ) { rect, _ in
+            include(rect)
+        }
+
+        if totalArea == 0 {
+            include(layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer))
+        }
+        guard totalArea > 0 else { return nil }
+
+        let center = NSPoint(x: weightedX / totalArea, y: weightedY / totalArea)
+        return NSRect(x: center.x - 1, y: center.y - 1, width: 2, height: 2)
+    }
+
     func insertLink(text: String, url: String, at position: NSRange? = nil) {
         guard let storage = textStorage else { return }
-        let finalURL = url.hasPrefix("http") ? url : "https://\(url)"
-        let display = text.isEmpty ? finalURL : text
-        let sel = position ?? (lastKnownSelection.length > 0 ? lastKnownSelection : lastKnownCursorPosition)
+        guard let finalURL = LinkDestination.normalizedURL(from: url) else { return }
+        let display = text.isEmpty ? finalURL.absoluteString : text
+        let sel = clampedSelection(position, to: storage)
         var attrs = normalizedPlainTextAttributes(at: min(sel.location, storage.length))
         attrs[.foregroundColor] = NSColor.linkColor
         attrs[.underlineStyle] = NSUnderlineStyle.single.rawValue
-        attrs[.link] = URL(string: finalURL) as Any
-        let atStr = NSAttributedString(string: display, attributes: attrs)
+        attrs[.link] = finalURL
         window?.makeFirstResponder(self)
-        guard shouldChangeText(in: sel, replacementString: atStr.string) else { return }
-        storage.replaceCharacters(in: sel, with: atStr)
-        setSelectedRange(NSRange(location: sel.location + atStr.length, length: 0))
+
+        let selectedText = sel.length > 0
+            ? (storage.string as NSString).substring(with: sel)
+            : ""
+        if sel.length > 0 && selectedText == display {
+            // Adding or editing a destination doesn't need to rebuild the text.
+            // Attribute the existing characters so mixed bold/italic styling is
+            // preserved across the operation.
+            guard shouldChangeText(in: sel, replacementString: nil) else { return }
+            storage.beginEditing()
+            storage.addAttributes([
+                .foregroundColor: NSColor.linkColor,
+                .underlineStyle: NSUnderlineStyle.single.rawValue,
+                .link: finalURL
+            ], range: sel)
+            storage.endEditing()
+        } else {
+            let attributedLink = NSAttributedString(string: display, attributes: attrs)
+            guard shouldChangeText(in: sel, replacementString: attributedLink.string) else { return }
+            storage.replaceCharacters(in: sel, with: attributedLink)
+        }
+        setSelectedRange(NSRange(location: sel.location + (display as NSString).length, length: 0))
         didChangeText()
         typingAttributes = normalizedTypingAttributes()
     }
@@ -1843,8 +2034,6 @@ final class BuoyTextView: NSTextView {
     @objc func bulletListAction(_ sender: Any?) { applyBullet() }
     @objc func todoListAction(_ sender: Any?)   { applyTodo() }
     @objc func linkAction(_ sender: Any?) {
-        let sel = selectedRange()
-        let selected = sel.length > 0 ? (string as NSString).substring(with: sel) : ""
-        buoyDelegate?.textViewRequestShowLinkDialog(selectedText: selected)
+        buoyDelegate?.textViewRequestShowLinkDialog(context: linkEditingContext())
     }
 }
