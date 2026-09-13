@@ -56,7 +56,16 @@ private struct TitleTextField: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: TitleNSTextField, context: Context) {
-        if nsView.stringValue != text { nsView.stringValue = text }
+        if nsView.stringValue != text {
+            // AppKit can notify the field delegate when its string value is
+            // refreshed from SwiftUI. That is a model -> view update, not a
+            // user edit; forwarding it through the binding would call
+            // NoteStore.saveTitle and permanently lock a brand-new note
+            // before its content can reach the auto-title thresholds.
+            context.coordinator.isApplyingModelValue = true
+            nsView.stringValue = text
+            context.coordinator.isApplyingModelValue = false
+        }
         nsView.textColor = hidesText ? .clear : TitleTextField.textColor(for: colorScheme)
         if isFocused && nsView.window?.firstResponder !== nsView.currentEditor() {
             nsView.window?.makeFirstResponder(nsView)
@@ -81,9 +90,12 @@ private struct TitleTextField: NSViewRepresentable {
 
     final class Coordinator: NSObject, NSTextFieldDelegate {
         var parent: TitleTextField
+        var isApplyingModelValue = false
+
         init(parent: TitleTextField) { self.parent = parent }
 
         func controlTextDidChange(_ obj: Notification) {
+            guard !isApplyingModelValue else { return }
             if let field = obj.object as? NSTextField {
                 parent.text = field.stringValue
             }
