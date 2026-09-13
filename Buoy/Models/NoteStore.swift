@@ -463,14 +463,17 @@ final class NoteStore {
 
     /// Marks a stage as spent without changing the title — used when
     /// generation fails, returns nothing usable, or is unsupported. Same
-    /// stale-result guard as `applyAutoTitle`.
-    func spendAutoTitleStage(noteID: String, expectedStage: Int, nextStage: Int) {
+    /// stale-result guard as `applyAutoTitle`. Returns `false` when that guard
+    /// dropped the result, so the caller doesn't report a failure for a note
+    /// the user has since titled by hand or that has already moved on.
+    @discardableResult
+    func spendAutoTitleStage(noteID: String, expectedStage: Int, nextStage: Int) -> Bool {
         titleThinking = nil
-        guard let db else { return }
+        guard let db else { return false }
         guard let idx = notes.firstIndex(where: { $0.id == noteID }),
               !notes[idx].autoTitleLocked,
               notes[idx].autoTitleStage == expectedStage
-        else { return }
+        else { return false }
 
         _ = try? db.write { db in
             try db.execute(
@@ -482,6 +485,7 @@ final class NoteStore {
         if currentNote?.id == noteID {
             currentNote?.autoTitleStage = nextStage
         }
+        return true
     }
 
     /// Restores a note's original "Note N" title and re-arms auto-titling

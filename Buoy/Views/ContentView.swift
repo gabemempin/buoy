@@ -136,7 +136,8 @@ struct ContentView: View {
             .buoyPreviousNote:    { navigateNote(forward: false) },
             .buoyNextNote:        { navigateNote(forward: true) },
             .openShortcuts:       { toggleShortcuts() },
-            .openSettings:        { toggleSettings() }
+            .openSettings:        { toggleSettings() },
+            .buoyAutoTitleFailed: { toastState.show("Couldn't name this note", style: .warning) }
         ]))
         .onReceive(NotificationCenter.default.publisher(for: .showLinkDialog)) { notif in
             guard !panelPresentation.isMinimized else { return }
@@ -582,7 +583,7 @@ struct ContentView: View {
     /// Validates the "last note" guard, then defers to the confirmation dialog.
     private func requestDeleteNote(_ note: Note) {
         guard noteStore.notes.count > 1 else {
-            toastState.show("Cannot delete the last note", isError: true)
+            toastState.show("Cannot delete the last note", style: .error)
             return
         }
         withAnimation(BuoyMotion.easeOut(0.16)) { pendingDeleteNote = note }
@@ -715,7 +716,7 @@ struct ContentView: View {
         let html = tvRef.value?.htmlContent() ?? ""
         AppleNotesService.transfer(htmlContent: html) { error in
             if let error {
-                toastState.show("Error: \(error)", isError: true)
+                toastState.show("Error: \(error)", style: .error)
             } else {
                 toastState.show("Transferred to Apple Notes")
             }

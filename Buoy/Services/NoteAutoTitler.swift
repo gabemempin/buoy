@@ -206,33 +206,56 @@ final class NoteAutoTitler {
                     options: GenerationOptions(temperature: 0.3)
                 )
                 guard !Task.isCancelled, self.generation == myGeneration else { return }
-                if let title = Self.sanitize(response.content.title), title != currentTitle {
-                    self.store.applyAutoTitle(
-                        title,
-                        noteID: noteID,
-                        expectedStage: expectedStage,
-                        nextStage: nextStage
-                    )
+                if let title = Self.sanitize(response.content.title) {
+                    if title != currentTitle {
+                        self.store.applyAutoTitle(
+                            title,
+                            noteID: noteID,
+                            expectedStage: expectedStage,
+                            nextStage: nextStage
+                        )
+                    } else {
+                        // The model chose to keep the current title. Not a
+                        // failure — the shimmer just ends with nothing to show.
+                        self.store.spendAutoTitleStage(
+                            noteID: noteID,
+                            expectedStage: expectedStage,
+                            nextStage: nextStage
+                        )
+                    }
                 } else {
-                    self.store.spendAutoTitleStage(
-                        noteID: noteID,
-                        expectedStage: expectedStage,
-                        nextStage: nextStage
-                    )
+                    // Empty or all-punctuation response — from the user's side
+                    // indistinguishable from a refusal.
+                    self.reportFailure(noteID: noteID, expectedStage: expectedStage, nextStage: nextStage)
                 }
             } catch {
                 // Guardrail refusal, unsupported content, model hiccup — any
                 // failure spends the stage rather than retrying forever on
                 // content the model won't touch.
                 if !Task.isCancelled, self.generation == myGeneration {
-                    self.store.spendAutoTitleStage(
-                        noteID: noteID,
-                        expectedStage: expectedStage,
-                        nextStage: nextStage
-                    )
+                    self.reportFailure(noteID: noteID, expectedStage: expectedStage, nextStage: nextStage)
                 }
             }
         }
+    }
+
+    /// Spends the stage for a request that produced no title, and tells the
+    /// UI so the "thinking" shimmer doesn't just end in silence.
+    ///
+    /// Only posts when the stage was actually spent — a note the user has
+    /// since titled by hand, or one that already moved on, is dropped by
+    /// `NoteStore`'s guard and shouldn't surface a warning — and only for the
+    /// note on screen, since a toast about some other note would be confusing.
+    /// Wording is deliberately mild: the guardrail declines ordinary personal
+    /// content often enough that this is routine, not an error.
+    private func reportFailure(noteID: String, expectedStage: Int, nextStage: Int) {
+        let didSpend = store.spendAutoTitleStage(
+            noteID: noteID,
+            expectedStage: expectedStage,
+            nextStage: nextStage
+        )
+        guard didSpend, store.currentNote?.id == noteID else { return }
+        NotificationCenter.default.post(name: .buoyAutoTitleFailed, object: noteID)
     }
 
     @available(macOS 26, *)
@@ -261,6 +284,13 @@ final class NoteAutoTitler {
         guard title.count <= 40 else { return String(title.prefix(40)) }
         return title
     }
+}
+
+extension Notification.Name {
+    /// Posted by `NoteAutoTitler` when a request for the current note fails
+    /// to produce a title. `object` is the note id. `ContentView` routes it to
+    /// the lower-center toast as a warning.
+    static let buoyAutoTitleFailed = Notification.Name("BuoyAutoTitleFailed")
 }
 
 #if canImport(FoundationModels)
