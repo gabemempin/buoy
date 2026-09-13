@@ -247,7 +247,7 @@ struct EditorView: NSViewRepresentable {
     var fontSize: CGFloat
     var usesDarkAppearance: Bool
     var noteID: String
-    var placeholder: String = "Start typing… (⌘← ⌘→ to navigate notes)"
+    var placeholder: String = "Start typing…"
     var onSelectionChange: ((String) -> Void)?
     var onContentChange: ((Data) -> Void)?
     var textViewRef: ((BuoyTextView) -> Void)?

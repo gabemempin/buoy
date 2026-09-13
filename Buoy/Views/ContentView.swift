@@ -254,7 +254,7 @@ struct ContentView: View {
                         noteID: note.id,
                         placeholder: isBugReport
                             ? "Tell me what you want fixed or improved. If something went wrong, detail how to reproduce the bug.\n\nThank you for making Buoy better!"
-                            : "Start typing… (⌘← ⌘→ to navigate notes)",
+                            : "Start typing…",
                         onSelectionChange: { text in
                             editorSelectedText = text
                         },
