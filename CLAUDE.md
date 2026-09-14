@@ -241,6 +241,8 @@ The `View+Glass.swift` helper abstracts this behind `.buoyGlass()`.
 | `Helpers/BuoyAppearance.swift` | `BuoyContrast`, semantic `Color.buoy*` tokens, `BuoyFont` scale |
 | `Helpers/NotePlainText.swift` | Memoised RTF→plain-text; use instead of decoding inline |
 | `Services/NoteAutoTitler.swift` | On-device AI auto-titling for new notes (FoundationModels, macOS 26+) |
+| `Models/WhatsNewCatalog.swift` | Bundled release notes for the post-update splash |
+| `Views/WhatsNewView.swift` | The post-update "What's New" splash |
 
 ## Developer Workflows
 
@@ -375,9 +377,50 @@ Build artifacts (`*.app/`, `*.zip`, `build.log`, `Buoy */`), VS Code config, and
 ### Co-Authored-By Attribution
 Never add `Co-Authored-By` lines to commits. The git user.name was previously corrupted to `"user.email"` via a bad local config — fixed by removing the local override with `git config --local --unset user.name`.
 
+### What's New Splash
+
+Shown once on the first launch after Buoy updates to a version that has notes.
+iOS-style: app icon, title, version, rows of SF Symbol + heading + one-line
+description under "What's New" and "Bug Fixes", Continue pinned at the bottom.
+
+- **Content is bundled**, not fetched: `Models/WhatsNewCatalog.swift` holds one
+  `WhatsNewRelease` per version. **The entry must be written before
+  `xcodebuild archive`** — it is compiled into the app. `/newupdate` Step 1.5
+  (the approval gate, moved ahead of the archive) and Step 1.6 do this.
+- **`WhatsNewRelease.version` must equal `MARKETING_VERSION` exactly.** A
+  mismatch is silent: the lookup finds nothing and no splash appears. That is
+  also the deliberate behaviour for a release with nothing worth announcing —
+  omit the entry and `lastSeenWhatsNewVersion` is left untouched.
+- **Gating:** `WhatsNewCatalog.shouldPresent` requires `onboarded`, so a fresh
+  install gets the carousel instead. `OnboardingView.complete()` stamps
+  `lastSeenWhatsNewVersion` alongside `onboarded = true`, or a new user would
+  see the splash on their second launch.
+- **The version is written on Continue, not on show**, so quitting without
+  acknowledging brings the splash back next launch. That is intended, not a bug.
+- **The editor is live underneath.** The splash is opaque but the real note is
+  still mounted, so `WhatsNewView` installs a local key monitor that swallows
+  bare typing (chords with ⌘/⌃/⌥ pass through for ⌘Q, ⌘W and VoiceOver), and
+  `ContentView` guards `createNote`, `navigateNote`, `deleteCurrentNote`,
+  `toggleAllNotes`, `toggleSettings`, `toggleShortcuts` and `presentLinkDialog`
+  with `!showWhatsNew`. ⌘⌫ matters most: `deleteConfirmOverlay` is an `.overlay`
+  on `fullPanelContent`, so it would render *above* the splash.
+- **⌘M is swallowed too**, because Harbor Mode unmounts the splash and restores
+  at compact height, clipping it. The Dock-mode Window menu item bypasses that
+  monitor, so `dismissTransientUI` calls `dismissWhatsNew()` as the fallback.
+- **The panel launches pre-sized** (`AppDelegate.setupPanel`), the way onboarding
+  does, so it does not visibly stretch a beat after launch. That requires setting
+  `overlayOverrideHeight` up front while leaving `currentHeight` at
+  `compactHeight` — if `currentHeight` absorbs the tall height, the panel never
+  shrinks back after Continue.
+
+Reset it (the phrase **"reset what's new"** means run this):
+```bash
+sed -i '' 's/"lastSeenWhatsNewVersion":"[^"]*"/"lastSeenWhatsNewVersion":null/' ~/.buoy/settings.json
+```
+
 ### Overlay Panel Height Override
-Settings, Shortcuts, and Onboarding panels animate the window taller when shown. Key pieces:
-- `PanelLayoutMetrics.settingsOverrideHeight` / `shortcutsOverrideHeight` / `onboardingOverrideHeight` — target heights
+Settings, Shortcuts, Onboarding, and the What's New splash animate the window taller when shown. Key pieces:
+- `PanelLayoutMetrics.settingsOverrideHeight` / `shortcutsOverrideHeight` / `onboardingOverrideHeight` / `whatsNewOverrideHeight` — target heights
 - `AppDelegate.applyOverrideHeight(_ height: CGFloat?)` — pass `nil` to restore; 0.25s easeInEaseOut
-- `ContentView` fires `onOverrideHeight` via `.onChange(of: activeFooterOverlayHeight)` and directly in `onAppear` for onboarding
+- `ContentView` fires `onOverrideHeight` via `.onChange(of: activeFooterOverlayHeight)` and directly in `onAppear` for whichever overlay is already up at first render
 - Panel bottom offset from footer: `.padding(.bottom, 43)` in `ContentView`

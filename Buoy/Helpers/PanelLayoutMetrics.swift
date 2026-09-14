@@ -81,6 +81,9 @@ enum PanelLayoutMetrics {
     }
     static let shortcutsOverrideHeight: CGFloat = 468 + (glassEdgeInset * 2)
     static let onboardingOverrideHeight: CGFloat = 450 + (glassEdgeInset * 2)
+    /// The What's New splash. Its content scrolls, so a long release never grows
+    /// the window past this and a short one just leaves air above the button.
+    static let whatsNewOverrideHeight: CGFloat = 560 + (glassEdgeInset * 2)
 
     // Minimized pill layout
     static let minimizedPillHeight: CGFloat = 56

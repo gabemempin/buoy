@@ -285,7 +285,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func setupPanel() {
         let isFirstRun = !settingsStore.value.onboarded
-        let initialHeight = isFirstRun ? onboardingHeight : compactHeight
+        // The What's New splash needs the same tall panel Settings uses. Size the
+        // window for it up front so it doesn't visibly stretch a beat after launch.
+        let showsWhatsNew = !isFirstRun
+            && WhatsNewCatalog.shouldPresent(settings: settingsStore.value)
+        let initialHeight: CGFloat
+        if isFirstRun {
+            initialHeight = onboardingHeight
+        } else if showsWhatsNew {
+            initialHeight = PanelLayoutMetrics.whatsNewOverrideHeight
+        } else {
+            initialHeight = compactHeight
+        }
 
         let contentView = ContentView(
             noteStore: noteStore,
@@ -362,7 +373,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         panel = p
         cornerResizeOverlayController.attach(to: p)
         applyPanelMinimumSize(forMinimizedLayout: false)
-        currentHeight = initialHeight
+        // `currentHeight` is the height to fall back to once an overlay closes, so
+        // it must stay compact even though the window opens tall. Declaring the
+        // override here also makes ContentView's first `onOverrideHeight` a no-op
+        // (live height already equals the target) instead of an absorbed resize.
+        currentHeight = showsWhatsNew ? compactHeight : initialHeight
+        if showsWhatsNew {
+            overlayOverrideHeight = PanelLayoutMetrics.whatsNewOverrideHeight
+        }
         panelPresentation.minimizedContentWidth = minimizedContentWidth()
     }
 
@@ -483,7 +501,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if !hasPositioned {
             p.center()
             hasPositioned = true
-            if !panelPresentation.isMinimized {
+            // Never record an overlay-inflated frame as the restore target
+            // (same rule as `recordCurrentFullSizeFrame`).
+            if !panelPresentation.isMinimized, overlayOverrideHeight == 0 {
                 lastFullSizeFrame = p.frame
             }
         }

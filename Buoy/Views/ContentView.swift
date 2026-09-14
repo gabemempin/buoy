@@ -75,6 +75,10 @@ struct ContentView: View {
     @State private var editorSelectedText: String = ""
     @State private var showOnboarding: Bool
     @State private var showMainContent: Bool
+    @State private var showWhatsNew: Bool
+    /// Holds the splash's panel height through its fade-out, so the window
+    /// resizes only after the panel is empty.
+    @State private var isDismissingWhatsNew = false
 
     init(
         noteStore: NoteStore,
@@ -102,6 +106,9 @@ struct ContentView: View {
         self.onRestoreFromMinimized = onRestoreFromMinimized
         self._showOnboarding = State(initialValue: !settings.wrappedValue.onboarded)
         self._showMainContent = State(initialValue: settings.wrappedValue.onboarded)
+        self._showWhatsNew = State(
+            initialValue: WhatsNewCatalog.shouldPresent(settings: settings.wrappedValue)
+        )
     }
 
     var body: some View {
@@ -119,6 +126,9 @@ struct ContentView: View {
         // NSHostingView doesn't automatically route keyboard events to the text view).
         .onReceive(NotificationCenter.default.publisher(for: .buoyPanelBecameKey)) { _ in
             guard !panelPresentation.isMinimized else { return }
+            // An opaque splash owns the panel; don't hand focus to the editor
+            // hidden behind it.
+            guard !showOnboarding, !showWhatsNew else { return }
             let fr = tvRef.value?.window?.firstResponder
             // Only steal focus if nothing meaningful is already focused
             if !(fr is BuoyTextView || fr is NSTextField) {
@@ -146,11 +156,12 @@ struct ContentView: View {
             presentLinkDialog(context)
         }
         // Block window dragging whenever any overlay panel is open
-        .onChange(of: showSettings || showShortcuts || showAllNotes || isLinkDialogPresented || pendingDeleteNote != nil) { _, panelOpen in
+        .onChange(of: suppressesEditorCursor) { _, _ in
+            let panelOpen = isEditorCoveredByPanel
             NSApp.windows.compactMap { $0 as? NSPanel }.forEach {
                 $0.isMovable = !panelOpen
             }
-            tvRef.value?.suppressesIBeamCursor = panelOpen || showOnboarding
+            tvRef.value?.suppressesIBeamCursor = suppressesEditorCursor
         }
         .onChange(of: panelPresentation.isMinimized) { _, isMinimized in
             if isMinimized {
@@ -158,6 +169,7 @@ struct ContentView: View {
             } else {
                 DispatchQueue.main.asyncAfter(deadline: .now() + PanelLayoutMetrics.minimizedFrameAnimationDuration) {
                     guard !panelPresentation.isMinimized else { return }
+                    guard !showOnboarding, !showWhatsNew else { return }
                     focusEditor()
                 }
             }
@@ -179,7 +191,7 @@ struct ContentView: View {
             persistCurrentNoteSelection(noteStore.currentNote?.id)
             onMinimizedWidthChange?(minimizedWidth)
             onCornerResizeAvailabilityChange?(canUseCornerResizeControls)
-            if showOnboarding { onOverrideHeight?(PanelLayoutMetrics.onboardingOverrideHeight) }
+            if let height = activeFooterOverlayHeight { onOverrideHeight?(height) }
         }
     }
 
@@ -264,7 +276,7 @@ struct ContentView: View {
                         },
                         textViewRef: { tv in
                             tvRef.value = tv
-                            tv.suppressesIBeamCursor = showSettings || showShortcuts || showAllNotes || isLinkDialogPresented || showOnboarding || pendingDeleteNote != nil
+                            tv.suppressesIBeamCursor = suppressesEditorCursor
                         }
                     )
                     .frame(
@@ -390,7 +402,7 @@ struct ContentView: View {
                         withAnimation(.easeInOut(duration: 1.0)) {
                             showOnboarding = false
                         }
-                        tvRef.value?.suppressesIBeamCursor = showSettings || showShortcuts || showAllNotes
+                        tvRef.value?.suppressesIBeamCursor = isEditorCoveredByPanel
                         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                             onOnboardingComplete?()
                         }
@@ -403,6 +415,13 @@ struct ContentView: View {
                 )
                 .padding(PanelLayoutMetrics.onboardingInset)
                 .transition(.opacity)
+            }
+
+            if showWhatsNew, let release = WhatsNewCatalog.release(for: WhatsNewCatalog.currentVersion) {
+                WhatsNewView(release: release, onContinue: dismissWhatsNew)
+                    .padding(PanelLayoutMetrics.onboardingInset)
+                    .transition(.opacity)
+                    .onAppear { tvRef.value?.window?.makeFirstResponder(nil) }
             }
         }
     }
@@ -480,7 +499,21 @@ struct ContentView: View {
         PanelLayoutMetrics.minimizedWindowWidth(forTitle: noteStore.currentNote?.title ?? "")
     }
 
+    /// Any overlay panel that covers the editor and should block window drags.
+    private var isEditorCoveredByPanel: Bool {
+        showSettings || showShortcuts || showAllNotes || isLinkDialogPresented || pendingDeleteNote != nil
+    }
+
+    /// The editor's I-beam tracking area bleeds through SwiftUI overlays, so it
+    /// is suppressed at the source whenever anything covers the editor.
+    private var suppressesEditorCursor: Bool {
+        isEditorCoveredByPanel || showOnboarding || showWhatsNew
+    }
+
     private var activeFooterOverlayHeight: CGFloat? {
+        // Checked first: the status item menu can open Settings *underneath*
+        // the splash, and that must not take over the panel height.
+        if showWhatsNew || isDismissingWhatsNew { return PanelLayoutMetrics.whatsNewOverrideHeight }
         if showOnboarding { return PanelLayoutMetrics.onboardingOverrideHeight }
         if showSettings   { return PanelLayoutMetrics.settingsOverrideHeight }
         if showShortcuts  { return PanelLayoutMetrics.shortcutsOverrideHeight }
@@ -495,12 +528,20 @@ struct ContentView: View {
         !panelPresentation.isMinimized
             && showMainContent
             && !showOnboarding
+            && !showWhatsNew
             && !showAllNotes
             && !showSettings
             && !showShortcuts
             && !isLinkDialogPresented
             && pendingDeleteNote == nil
     }
+
+    // Dismissal beats, in order. Same choreography as the onboarding exit, just
+    // tighter: this is a dismissal, not a first-run ceremony.
+    /// Splash dissolves to an empty panel.
+    private var whatsNewFadeDuration: TimeInterval { 0.6 }
+    /// `AppDelegate.applyOverrideHeight` resizes over 0.25s; wait a hair longer.
+    private var whatsNewResizeDuration: TimeInterval { 0.3 }
 
     private var isBugReport: Bool {
         bugReportNoteID != nil && bugReportNoteID == noteStore.currentNote?.id
@@ -509,19 +550,56 @@ struct ContentView: View {
     /// Suppress the update bubble whenever another overlay or transient mode owns
     /// the bottom edge, so it never stacks on top of them.
     private var canShowUpdateBubble: Bool {
-        !showOnboarding && !showSettings && !showShortcuts && !showAllNotes
+        !showOnboarding && !showWhatsNew && !showSettings && !showShortcuts && !showAllNotes
             && !isLinkDialogPresented && !isBugReport && pendingDeleteNote == nil
     }
 
     // MARK: - Actions
 
+    /// Marks the running version as seen and fades the splash out. The write
+    /// happens on Continue, not on show, so quitting without acknowledging it
+    /// brings the splash back next launch.
+    private func dismissWhatsNew() {
+        guard showWhatsNew else { return }
+        settings.lastSeenWhatsNewVersion = WhatsNewCatalog.currentVersion
+        settings.save()
+
+        tvRef.value?.suppressesIBeamCursor = isEditorCoveredByPanel
+
+        // Exactly the onboarding exit. The editor's toolbar and footer overhang
+        // the window during an animated resize, so the editor must not be on
+        // screen for any of it: hide it now (invisible, the opaque splash is
+        // still covering everything), dissolve the splash to an empty panel,
+        // resize that empty panel, and only then fade the editor back in.
+        showMainContent = false
+        isDismissingWhatsNew = true
+        // Pure crossfades, so they are left ungated by BuoyMotion on purpose.
+        withAnimation(.easeInOut(duration: whatsNewFadeDuration)) { showWhatsNew = false }
+
+        // Beat 2: panel is empty, let it resize.
+        DispatchQueue.main.asyncAfter(deadline: .now() + whatsNewFadeDuration) {
+            isDismissingWhatsNew = false
+        }
+
+        // Beat 3: panel is the right size, bring the editor back.
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + whatsNewFadeDuration + whatsNewResizeDuration
+        ) {
+            withAnimation(.easeIn(duration: 0.25)) { showMainContent = true }
+            guard !panelPresentation.isMinimized else { return }
+            focusEditor()
+        }
+    }
+
     private func createNote() {
+        guard !showWhatsNew else { return }
         noteStore.createNote()
         // Signal HeaderView to focus + select the title field
         focusTitleTrigger.toggle()
     }
 
     private func navigateNote(forward: Bool) {
+        guard !showWhatsNew else { return }
         let previousID = noteStore.currentNote?.id
         if forward { noteStore.nextNote() } else { noteStore.previousNote() }
         if previousID != noteStore.currentNote?.id {
@@ -539,6 +617,10 @@ struct ContentView: View {
     }
 
     private func dismissTransientUI() {
+        // Harbor Mode unmounts the splash and restores at compact height, which
+        // would clip it. WhatsNewView swallows ⌘M, but the Window menu item in
+        // Dock mode reaches minimize without passing through that monitor.
+        dismissWhatsNew()
         // The system popover owns its materialize/dematerialize animation and
         // its Reduce Motion adaptation; don't wrap that state change ourselves.
         selectionLinkPopoverController.dismiss()
@@ -552,6 +634,7 @@ struct ContentView: View {
     }
 
     private func toggleAllNotes() {
+        guard !showWhatsNew else { return }
         withAnimation(BuoyMotion.easeOut(0.16)) {
             showAllNotes.toggle()
             if showAllNotes { showSettings = false; showShortcuts = false }
@@ -560,6 +643,7 @@ struct ContentView: View {
     }
 
     private func toggleSettings() {
+        guard !showWhatsNew else { return }
         withAnimation(BuoyMotion.easeOut(0.16)) {
             showSettings.toggle()
             if showSettings { showAllNotes = false; showShortcuts = false }
@@ -568,6 +652,7 @@ struct ContentView: View {
     }
 
     private func toggleShortcuts() {
+        guard !showWhatsNew else { return }
         withAnimation(BuoyMotion.easeOut(0.16)) {
             showShortcuts.toggle()
             if showShortcuts { showAllNotes = false; showSettings = false }
@@ -576,6 +661,7 @@ struct ContentView: View {
     }
 
     private func deleteCurrentNote() {
+        guard !showWhatsNew else { return }
         guard let note = noteStore.currentNote else { return }
         requestDeleteNote(note)
     }
@@ -631,6 +717,7 @@ struct ContentView: View {
     }
 
     private func presentLinkDialog(_ context: LinkEditingContext) {
+        guard !showWhatsNew else { return }
         linkDialogContext = context
         showLinkDialog = false
 

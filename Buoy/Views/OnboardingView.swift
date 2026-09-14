@@ -134,6 +134,10 @@ struct OnboardingView: View {
 
     private func complete() {
         settings.onboarded = true
+        // A brand-new install has already "seen" the version it just installed;
+        // without this stamp the What's New splash would appear on the user's
+        // second launch for a release they never upgraded into.
+        settings.lastSeenWhatsNewVersion = WhatsNewCatalog.currentVersion
         settings.save()
         onDismiss()
     }
@@ -143,7 +147,11 @@ private extension Notification.Name {
     static let onboardingCmdM = Notification.Name("BuoyOnboardingCmdM")
 }
 
-private func loadOnboardingAppIconThumbnail() async -> NSImage? {
+/// Renders `AppIcon.icon` (an Icon Composer package, not an asset catalog icon)
+/// into an `NSImage` via QuickLook. Shared by the onboarding Welcome slide and
+/// the What's New splash. Returns `nil` if the icon can't be built; callers
+/// reserve the frame so the layout doesn't jump when it lands.
+func loadOnboardingAppIconThumbnail() async -> NSImage? {
     guard
         let iconManifestURL = Bundle.main.url(forResource: "icon", withExtension: "json"),
         let floatLayerURL = Bundle.main.url(forResource: "Float", withExtension: "png"),
@@ -790,7 +798,7 @@ private func slideSubheading(_ text: String) -> some View {
         .padding(.horizontal, 24)
 }
 
-private struct SlideHeaderText: View {
+struct SlideHeaderText: View {
     let text: String
 
     @Environment(\.colorScheme) private var colorScheme
@@ -807,14 +815,17 @@ private struct SlideHeaderText: View {
 
 // MARK: - Onboarding Background
 
-private struct OnboardingBackground: View {
+struct OnboardingBackground: View {
     @Environment(\.colorScheme) private var colorScheme
+
+    /// The flat fill, exposed so a scroll fade can blend into exactly this
+    /// colour instead of approximating it.
+    static func fill(for colorScheme: ColorScheme) -> Color {
+        colorScheme == .dark ? Color(.sRGB, white: 0.11, opacity: 1) : Color.white
+    }
 
     var body: some View {
         RoundedRectangle(cornerRadius: PanelLayoutMetrics.onboardingCornerRadius)
-            .fill(colorScheme == .dark
-                ? Color(.sRGB, white: 0.11, opacity: 1)
-                : Color.white
-            )
+            .fill(Self.fill(for: colorScheme))
     }
 }
