@@ -22,6 +22,20 @@ final class NoteAutoTitler {
     private var debounceWork: [String: DispatchWorkItem] = [:]
     private var activeTask: Task<Void, Never>?
     private var activeNoteID: String?
+    /// How many `session.respond` calls are genuinely still executing.
+    ///
+    /// This is *not* the same thing as `activeTask != nil`. `Task.cancel()`
+    /// only sets a cooperative flag, and `respond` does not check it — a
+    /// cancelled request keeps occupying the Neural Engine until it finishes
+    /// on its own. `cancel(noteID:)` clears `activeTask` so the shimmer stops
+    /// and a stale result is dropped, but the *work* is still running, so
+    /// gating new requests on `activeTask` let every cancellation start
+    /// another concurrent inference. Rapidly creating notes could stack up
+    /// several at once, each with its own resident model, and each paired
+    /// with a second safety-model pass, which is enough to bog down the whole
+    /// machine. Incremented before the request starts and decremented when it
+    /// actually returns, so `evaluate` can gate on real occupancy.
+    private var inFlightRequests = 0
     /// One warm, instruction-primed session, kept ready for the next request.
     /// Type-erased to `Any?` because a stored property can't be marked
     /// `@available` — only the code that casts it back to
@@ -94,10 +108,14 @@ final class NoteAutoTitler {
     /// Stops any pending or in-flight work for a note whose auto-title state
     /// just changed underneath it — locked by a hand-typed title, or reverted
     /// to "Note N". `NoteStore`'s own stage guard would also catch a stale
-    /// result, but this also clears the "thinking" shimmer immediately and
-    /// frees the single in-flight slot right away, rather than leaving every
-    /// future request blocked until the cancelled one gets around to
-    /// finishing on its own (see `generation`).
+    /// result, but this also clears the "thinking" shimmer immediately rather
+    /// than leaving it spinning for a result that will be thrown away.
+    ///
+    /// It does *not* free the slot for a new request: the cancelled
+    /// `respond` keeps running on the Neural Engine regardless, so
+    /// `inFlightRequests` stays raised until it actually returns. Starting a
+    /// fresh inference here instead is what used to stack several of them up
+    /// at once.
     func cancel(noteID: String) {
         debounceWork[noteID]?.cancel()
         debounceWork[noteID] = nil
@@ -122,12 +140,14 @@ final class NoteAutoTitler {
         if let activeNoteID {
             cancel(noteID: activeNoteID)
         }
+        // Don't keep a prewarmed model resident for a feature that is off.
+        warmSessionBox = nil
     }
 
     private func evaluate(noteID: String) {
         guard #available(macOS 26, *) else { return }
         #if canImport(FoundationModels)
-        guard activeTask == nil else { return }
+        guard inFlightRequests == 0 else { return }
         guard let note = store.notes.first(where: { $0.id == noteID }),
               !note.autoTitleLocked
         else { return }
@@ -180,7 +200,7 @@ final class NoteAutoTitler {
     /// note is still eligible for another stage.
     @available(macOS 26, *)
     private func ensureWarmSession() {
-        guard warmSessionBox == nil else { return }
+        guard warmSessionBox == nil, inFlightRequests == 0 else { return }
         let session = LanguageModelSession(instructions: Self.instructions)
         session.prewarm()
         warmSessionBox = session
@@ -215,9 +235,16 @@ final class NoteAutoTitler {
             ?? LanguageModelSession(instructions: Self.instructions)
         warmSessionBox = nil
 
+        inFlightRequests += 1
+
         activeTask = Task { [weak self] in
             guard let self else { return }
             defer {
+                // Unconditional, and outside the generation check below: this
+                // task's inference has now really finished, whether or not it
+                // was superseded while running. A retry re-enters `generate`
+                // and takes its own count, so the two stay balanced.
+                self.inFlightRequests -= 1
                 // `cancel()` may already have moved on (bumping `generation`)
                 // by the time this task — cancelled or not — actually finishes
                 // running `session.respond`. A stale task must not clear state
@@ -244,6 +271,14 @@ final class NoteAutoTitler {
                         // pay the next request's model load now, during
                         // typing, rather than when that request fires.
                         self.ensureWarmSession()
+                    }
+                } else if self.inFlightRequests == 0 {
+                    // Superseded by a cancellation, and nothing else is
+                    // running now. The note on screen may have been held back
+                    // by this request's occupancy, so give it its turn rather
+                    // than making the user type another character.
+                    if let currentID = self.store.currentNote?.id {
+                        self.evaluate(noteID: currentID)
                     }
                 }
             }

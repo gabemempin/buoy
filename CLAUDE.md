@@ -131,9 +131,18 @@ by note id (same "capture the target id at schedule time" rule as
 decode on every keystroke of an unlocked note. When the debounce fires,
 `evaluate` checks the current stage's threshold and runs one
 `LanguageModelSession` request with `@Generable`/`@Guide` guided generation.
-Only one request runs at a time (`activeTask`); its completion re-calls
+Only one request runs at a time, gated on `inFlightRequests` — a count of
+`respond` calls actually executing, **not** `activeTask != nil`. `Task.cancel()`
+is cooperative and `respond` never checks it, so a cancelled request keeps
+occupying the Neural Engine until it finishes; `cancel(noteID:)` clears the
+shimmer and drops the stale result but must not free the slot. Gating on
+`activeTask` instead meant every cancellation (note switch, `createNote`,
+hand-typed title) started another concurrent inference, and since each one also
+runs a second safety-model pass, rapidly creating notes could stack up enough
+of them to bog down the whole machine. A request's completion re-calls
 `evaluate` so a note that crossed the next threshold mid-request doesn't wait
-for another keystroke. The `@Guide` word-count hint on the model output is
+for another keystroke, and a superseded request that finishes last re-evaluates
+the note on screen so nothing is stranded behind it. The `@Guide` word-count hint on the model output is
 advisory only — the real "3 words max" guarantee is
 `NoteAutoTitler.sanitize(_:)`, which trims punctuation/quotes, then trims at
 *word* boundaries (drops trailing connective words like "for"/"the", removes
