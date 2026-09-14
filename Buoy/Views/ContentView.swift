@@ -137,7 +137,8 @@ struct ContentView: View {
             .buoyNextNote:        { navigateNote(forward: true) },
             .openShortcuts:       { toggleShortcuts() },
             .openSettings:        { toggleSettings() },
-            .buoyAutoTitleFailed: { toastState.show("Couldn't name this note", style: .warning) }
+            .buoyAutoTitleFailed: { toastState.show("Couldn't name this note", style: .warning) },
+            .buoyAutoTitleUnsupportedLanguage: { toastState.show("Auto-naming isn't available for this note", style: .warning) }
         ]))
         .onReceive(NotificationCenter.default.publisher(for: .showLinkDialog)) { notif in
             guard !panelPresentation.isMinimized else { return }

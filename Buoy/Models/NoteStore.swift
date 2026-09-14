@@ -52,7 +52,14 @@ final class NoteStore {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.autoTitleEnabled = AppSettings.load().autoTitleEnabled
+            guard let self else { return }
+            let enabled = AppSettings.load().autoTitleEnabled
+            self.autoTitleEnabled = enabled
+            if !enabled {
+                // A pending debounce or an in-flight request must not land
+                // after the user has turned the feature off.
+                self.autoTitler.cancelAll()
+            }
         }
     }
 
@@ -372,8 +379,11 @@ final class NoteStore {
     /// every keystroke to check whether the note reads as empty. Real content
     /// blows past this almost immediately, so the decode in `saveContent`
     /// only ever runs near the empty boundary — never while typing into a
-    /// note that already has substance.
-    private static let nearEmptyRTFSizeThreshold = 600
+    /// note that already has substance. 1500 covers an emptied document that
+    /// still carries a leftover font table, color table, or to-do paragraph
+    /// style — plain RTF overhead that could exceed a tighter gate and leave
+    /// a cleared note stuck with its AI title.
+    private static let nearEmptyRTFSizeThreshold = 1500
 
     func saveContent(_ rtfData: Data) {
         saveContentWork?.cancel()

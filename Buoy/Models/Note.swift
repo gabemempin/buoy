@@ -9,9 +9,10 @@ struct Note: Identifiable, Codable, FetchableRecord, PersistableRecord {
     var updatedAt: Int64
     var isPinned: Bool
     var pinnedOrder: Int64?
-    /// How many auto-title attempts this note has consumed: 0 = untitled by
-    /// AI, 1 = named once (still eligible for the second pass at a longer
-    /// note), 2 = both attempts spent. Never advances once `autoTitleLocked`.
+    /// How many auto-title attempts this note has consumed. Indexes into
+    /// `NoteAutoTitler.thresholds` — 0 is untitled by AI, and the note is
+    /// finished once this reaches `thresholds.count`. Never advances once
+    /// `autoTitleLocked`.
     var autoTitleStage: Int
     /// True once the user has typed a title themselves (or the note was
     /// never eligible, e.g. the Bug Report scratch note) — auto-titling

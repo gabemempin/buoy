@@ -123,16 +123,61 @@ the empty boundary. Reverting re-arms stage 0, so typing again re-triggers at
 note is unlocked, `AppSettings.autoTitleEnabled` is on, and content isn't
 empty. That method is cheap — it just resets a 0.3s coalescing debounce keyed
 by note id (same "capture the target id at schedule time" rule as
-`saveTitle`/`saveContent` above — see the debounced-save bug pattern), and
-prewarms the model once the note reaches 20 characters. When the debounce
-fires, `evaluate` checks the current stage's threshold and runs one
+`saveTitle`/`saveContent` above — see the debounced-save bug pattern). It does
+**not** decode RTF: the plain-text length check that arms the model prewarm
+(20 characters) lives in `evaluate` instead, since `evaluate` already pays for
+`NotePlainText.of(note)` — doing it per keystroke was a guaranteed cache miss
+(`saveContent` bumps `updatedAt` before the check could run) and a full RTF
+decode on every keystroke of an unlocked note. When the debounce fires,
+`evaluate` checks the current stage's threshold and runs one
 `LanguageModelSession` request with `@Generable`/`@Guide` guided generation.
 Only one request runs at a time (`activeTask`); its completion re-calls
 `evaluate` so a note that crossed the next threshold mid-request doesn't wait
 for another keystroke. The `@Guide` word-count hint on the model output is
 advisory only — the real "3 words max" guarantee is
-`NoteAutoTitler.sanitize(_:)`, which trims punctuation/quotes and hard-caps
-at 3 words / 40 characters after the model responds.
+`NoteAutoTitler.sanitize(_:)`, which trims punctuation/quotes, then trims at
+*word* boundaries (drops trailing connective words like "for"/"the", removes
+whole words rather than cutting mid-word to fit 40 characters) and returns
+`nil` — routing to the same failure path as a refusal — rather than handing
+back a truncated fragment.
+
+**Warm session handoff:** one instruction-primed `LanguageModelSession` is
+kept ready in `warmSessionBox` (type-erased to `Any?` — a stored property
+can't be marked `@available`, so only the code that casts it back needs the
+macOS 26 check). `ensureWarmSession()` fills it once the note crosses the
+prewarm character count; `generate` consumes and clears it (falling back to
+building a session on the spot if none is warm) so a note titled long after
+the last one still avoids paying model load on the request the user is
+watching; the completion `defer` calls `ensureWarmSession()` again if the note
+is still unlocked and has a stage left, so the *next* request's load happens
+during typing. Never reuse one session across stages or notes — see the
+comment at the handoff site in `generate` for why (transcript anchoring,
+cross-note contamination, a cancelled-but-still-running `respond` throwing
+`concurrentRequests` on the next call to the same session).
+
+**Failure handling:** `generate`'s `catch` matches on
+`LanguageModelSession.GenerationError` and treats failures differently by
+cause, with a `default:` arm for any case not listed (behaves like a plain
+spend, same as before this was added). `guardrailViolation` and
+`exceededContextWindowSize` retry once with a 240-character excerpt;
+`decodingFailure` retries once with greedy sampling; either retrying twice
+would spin the model on content it will never accept. A retry re-enters
+`generate` for the same `expectedStage`/`nextStage`, which bumps `generation`
+again so `cancel()` still fences it, and `isRetry` blocks a second attempt.
+`rateLimited`, `concurrentRequests`, and `assetsUnavailable` are transient —
+the stage is left unspent and only `titleThinking` is cleared; the next
+keystroke re-arms through the debounce rather than retrying immediately (a
+cancelled `respond` keeps running server-side, so retrying now would likely
+queue behind it). A repeated guardrail refusal or `unsupportedLanguageOrLocale`
+calls `giveUp`, which spends straight to `thresholds.count` (finished, same
+value normal completion and `v7_autoTitleRestage` use) without locking the
+note — revert-on-empty still works if the text is cleared later. The failure
+toast (`.buoyAutoTitleFailed` / `.buoyAutoTitleUnsupportedLanguage`, the
+latter for the give-up-on-language case, routed in `ContentView`'s
+`BuoyNotificationRouter` dictionary since its closures take no argument) only
+fires when `expectedStage == 0` — a failed *refinement* is invisible, since
+the note already has a title and toasting would just repeat what the user can
+already see.
 
 **Reveal + thinking animations:** `NoteStore.applyAutoTitle` sets
 `titleReveal: TitleReveal?` (noteID + title) the instant a title lands, and
