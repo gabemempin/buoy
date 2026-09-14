@@ -474,17 +474,28 @@ struct TitleRevealText: View {
                 isEnabled: !reduceMotion
             ))
             .opacity(reduceMotion && !isRevealed ? 0 : 1)
-            .animation(
-                reduceMotion
-                    ? BuoyMotion.easeOut(Self.reducedMotionDuration)
-                    : .easeOut(duration: totalDuration),
-                value: isRevealed
-            )
             .multilineTextAlignment(.center)
             .onAppear {
-                isRevealed = true
-                DispatchQueue.main.asyncAfter(deadline: .now() + totalDuration) {
-                    onFinished()
+                // Drive the 0 -> 1 change explicitly, one runloop turn after
+                // this view is inserted. Setting it straight from `onAppear`
+                // and relying on `.animation(value:)` is a coin flip: the
+                // state change can land inside the same transaction that
+                // inserts the view, and SwiftUI then commits it with no
+                // animation at all, so the title simply pops in fully drawn.
+                // That is what made the reveal play only sometimes.
+                DispatchQueue.main.async {
+                    withAnimation(
+                        reduceMotion
+                            ? BuoyMotion.easeOut(Self.reducedMotionDuration)
+                            : .easeOut(duration: totalDuration)
+                    ) {
+                        isRevealed = true
+                    }
+                    // Scheduled from here, not from `onAppear`, so the
+                    // hand-back can never beat the animation it is timing.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + totalDuration) {
+                        onFinished()
+                    }
                 }
             }
     }
