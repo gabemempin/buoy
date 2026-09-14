@@ -45,7 +45,31 @@ private final class DragBlockingScrollView: NSScrollView {
     private var accumulatedDeltaX: CGFloat = 0
     private var isTrackingSwipe = false
 
+    /// Shift + wheel accumulation for mice with no horizontal axis, plus the
+    /// timestamps that separate one flick from the next.
+    private var accumulatedWheelDelta: CGFloat = 0
+    private var lastWheelNavigation = Date.distantPast
+    private var lastWheelEvent = Date.distantPast
+
+    /// A wheel reports lines, not points, so this counts notches rather than
+    /// the ~50pt of travel the trackpad path below wants.
+    private static let wheelNavigationThreshold: CGFloat = 2
+    /// Keep one continuous spin from flipping through several notes at once.
+    private static let wheelNavigationCooldown: TimeInterval = 0.35
+    /// A gap this long means the user let go: start the next flick from zero.
+    private static let wheelIdleReset: TimeInterval = 0.5
+
     override func scrollWheel(with event: NSEvent) {
+        // A mouse with only a vertical wheel: hold Shift and scroll. These
+        // events carry no phase at all, so the trackpad path below never sees
+        // them and the note never changes. Precise devices (trackpad, Magic
+        // Mouse) already produce a real horizontal delta, so they keep using
+        // that path and are unaffected by holding Shift.
+        if !event.hasPreciseScrollingDeltas, event.modifierFlags.contains(.shift) {
+            navigateByWheel(event)
+            return
+        }
+
         if event.phase == .began {
             // Initiate tracking if the horizontal intent dominates vertical intent
             isTrackingSwipe = abs(event.scrollingDeltaX) > abs(event.scrollingDeltaY)
@@ -70,6 +94,37 @@ private final class DragBlockingScrollView: NSScrollView {
         if !isTrackingSwipe {
             super.scrollWheel(with: event)
         }
+    }
+
+    /// Turns Shift + wheel into note navigation. The event is consumed either
+    /// way, so the editor doesn't also scroll while the user is holding Shift.
+    private func navigateByWheel(_ event: NSEvent) {
+        let now = Date()
+        defer { lastWheelEvent = now }
+
+        // Still settling from the last jump: swallow the rest of the spin
+        // instead of letting it queue up into another one.
+        guard now.timeIntervalSince(lastWheelNavigation) > Self.wheelNavigationCooldown else {
+            accumulatedWheelDelta = 0
+            return
+        }
+        if now.timeIntervalSince(lastWheelEvent) > Self.wheelIdleReset {
+            accumulatedWheelDelta = 0
+        }
+
+        // AppKit puts Shift + wheel on the X axis for some setups and leaves
+        // it on Y for others, so take whichever axis actually moved.
+        let delta = event.scrollingDeltaX != 0 ? event.scrollingDeltaX : event.scrollingDeltaY
+        guard delta != 0 else { return }
+        accumulatedWheelDelta += delta
+
+        guard abs(accumulatedWheelDelta) >= Self.wheelNavigationThreshold else { return }
+        NotificationCenter.default.post(
+            name: accumulatedWheelDelta > 0 ? .buoyPreviousNote : .buoyNextNote,
+            object: nil
+        )
+        accumulatedWheelDelta = 0
+        lastWheelNavigation = now
     }
 
     override var intrinsicContentSize: NSSize {
