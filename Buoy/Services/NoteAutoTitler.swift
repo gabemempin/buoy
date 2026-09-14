@@ -71,11 +71,28 @@ final class NoteAutoTitler {
         self.store = store
     }
 
+    /// Master switch for shipping the feature at all, independent of whether
+    /// the Mac could run it.
+    ///
+    /// Auto-titling and the link popover landed in the same commit and touch
+    /// the same files, so there is no clean commit to leave out of a release.
+    /// Instead the whole thing ships inert: flipping this to `false` hides the
+    /// Settings row, removes the height it needs, and stops `NoteStore` from
+    /// ever calling in, because every one of those gates reads `isSupported`
+    /// below. Flip it back to `true` to release the feature — no merge work.
+    ///
+    /// The GRDB migrations stay in either way. They are additive and harmless
+    /// with the feature off, and keeping them means users on this build have
+    /// the same schema as users on the build that finally enables it.
+    private static let featureEnabled = false
+
     /// Whether this Mac can run the on-device model right now: Apple Silicon,
     /// macOS 26+, Apple Intelligence enabled, model ready. Anything else
     /// (including "still downloading") reports `false` — the feature simply
-    /// stays hidden rather than half-working.
+    /// stays hidden rather than half-working. Also `false` whenever
+    /// `featureEnabled` is off, which is the single switch for the release.
     static var isSupported: Bool {
+        guard featureEnabled else { return false }
         guard #available(macOS 26, *) else { return false }
         #if canImport(FoundationModels)
         return SystemLanguageModel.default.availability == .available
