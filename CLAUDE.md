@@ -270,11 +270,12 @@ rules said the list was grouped but never why. Headers appear only when there
 is more than one section, and a drop on one means the start of the section it
 names.
 
-**The outline view uses `NSTableView.Style.inset`, not `.plain`.** That is
-where the row's horizontal margin comes from — AppKit insets the row frames, so
-the selection fill stops short of the panel's rounded edge instead of bleeding
-into it. Do not reintroduce a hand-picked inset constant; the system's number is
-the one that matches every other macOS list.
+**Row margins: `.plain` style, pill inset drawn in SwiftUI.** The row's text
+sits 10pt from the panel edge, level with the section headers, and the fill
+behind it stops 4pt short so it never runs into the panel's rounded corner.
+`NSTableView.Style.inset` was tried and reverted: its margin *stacks* on the
+row's own content padding, which at Buoy's panel width pushed the titles about
+twice as far in as the headers. Change the pill inset, not the table style.
 
 **Row action buttons are bare glyphs with a press state.** `RowActionButton` /
 `RowActionButtonStyle` in `AllNotesPanel.swift`. A filled chip behind every

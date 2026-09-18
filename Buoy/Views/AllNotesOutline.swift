@@ -310,11 +310,12 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
         outlineView.rowSizeStyle = .custom
         outlineView.intercellSpacing = NSSize(width: 0, height: 0)
         outlineView.gridStyleMask = []
-        // `.inset` is the system's own list inset (macOS 11+): AppKit insets the
-        // row frames from the table's edges, so the selection fill stops short
-        // of the panel edge instead of bleeding into its rounded corner. Using
-        // the platform style means the margin is Apple's number, not a guess.
-        outlineView.style = .inset
+        // `.plain`, with the row's own pill inset drawn in SwiftUI. `.inset`
+        // was tried and reverted: its margin *stacks* on top of the row's
+        // content padding, which at this panel width pushed the titles about
+        // twice as far in as the section headers. The row keeps its text where
+        // the headers are and insets only the fill.
+        outlineView.style = .plain
         // Selection is drawn by the SwiftUI row from `currentNoteID`.
         outlineView.selectionHighlightStyle = .none
         // The panel is non-activating and the editor keeps first responder;

@@ -159,7 +159,7 @@ struct AllNotesSectionHeader: View {
                 .foregroundStyle(.tertiary)
                 .lineLimit(1)
         }
-        .padding(.horizontal, 8)
+        .padding(.horizontal, 10)
         .padding(.top, showsRule ? 4 : 2)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
         .accessibilityElement(children: .ignore)
@@ -257,14 +257,18 @@ struct NoteRow: View {
                 )
             }
         }
-        .padding(.leading, 8)
-        .padding(.trailing, 4)
+        // Text sits 10pt from the panel edge, level with the section headers.
+        // The pill it sits in stops 4pt short of that edge so the fill never
+        // runs into the panel's rounded corner.
+        .padding(.leading, 6)
+        .padding(.trailing, 2)
         .padding(.vertical, 4)
         .background(
             RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .fill(isActive ? Color.buoySelectionFill : Color.clear)
         )
-        .padding(.leading, isIndented ? PanelLayoutMetrics.allNotesChildIndent : 0)
+        .padding(.leading, 4 + (isIndented ? PanelLayoutMetrics.allNotesChildIndent : 0))
+        .padding(.trailing, 4)
         .animation(BuoyMotion.easeInOut(0.1), value: isHovering)
         .accessibilityElement(children: .contain)
         .accessibilityAddTraits(isActive ? [.isButton, .isSelected] : .isButton)
@@ -344,9 +348,11 @@ struct FolderRow: View {
                 )
             }
         }
-        .padding(.leading, 8)
-        .padding(.trailing, 4)
+        .padding(.leading, 6)
+        .padding(.trailing, 2)
         .padding(.vertical, 3)
+        .padding(.leading, 4)
+        .padding(.trailing, 4)
         .animation(BuoyMotion.easeInOut(0.1), value: isHovering)
         .animation(BuoyMotion.easeOut(0.18), value: isExpanded)
         .accessibilityElement(children: .contain)
