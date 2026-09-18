@@ -1,15 +1,21 @@
 # All Notes rewrite — manual test checklist
 
+> **Automated pass, 2026-09-18.** Items marked `[x]` were driven and verified
+> with real synthesized input against the running Debug build. Everything still
+> marked `[ ]` needs your hands. The drag items below were genuinely exercised —
+> a real press, intermediate motion and release — not a single synthetic
+> click-drag, so they carry weight.
+
 Everything below is hand-testable in a Debug build. Ordered by risk: the top
 group is where a regression would be worst and where the implementation is
 newest. Tick as you go; anything that fails, note which section it was in.
 
 ## 1. Click vs drag (the bug you hit)
 
-- [ ] Click a note row in **All Notes** → it opens and the panel closes. No lift, no flash.
+- [x] Click a note row in **All Notes** → it opens and the panel closes. No lift, no flash.
 - [ ] Press and hold a row for 2 seconds without moving, release → same as a click, nothing else happens.
 - [ ] Drag a **pinned** row and drop it elsewhere in the pinned band → it reorders and **the panel stays open**.
-- [ ] Drag a row and release somewhere invalid → the card slides back and the panel stays open.
+- [x] Drag a row and release somewhere invalid → the card slides back and the panel stays open.
 - [ ] Drag a row, release outside the panel entirely → nothing happens, panel stays open.
 - [ ] Drag while a search is active → nothing drags at all (drag is off while searching).
 
@@ -18,11 +24,11 @@ newest. Tick as you go; anything that fails, note which section it was in.
 These depend on SwiftUI reporting its button frames to AppKit. If the mechanism
 is broken they are *silently* dead, so click every one.
 
-- [ ] Hover a note row → pin and x appear. Click the pin → it pins, row jumps to the pinned band.
-- [ ] Click the pin again on the pinned row → unpins.
+- [x] Hover a note row → pin and x appear. Click the pin → it pins, row jumps to the pinned band.
+- [x] Click the pin again on the pinned row → unpins.
 - [ ] Click the x → delete confirm appears, Return deletes.
 - [ ] Hover a folder row → pencil and x appear, both clickable.
-- [ ] Move between two adjacent rows quickly → buttons follow the pointer, never stick on the row you left.
+- [x] Move between two adjacent rows quickly → buttons follow the pointer, never stick on the row you left.
 - [ ] After a drag and drop, move the mouse away → no row keeps its hover buttons.
 
 ## 3. Folder rename
@@ -39,9 +45,9 @@ is broken they are *silently* dead, so click every one.
 
 ## 4. Folder drag semantics
 
-- [ ] Drag a note from **All Notes** onto a folder → count increments, and the note is **still listed in All Notes**.
-- [ ] Expand that folder → the note is inside it.
-- [ ] Drag the child **out** to the All Notes section → it leaves the folder; All Notes is unchanged.
+- [x] Drag a note from **All Notes** onto a folder → count increments, and the note is **still listed in All Notes**.
+- [x] Expand that folder → the note is inside it.
+- [x] Drag the child **out** to the All Notes section → it leaves the folder; All Notes is unchanged.
 - [ ] Drag a child between two other children of the same folder → reorders.
 - [ ] Drag a child onto a *different* folder → moves, both counts update.
 - [ ] Drag a **pinned** note onto a folder → it is in the pinned band, the folder, and All Notes at once, pin icon in all three.
@@ -53,7 +59,7 @@ is broken they are *silently* dead, so click every one.
 ## 5. Folder disclosure and persistence
 
 - [ ] Click a folder row anywhere → toggles open/closed.
-- [ ] Only **one** chevron is visible on a folder row. (AppKit's own triangle should be suppressed.)
+- [x] Only **one** chevron is visible on a folder row. (AppKit's own triangle should be suppressed.)
 - [ ] Collapse a folder, quit Buoy, relaunch → still collapsed.
 - [ ] File a note into a **collapsed** folder → the count increments even though nothing expands.
 
@@ -67,9 +73,9 @@ is broken they are *silently* dead, so click every one.
 ## 7. Sections and layout
 
 - [ ] With no pins and no folders → just a flat All Notes list, no stray dividers.
-- [ ] With pins but no folders → Pinned, one divider, All Notes.
+- [x] With pins but no folders → Pinned, one divider, All Notes.
 - [ ] With folders but no pins → Folders, one divider, All Notes.
-- [ ] Panel is noticeably wider than before and does not overlap the traffic lights at the smallest window size.
+- [x] Panel is noticeably wider than before and does not overlap the traffic lights at the smallest window size.
 - [ ] Resize the window to minimum → panel still fits, no horizontal clipping.
 
 ## 8. Search
@@ -90,12 +96,22 @@ is broken they are *silently* dead, so click every one.
 
 ## 10. Things the rewrite touched indirectly
 
-- [ ] ⌘⌫ still deletes the current note with its confirm dialog.
+- [x] ⌘⌫ still deletes the current note with its confirm dialog.
 - [ ] ⌘← / ⌘→ still navigate notes and are unaffected by folders.
 - [ ] Deleting the note that is currently open falls back to a neighbour.
 - [ ] Delete a note that is inside a folder → folder count drops, no gap left behind.
 - [ ] Harbor Mode (⌘M) while All Notes is open → no crash, panel dismisses cleanly.
 - [ ] The cursor stays an arrow over the panel and never turns into an I-beam.
+
+## Found and fixed during the automated pass
+
+- On opening the panel, a row could show its hover controls while the pointer
+  was somewhere else entirely, and stay that way until the mouse was moved.
+  AppKit delivers `mouseEntered` when the tracking area is installed before the
+  row's geometry settles. Hover is now derived from the pointer's real location
+  rather than from the enter/exit event, which also covers the missing exit on
+  a drag's source row. **Re-check this one**: open the panel without moving the
+  mouse and confirm no row shows pin/x controls.
 
 ## Known, deliberate
 

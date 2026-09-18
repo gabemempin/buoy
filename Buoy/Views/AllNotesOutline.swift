@@ -180,6 +180,7 @@ extension View {
 final class NotesRowView: NSTableRowView {
     var onHoverChange: ((Bool) -> Void)?
     private var hoverTrackingArea: NSTrackingArea?
+    private var isPointerInside = false
 
     override func drawSeparator(in dirtyRect: NSRect) {}
 
@@ -194,14 +195,41 @@ final class NotesRowView: NSTableRowView {
         )
         addTrackingArea(area)
         hoverTrackingArea = area
+        syncHover()
+    }
+
+    override func prepareForReuse() {
+        super.prepareForReuse()
+        isPointerInside = false
     }
 
     override func mouseEntered(with event: NSEvent) {
-        onHoverChange?(true)
+        syncHover()
     }
 
     override func mouseExited(with event: NSEvent) {
-        onHoverChange?(false)
+        syncHover()
+    }
+
+    /// Derive hover from where the pointer actually is rather than trusting the
+    /// enter/exit event that woke us.
+    ///
+    /// AppKit delivers `mouseEntered` when the tracking area is installed
+    /// before the row's geometry has settled, which left a row showing its
+    /// hover controls with the pointer somewhere else entirely — and because
+    /// the pointer then never entered or left that row, nothing cleared it
+    /// until the user happened to move the mouse. Re-reading the real location
+    /// also covers the case where no exit is delivered at all, which is what
+    /// happens for the source row of a drag.
+    private func syncHover() {
+        guard let window else { return }
+        let point = convert(window.mouseLocationOutsideOfEventStream, from: nil)
+        let inside = !bounds.isEmpty && bounds.contains(point)
+        // Bailing when nothing changed also stops the refresh this triggers
+        // from re-entering through layout.
+        guard inside != isPointerInside else { return }
+        isPointerInside = inside
+        onHoverChange?(inside)
     }
 }
 
