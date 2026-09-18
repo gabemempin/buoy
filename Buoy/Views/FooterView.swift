@@ -5,7 +5,6 @@ struct FooterView: View {
     var updatedAt: Int64
     var plainText: String = ""
     var selectedText: String = ""
-    var onShortcuts: () -> Void
     var onSettings: () -> Void
     var onTransferToAppleNotes: () -> Void
     var onCopy: () -> Void
@@ -58,7 +57,6 @@ struct FooterView: View {
         }
     }
 
-    @State private var isShortcutsHovering = false
     @State private var isSettingsHovering = false
     @State private var isSendHovering = false
     @State private var isMoreHovering = false
@@ -87,25 +85,6 @@ struct FooterView: View {
             .padding(.horizontal, 8)
             .padding(.bottom, metrics.footerInfoBottomPadding)
 
-            if showTransfer && !isBugReport {
-                HStack {
-                    Spacer()
-                    Button(action: onTransferToAppleNotes) {
-                        Text("Transfer to Apple Notes")
-                            .font(metrics.footerTransferFont)
-                            .foregroundStyle(.primary)
-                            .padding(.horizontal, metrics.footerCopyHorizontalPadding + 2)
-                            .padding(.vertical, metrics.footerCopyVerticalPadding)
-                            .overlay(Capsule().stroke(Color.buoyOutlineStroke, lineWidth: 0.8))
-                    }
-                    .buttonStyle(.plain)
-                    .help("Send to Apple Notes")
-                    .accessibilityLabel("Transfer to Apple Notes")
-                }
-                .padding(.horizontal, 8)
-                .transition(BuoyMotion.transition(.opacity.combined(with: .move(edge: .bottom))))
-            }
-
             HStack(spacing: metrics.footerButtonSpacing) {
                 if isBugReport {
                     Button(action: { onCancelBugReport?() }) {
@@ -122,19 +101,9 @@ struct FooterView: View {
                     .buoyAccentCapsule(color: .red, isHovering: isCancelHovering)
                     .onHover { isCancelHovering = $0 }
                 } else {
-                    Button(action: onShortcuts) {
-                        Image(systemName: "keyboard")
-                            .font(.system(size: metrics.footerButtonIconSize))
-                            .foregroundStyle(Color.buoyOnAccent(isProminent: isShortcutsHovering))
-                            .frame(width: metrics.footerButtonSize, height: metrics.footerButtonSize)
-                            .contentShape(Circle())
-                            .buoyAccentCircle(isHovering: isShortcutsHovering)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Keyboard Shortcuts")
-                    .accessibilityLabel("Keyboard Shortcuts")
-                    .onHover { isShortcutsHovering = $0 }
-
+                    // Shortcuts used to have a button of its own here. It is a
+                    // page inside Settings now, and two gateways to the same
+                    // window is one more than the footer has room for.
                     Button(action: onSettings) {
                         Image(systemName: "gearshape")
                             .font(.system(size: metrics.footerButtonIconSize))
@@ -173,7 +142,7 @@ struct FooterView: View {
                 } else {
                     HStack(spacing: 0) {
                         Button {
-                            withAnimation(BuoyMotion.easeOut(0.16)) { showTransfer.toggle() }
+                            showTransfer.toggle()
                         } label: {
                             Image(systemName: showTransfer ? "chevron.up" : "chevron.down")
                                 .font(.system(size: metrics.footerChevronIconSize, weight: .semibold))
@@ -187,6 +156,23 @@ struct FooterView: View {
                         .accessibilityLabel("More actions")
                         .accessibilityValue(showTransfer ? "Expanded" : "Collapsed")
                         .onHover { isMoreHovering = $0 }
+                        // A popover rather than a row that unfolds above the
+                        // bar: that row pushed the editor up every time it
+                        // opened, so glancing at one extra action reflowed the
+                        // note you were reading.
+                        .popover(isPresented: $showTransfer, arrowEdge: .top) {
+                            Button(action: {
+                                showTransfer = false
+                                onTransferToAppleNotes()
+                            }) {
+                                Label("Transfer to Apple Notes", systemImage: "arrow.up.forward.app")
+                            }
+                            .buttonStyle(.plain)
+                            .pointingHandCursor()
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            .accessibilityLabel("Transfer to Apple Notes")
+                        }
 
                         Rectangle()
                             .fill(Color.buoyOnAccentSeparator)

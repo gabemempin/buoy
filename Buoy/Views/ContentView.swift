@@ -37,7 +37,6 @@ struct ContentView: View {
     var onMinimizedWidthChange: ((CGFloat) -> Void)?
     var onCornerResizeAvailabilityChange: ((Bool) -> Void)?
     var onOpenSettings: () -> Void
-    var onOpenShortcuts: () -> Void
     var onClose: () -> Void
     var onMinimize: () -> Void
     var onExpand: () -> Void
@@ -103,7 +102,6 @@ struct ContentView: View {
         onMinimizedWidthChange: ((CGFloat) -> Void)? = nil,
         onCornerResizeAvailabilityChange: ((Bool) -> Void)? = nil,
         onOpenSettings: @escaping () -> Void,
-        onOpenShortcuts: @escaping () -> Void,
         onClose: @escaping () -> Void,
         onMinimize: @escaping () -> Void,
         onExpand: @escaping () -> Void,
@@ -117,7 +115,6 @@ struct ContentView: View {
         self.onMinimizedWidthChange = onMinimizedWidthChange
         self.onCornerResizeAvailabilityChange = onCornerResizeAvailabilityChange
         self.onOpenSettings = onOpenSettings
-        self.onOpenShortcuts = onOpenShortcuts
         self.onClose = onClose
         self.onMinimize = onMinimize
         self.onExpand = onExpand
@@ -237,8 +234,11 @@ struct ContentView: View {
             .background(
                 ChromeDensityReader(
                     density: $chromeDensity,
-                    isForced: settings.compactChrome,
-                    isSuspended: panelPresentation.isMinimized || isRestoringFromHarbor
+                    isSuspended: panelPresentation.isMinimized || isRestoringFromHarbor,
+                    onEnteredCompact: {
+                        guard !showOnboarding, !showWhatsNew, !isBugReport else { return }
+                        toastState.show("Entered Compact Mode")
+                    }
                 )
             )
             .background(WindowDragBlocker())
@@ -376,7 +376,6 @@ struct ContentView: View {
                     updatedAt: noteStore.currentNote?.updatedAt ?? 0,
                     plainText: noteStore.currentNote.map(NotePlainText.of) ?? "",
                     selectedText: editorSelectedText,
-                    onShortcuts: onOpenShortcuts,
                     onSettings:  onOpenSettings,
                     onTransferToAppleNotes: transferToAppleNotes,
                     onCopy: copyToClipboard,

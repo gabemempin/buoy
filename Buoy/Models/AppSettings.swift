@@ -18,10 +18,6 @@ struct AppSettings: Codable {
     var dismissedUpdateVersion: String? = nil
     var lastSeenWhatsNewVersion: String? = nil
     var autoTitleEnabled: Bool = true
-    /// Draw the panel's controls at the compact size regardless of its height.
-    /// Shortening the panel turns compact chrome on by itself; this is for
-    /// users who simply prefer the smaller controls.
-    var compactChrome: Bool = false
     /// Hue washed over the panel's glass. `nil` is the untinted default.
     var windowTint: HSBColor? = nil
     /// How strongly `windowTint` shows through, 0...1.
@@ -60,7 +56,6 @@ struct AppSettings: Codable {
         onboarded = flag(.onboarded, fallback.onboarded)
         hasSeenHarborModeTip = flag(.hasSeenHarborModeTip, fallback.hasSeenHarborModeTip)
         autoTitleEnabled = flag(.autoTitleEnabled, fallback.autoTitleEnabled)
-        compactChrome = flag(.compactChrome, fallback.compactChrome)
 
         fontSize = (try? container.decodeIfPresent(CGFloat.self, forKey: .fontSize)) ?? nil ?? fallback.fontSize
         theme = (try? container.decodeIfPresent(AppTheme.self, forKey: .theme)) ?? nil ?? fallback.theme

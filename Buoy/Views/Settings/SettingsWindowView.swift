@@ -62,13 +62,15 @@ struct SettingsWindowView: View {
     private var detail: some View {
         switch page {
         case .general:
-            GeneralSettingsPage(settings: $store.value)
+            GeneralSettingsPage(
+                settings: $store.value,
+                onReportBug: onReportBug,
+                onQuit: onQuit
+            )
         case .appearance:
             AppearanceSettingsPage(settings: $store.value)
         case .shortcuts:
             ShortcutsSettingsPage(settings: $store.value)
-        case .about:
-            AboutSettingsPage(onReportBug: onReportBug, onQuit: onQuit)
         }
     }
 }
@@ -80,8 +82,12 @@ final class SettingsWindowModel {
 
 enum SettingsWindowMetrics {
     static let topBarHeight: CGFloat = 52
-    static let contentWidth: CGFloat = 660
-    static let contentHeight: CGFloat = 540
+    static let contentWidth: CGFloat = 580
+    static let contentHeight: CGFloat = 470
+    /// Forms stop here and centre in whatever is left. A grouped form that
+    /// fills the whole window leaves its controls stranded at the far right,
+    /// a long way from the labels they belong to.
+    static let formMaxWidth: CGFloat = 500
 }
 
 /// Shared page shell: a grouped `Form` with the window background showing
@@ -95,5 +101,7 @@ struct SettingsForm<Content: View>: View {
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
+        .frame(maxWidth: SettingsWindowMetrics.formMaxWidth)
+        .frame(maxWidth: .infinity)
     }
 }

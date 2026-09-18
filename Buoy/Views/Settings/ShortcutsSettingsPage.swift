@@ -26,11 +26,25 @@ struct ShortcutsSettingsPage: View {
                 }
             }
 
-            Section("Formatting and Editing") {
+            Section {
                 ForEach(BuoyCommand.fixed.indices, id: \.self) { index in
                     let item = BuoyCommand.fixed[index]
                     ShortcutReferenceRow(label: item.title, keys: item.keys)
                 }
+            } header: {
+                HStack(spacing: 5) {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 9))
+                        .accessibilityHidden(true)
+                    Text("Formatting and Editing")
+                }
+            } footer: {
+                // Every row above this section carries an Edit button, so
+                // without saying otherwise these read as ones nobody has got
+                // round to making editable yet.
+                Text("These match the shortcuts every Mac app uses and can't be changed.")
+                    .font(BuoyFont.secondary)
+                    .foregroundStyle(.secondary)
             }
 
             Section {

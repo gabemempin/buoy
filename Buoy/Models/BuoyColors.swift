@@ -41,7 +41,7 @@ struct HSBColor: Codable, Hashable {
     /// The nine hue families the picker names back to the user. Nobody wants to
     /// read a hex value out of a colour wheel, but "Teal" is worth knowing.
     var familyName: String {
-        guard saturation > 0.08 else { return "Grey" }
+        guard saturation > 0.08 else { return BuoyWording.gray }
         switch hue * 360 {
         case ..<15, 345...:  return "Red"
         case ..<45:          return "Orange"

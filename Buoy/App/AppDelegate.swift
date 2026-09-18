@@ -335,7 +335,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 self?.cornerResizeOverlayController.setEnabled(isAvailable)
             },
             onOpenSettings: { [weak self] in self?.openSettings() },
-            onOpenShortcuts: { [weak self] in self?.openShortcutsSettings() },
             onClose: { [weak self] in self?.hidePanel() },
             onMinimize: { [weak self] in self?.enterMinimizedMode() },
             onExpand: { [weak self] in self?.toggleExpand() },
@@ -473,13 +472,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             newNote.keyEquivalentModifierMask = equivalent.modifiers
         }
 
-        let shortcuts = menu.addItem(
-            withTitle: "Keyboard Shortcuts",
-            action: #selector(openShortcutsFromMenu),
-            keyEquivalent: ""
-        )
-        shortcuts.target = self
-
         menu.addItem(.separator())
 
         let settingsItem = menu.addItem(withTitle: "Settings…", action: #selector(openSettings), keyEquivalent: "")
@@ -507,10 +499,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         showPanel()
         if panelPresentation.isMinimized { exitMinimizedMode() }
         NotificationCenter.default.post(name: .buoyNewNote, object: nil)
-    }
-
-    @objc private func openShortcutsFromMenu() {
-        openShortcutsSettings()
     }
 
     // MARK: - Panel Show/Hide
@@ -768,10 +756,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         settingsWindowController.show(page: .general)
     }
 
-    @objc func openShortcutsSettings() {
-        settingsWindowController.show(page: .shortcuts)
-    }
-
     /// Creates the ephemeral bug-report note. Called from the About page, which
     /// lives in another window, so the panel has to be brought back first.
     private func startBugReport() {
@@ -858,6 +842,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         var constrainedSize = frameSize
         constrainedSize.width = max(constrainedSize.width, floor.width)
         constrainedSize.height = max(constrainedSize.height, floor.height)
+
+        // Hold a detent either side of the compact threshold, so a drag pauses
+        // at the boundary and then pops across rather than sliding through it.
+        if !usesMinimizedLayout {
+            let live = sender.frame.size
+            constrainedSize.width = PanelLayoutMetrics.detented(
+                proposed: constrainedSize.width,
+                current: live.width,
+                threshold: PanelLayoutMetrics.compactChromeEnterWidth
+            )
+            constrainedSize.height = PanelLayoutMetrics.detented(
+                proposed: constrainedSize.height,
+                current: live.height,
+                threshold: PanelLayoutMetrics.compactChromeEnterHeight
+            )
+        }
 
         if overlayOverrideHeight > 0 {
             let minWindowHeight = overlayOverrideHeight + sender.frame.height - sender.contentRect(forFrameRect: sender.frame).height

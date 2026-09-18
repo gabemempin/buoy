@@ -136,13 +136,18 @@ struct ShortcutReferenceRow: View {
     let keys: String
 
     var body: some View {
-        LabeledContent(label) {
+        LabeledContent {
             Text(keys)
                 .font(BuoyFont.secondaryEmphasized)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.tertiary)
                 .monospacedDigit()
+        } label: {
+            // Dimmed to match its keys. A fixed row that looks exactly like an
+            // editable one, minus the button, invites a hunt for the button.
+            Text(label).foregroundStyle(.secondary)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(label), \(keys)")
+        .accessibilityHint("This shortcut can't be changed")
     }
 }

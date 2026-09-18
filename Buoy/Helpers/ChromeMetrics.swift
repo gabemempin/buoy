@@ -188,20 +188,22 @@ extension EnvironmentValues {
 /// AppKit-to-SwiftUI size channel is exactly what that was protecting against.
 struct ChromeDensityReader: View {
     @Binding var density: ChromeDensity
-    /// The Settings toggle. When on, the density is compact whatever the
-    /// panel's height, so a user who simply prefers smaller controls gets them.
-    var isForced: Bool
     /// Harbor Mode unmounts this whole tree and animates the frame to pill
     /// size; a density recomputed from those intermediate heights would be
     /// meaningless and would land just as the panel is restoring.
     var isSuspended: Bool
+    /// Fired when a resize crossed into compact chrome, so the panel can say
+    /// so. Not called for the first reading, which only establishes where the
+    /// panel started.
+    var onEnteredCompact: (() -> Void)? = nil
+
+    @State private var hasRead = false
 
     var body: some View {
         GeometryReader { proxy in
             Color.clear
                 .onAppear { update(glassSize: proxy.size) }
                 .onChange(of: proxy.size) { _, size in update(glassSize: size) }
-                .onChange(of: isForced) { _, _ in update(glassSize: proxy.size) }
         }
         .allowsHitTesting(false)
     }
@@ -210,9 +212,14 @@ struct ChromeDensityReader: View {
         guard !isSuspended else { return }
         let inset = PanelLayoutMetrics.glassEdgeInset * 2
         let windowSize = CGSize(width: glassSize.width + inset, height: glassSize.height + inset)
-        let next = Self.density(forWindowSize: windowSize, isForced: isForced, current: density)
+        let next = Self.density(forWindowSize: windowSize)
+        let wasFirstReading = !hasRead
+        hasRead = true
         guard next != density else { return }
         withAnimation(BuoyMotion.easeOut(0.15)) { density = next }
+        // The first reading only establishes where the panel started; it is
+        // not something the user just did and must not announce itself.
+        if next == .compact, !wasFirstReading { onEnteredCompact?() }
     }
 
     /// Hysteresis: compact engages the moment regular chrome no longer fits,
@@ -220,24 +227,18 @@ struct ChromeDensityReader: View {
     /// gap, a drag parked on the boundary flickers the whole chrome.
     /// Either axis can ask for compact chrome, and regular only comes back
     /// when both have room for it.
-    static func density(
-        forWindowSize size: CGSize,
-        isForced: Bool,
-        current: ChromeDensity
-    ) -> ChromeDensity {
-        if isForced { return .compact }
-        switch current {
-        case .regular:
-            // Half a point of slack: the panel launches at exactly the regular
-            // minimum on both axes, and a rounding difference in the measured
-            // glass size would otherwise start it in compact chrome.
-            let tooShort = size.height < PanelLayoutMetrics.compactChromeEnterHeight - 0.5
-            let tooNarrow = size.width < PanelLayoutMetrics.compactChromeEnterWidth - 0.5
-            return (tooShort || tooNarrow) ? .compact : .regular
-        case .compact:
-            let tallEnough = size.height >= PanelLayoutMetrics.compactChromeExitHeight
-            let wideEnough = size.width >= PanelLayoutMetrics.compactChromeExitWidth
-            return (tallEnough && wideEnough) ? .regular : .compact
-        }
+    ///
+    /// No hysteresis band here any more: the panel physically cannot come to
+    /// rest near the threshold, because `AppDelegate.windowWillResize` holds a
+    /// detent there and makes the drag jump across. A second, softer boundary
+    /// on top of that one would only put the chrome out of step with the size.
+    ///
+    /// Half a point of slack all the same, because the panel launches at
+    /// exactly the regular minimum and a rounding difference in the measured
+    /// glass size should not start it compact.
+    static func density(forWindowSize size: CGSize) -> ChromeDensity {
+        let tooShort = size.height < PanelLayoutMetrics.compactChromeEnterHeight - 0.5
+        let tooNarrow = size.width < PanelLayoutMetrics.compactChromeEnterWidth - 0.5
+        return (tooShort || tooNarrow) ? .compact : .regular
     }
 }

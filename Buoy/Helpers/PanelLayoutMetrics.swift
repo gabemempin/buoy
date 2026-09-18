@@ -83,10 +83,7 @@ enum PanelLayoutMetrics {
     /// the width it launches at.
     static let regularChromeWindowWidth: CGFloat = minimumWindowWidth(for: .regular)
 
-    /// Hysteresis for the width half of the density switch, mirroring the
-    /// height thresholds.
     static let compactChromeEnterWidth: CGFloat = regularChromeWindowWidth
-    static let compactChromeExitWidth: CGFloat = regularChromeWindowWidth + 14
 
     static func minimumGlassHeight(for metrics: ChromeMetrics) -> CGFloat {
         (windowPadding * 2)
@@ -114,11 +111,32 @@ enum PanelLayoutMetrics {
     /// the height it launches at.
     static let regularChromeWindowHeight: CGFloat = minimumWindowHeight(for: .regular)
 
-    /// Hysteresis for the automatic density switch. Going compact and going
-    /// back have different thresholds so a slow drag across the boundary
-    /// cannot flicker the chrome between two sizes.
     static let compactChromeEnterHeight: CGFloat = regularChromeWindowHeight
-    static let compactChromeExitHeight: CGFloat = regularChromeWindowHeight + 14
+
+    /// How far a resize has to be pushed past the compact threshold before it
+    /// gives way.
+    ///
+    /// The panel sticks at the boundary for this many points and then jumps
+    /// clear of it, so switching density is a thing the user does rather than
+    /// something that happens in passing. It also means the panel can never
+    /// come to rest near the threshold, which is what lets the density switch
+    /// drop its own hysteresis and follow the size exactly.
+    static let compactChromeDetentResistance: CGFloat = 22
+
+    /// Applies that detent to one axis of a live resize.
+    ///
+    /// `current` decides which side the panel is stuck to, so the drag has to
+    /// cross the whole band to flip — coming back up is as deliberate as going
+    /// down was.
+    static func detented(
+        proposed: CGFloat,
+        current: CGFloat,
+        threshold: CGFloat
+    ) -> CGFloat {
+        let floor = threshold - compactChromeDetentResistance
+        guard proposed > floor, proposed < threshold else { return proposed }
+        return current >= threshold ? threshold : floor
+    }
 
     static let maximumAutoHeight: CGFloat = 700 + (glassEdgeInset * 2)
 
