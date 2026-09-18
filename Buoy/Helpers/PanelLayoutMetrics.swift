@@ -37,6 +37,12 @@ enum PanelLayoutMetrics {
     /// A labelled section header ("Pinned", "Folders", "All Notes"). A bare
     /// rule told the user the list was grouped but never why.
     static let allNotesHeaderRowHeight: CGFloat = 26
+    /// Left inset on the list itself. AppKit draws the drop indicator from the
+    /// row's leading edge and its round end cap overhangs to the *left* of
+    /// that, so without this the circle is clipped against the panel edge.
+    /// Rows subtract the same amount from their own leading padding, so this
+    /// buys the indicator room without moving any text.
+    static let allNotesListLeadingInset: CGFloat = 5
     /// Extra leading inset for a note shown inside a folder.
     static let allNotesChildIndent: CGFloat = 18
     static let footerOverlayBottomInset: CGFloat = 43

@@ -310,6 +310,16 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
         scrollView.autohidesScrollers = true
         // Keep the scroller clear of the panel's rounded bottom corner.
         scrollView.scrollerInsets = NSEdgeInsets(top: 2, left: 0, bottom: 8, right: 2)
+        // Room for the drop indicator's left end cap, which AppKit draws
+        // overhanging the row's leading edge. The rows give the same amount
+        // back, so this is invisible until something is being dragged.
+        scrollView.automaticallyAdjustsContentInsets = false
+        scrollView.contentInsets = NSEdgeInsets(
+            top: 0,
+            left: PanelLayoutMetrics.allNotesListLeadingInset,
+            bottom: 0,
+            right: 0
+        )
 
         let outlineView = NotesOutlineView()
         outlineView.headerView = nil

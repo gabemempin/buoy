@@ -166,7 +166,8 @@ struct AllNotesSectionHeader: View {
                 .foregroundStyle(.primary)
                 .lineLimit(1)
         }
-        .padding(.horizontal, 10)
+        .padding(.leading, 10 - PanelLayoutMetrics.allNotesListLeadingInset)
+        .padding(.trailing, 10)
         .padding(.top, showsRule ? 4 : 2)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
         .accessibilityElement(children: .ignore)
@@ -375,7 +376,11 @@ struct NoteRow: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(isActive ? Color.buoySelectionFill : Color.clear)
         )
-        .padding(.leading, 4 + (isIndented ? PanelLayoutMetrics.allNotesChildIndent : 0))
+        .padding(
+            .leading,
+            max(0, 4 - PanelLayoutMetrics.allNotesListLeadingInset)
+                + (isIndented ? PanelLayoutMetrics.allNotesChildIndent : 0)
+        )
         .padding(.trailing, 4)
         .animation(BuoyMotion.easeInOut(0.1), value: isHovering)
         .accessibilityElement(children: .contain)
@@ -464,7 +469,7 @@ struct FolderRow: View {
         .padding(.leading, 6)
         .padding(.trailing, 2)
         .padding(.vertical, 4)
-        .padding(.leading, 4)
+        .padding(.leading, max(0, 4 - PanelLayoutMetrics.allNotesListLeadingInset))
         .padding(.trailing, 4)
         .animation(BuoyMotion.easeInOut(0.1), value: isHovering)
         .animation(BuoyMotion.easeOut(0.18), value: isExpanded)
