@@ -409,6 +409,9 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
         private var isRestoringExpansion = false
 
         private static let dragShadowPadding: CGFloat = 8
+        /// Rounder than a row's own 6pt pill, closer to the panel's 14pt, so
+        /// the card reads as a floating surface rather than a cut-out row.
+        private static let dragCardCornerRadius: CGFloat = 12
 
         init(_ parent: NotesOutlineViewWrapper) {
             self.parent = parent
@@ -1007,6 +1010,14 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
         /// the card was a blank slab with no indication of what was being
         /// dragged. Drawing the title directly also drops the hover buttons,
         /// which had no business riding along on the card anyway.
+        /// The card that follows the cursor during a drag.
+        ///
+        /// Drawn from the note's own title rather than snapshotted from the
+        /// row. `cacheDisplay` walks `draw(_:)`, and the row's content is a
+        /// layer-backed `NSHostingView`, so the snapshot came back **empty** —
+        /// the card was a blank slab with no indication of what was being
+        /// dragged. Drawing the title directly also drops the hover buttons,
+        /// which had no business riding along on the card anyway.
         private func cardImage(for node: AllNotesNode, size: NSSize) -> NSImage {
             let padding = Self.dragShadowPadding
             let title: String
@@ -1024,11 +1035,9 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
                 symbolName = nil
             }
 
-            let image = NSImage(
-                size: NSSize(
-                    width: size.width + padding * 2,
-                    height: size.height + padding * 2
-                )
+            let imageSize = NSSize(
+                width: size.width + padding * 2,
+                height: size.height + padding * 2
             )
             let cardRect = NSRect(
                 x: padding,
@@ -1037,75 +1046,83 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
                 height: size.height
             )
 
-            image.lockFocus()
+            // Flipped, so text can be placed from a top-left origin. In an
+            // unflipped context `usesLineFragmentOrigin` measures from the
+            // other edge and the title sat off-centre in the card.
+            return NSImage(size: imageSize, flipped: true) { _ in
+                NSGraphicsContext.saveGraphicsState()
+                let shadow = NSShadow()
+                shadow.shadowColor = NSColor.black.withAlphaComponent(0.18)
+                shadow.shadowBlurRadius = 7
+                shadow.shadowOffset = NSSize(width: 0, height: 1)
+                shadow.set()
+                NSColor.windowBackgroundColor.withAlphaComponent(0.97).setFill()
+                NSBezierPath(
+                    roundedRect: cardRect,
+                    xRadius: Self.dragCardCornerRadius,
+                    yRadius: Self.dragCardCornerRadius
+                ).fill()
+                NSGraphicsContext.restoreGraphicsState()
 
-            NSGraphicsContext.saveGraphicsState()
-            let shadow = NSShadow()
-            shadow.shadowColor = NSColor.black.withAlphaComponent(0.18)
-            shadow.shadowBlurRadius = 7
-            shadow.shadowOffset = NSSize(width: 0, height: -1)
-            shadow.set()
-            NSColor.windowBackgroundColor.withAlphaComponent(0.97).setFill()
-            NSBezierPath(roundedRect: cardRect, xRadius: 7, yRadius: 7).fill()
-            NSGraphicsContext.restoreGraphicsState()
+                NSColor.separatorColor.setStroke()
+                let border = NSBezierPath(
+                    roundedRect: cardRect.insetBy(dx: 0.5, dy: 0.5),
+                    xRadius: Self.dragCardCornerRadius,
+                    yRadius: Self.dragCardCornerRadius
+                )
+                border.lineWidth = 1
+                border.stroke()
 
-            NSColor.separatorColor.setStroke()
-            let border = NSBezierPath(
-                roundedRect: cardRect.insetBy(dx: 0.5, dy: 0.5),
-                xRadius: 7,
-                yRadius: 7
-            )
-            border.lineWidth = 1
-            border.stroke()
+                // Lines up with the row's own title, which sits 10pt in from
+                // the row's leading edge.
+                var textOrigin = cardRect.minX + 10
+                let font = NSFont.preferredFont(forTextStyle: .callout)
 
-            var textOrigin = cardRect.minX + 10
-            let font = NSFont.preferredFont(forTextStyle: .callout)
+                if let symbolName,
+                   let symbol = NSImage(
+                       systemSymbolName: symbolName,
+                       accessibilityDescription: nil
+                   ) {
+                    let glyphSize: CGFloat = 12
+                    let glyphRect = NSRect(
+                        x: textOrigin,
+                        y: cardRect.midY - glyphSize / 2,
+                        width: glyphSize,
+                        height: glyphSize
+                    )
+                    symbol.isTemplate = true
+                    NSColor.secondaryLabelColor.set()
+                    symbol.draw(
+                        in: glyphRect,
+                        from: .zero,
+                        operation: .sourceOver,
+                        fraction: 1,
+                        respectFlipped: true,
+                        hints: [.interpolation: NSImageInterpolation.high.rawValue]
+                    )
+                    textOrigin += glyphSize + 6
+                }
 
-            if let symbolName,
-               let symbol = NSImage(
-                   systemSymbolName: symbolName,
-                   accessibilityDescription: nil
-               ) {
-                let glyphSize: CGFloat = 12
-                let glyphRect = NSRect(
+                let paragraph = NSMutableParagraphStyle()
+                paragraph.lineBreakMode = .byTruncatingTail
+                let attributed = NSAttributedString(
+                    string: title,
+                    attributes: [
+                        .font: font,
+                        .foregroundColor: NSColor.labelColor,
+                        .paragraphStyle: paragraph
+                    ]
+                )
+                let lineHeight = font.ascender - font.descender
+                let textRect = NSRect(
                     x: textOrigin,
-                    y: cardRect.midY - glyphSize / 2,
-                    width: glyphSize,
-                    height: glyphSize
+                    y: cardRect.midY - lineHeight / 2,
+                    width: max(0, cardRect.maxX - 10 - textOrigin),
+                    height: lineHeight
                 )
-                symbol.isTemplate = true
-                NSColor.secondaryLabelColor.set()
-                symbol.draw(
-                    in: glyphRect,
-                    from: .zero,
-                    operation: .sourceOver,
-                    fraction: 1,
-                    respectFlipped: true,
-                    hints: [.interpolation: NSImageInterpolation.high.rawValue]
-                )
-                textOrigin += glyphSize + 6
+                attributed.draw(with: textRect, options: [.usesLineFragmentOrigin])
+                return true
             }
-
-            let paragraph = NSMutableParagraphStyle()
-            paragraph.lineBreakMode = .byTruncatingTail
-            let attributed = NSAttributedString(
-                string: title,
-                attributes: [
-                    .font: font,
-                    .foregroundColor: NSColor.labelColor,
-                    .paragraphStyle: paragraph
-                ]
-            )
-            let textRect = NSRect(
-                x: textOrigin,
-                y: cardRect.midY - font.capHeight,
-                width: max(0, cardRect.maxX - 10 - textOrigin),
-                height: font.ascender - font.descender
-            )
-            attributed.draw(with: textRect, options: [.usesLineFragmentOrigin])
-
-            image.unlockFocus()
-            return image
         }
 
         // MARK: Drop

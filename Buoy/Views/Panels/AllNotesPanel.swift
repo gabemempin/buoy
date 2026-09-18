@@ -158,7 +158,9 @@ struct AllNotesSectionHeader: View {
             Text(title.uppercased())
                 .font(BuoyFont.caption.weight(.semibold))
                 .kerning(0.5)
-                .foregroundStyle(.tertiary)
+                // Same contrast as the panel's own "All Notes" title, in both
+                // appearances. At `.tertiary` these were barely legible.
+                .foregroundStyle(.primary)
                 .lineLimit(1)
         }
         .padding(.horizontal, 10)
@@ -384,8 +386,29 @@ struct InlineRenameField: NSViewRepresentable {
     var onCommit: (String) -> Void
     var onCancel: () -> Void
 
-    func makeNSView(context: Context) -> NSTextField {
-        let field = NSTextField(string: text)
+    /// Clears the field editor's background at the one moment it is reliably
+    /// available and already configured: right after `super.becomeFirstResponder`
+    /// installs it.
+    ///
+    /// The window's field editor is shared and AppKit re-configures it from the
+    /// cell every time editing starts, so anything set on the `NSTextField`
+    /// beforehand — or from `controlTextDidBeginEditing`, which fires around
+    /// the same pass — does not survive. Left alone it draws an opaque
+    /// background, which is the gray box that appeared behind a folder name in
+    /// Dark Mode.
+    final class TransparentTextField: NSTextField {
+        override func becomeFirstResponder() -> Bool {
+            let accepted = super.becomeFirstResponder()
+            if accepted, let editor = currentEditor() as? NSTextView {
+                editor.drawsBackground = false
+                editor.backgroundColor = .clear
+            }
+            return accepted
+        }
+    }
+
+    func makeNSView(context: Context) -> TransparentTextField {
+        let field = TransparentTextField(string: text)
         field.isBordered = false
         // `NSTextField(string:)` is the *bezeled* convenience init, and
         // `isBordered` is a separate cell flag from `isBezeled` — clearing one
@@ -411,7 +434,13 @@ struct InlineRenameField: NSViewRepresentable {
         return field
     }
 
-    func updateNSView(_ nsView: NSTextField, context: Context) {
+    func updateNSView(_ nsView: TransparentTextField, context: Context) {
+        // Re-assert it on every pass too: the row re-renders while the rename
+        // is open, and the shared editor can be reconfigured underneath us.
+        if let editor = nsView.currentEditor() as? NSTextView {
+            editor.drawsBackground = false
+            editor.backgroundColor = .clear
+        }
         // Only the closures are refreshed. The field's text is seeded once in
         // `makeNSView` and never pushed again: the row re-renders on hover and
         // on every store change while the rename is open, and writing `text`

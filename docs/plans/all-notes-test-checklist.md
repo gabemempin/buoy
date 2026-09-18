@@ -22,6 +22,8 @@ newest. Tick as you go; anything that fails, note which section it was in.
 - [ ] Drag a **pinned** row and drop it elsewhere in the pinned band → it reorders and **the panel stays open**.
 - [x] Press on a row's **title** and drag → the drag starts (no grip needed; the grip was reverted).
 - [x] Mid-drag: the row being moved stays visible in the list, dimmed but readable.
+- [x] The drag card's title is vertically centred and lines up with the row text.
+- [x] The drag card is rounded (12pt) rather than boxy.
 - [x] Mid-drag between two rows: a blue **insertion line** shows where it will land.
 - [ ] Reorder two rows in **All Notes** → order persists across a relaunch.
 - [x] Drag a row and release somewhere invalid → the card slides back and the panel stays open.
@@ -43,7 +45,9 @@ is broken they are *silently* dead, so click every one.
 ## 3. Folder rename
 
 - [x] New folder button → folder appears, already in rename mode, cursor in the field.
-- [x] The rename field has **no gray box** behind it in Dark Mode.
+- [x] The rename field has **no gray box** behind it in Dark Mode. (Needed a
+      `becomeFirstResponder` override — the shared field editor is rebuilt from
+      the cell each time, so nothing set earlier survives.)
 - [ ] Type a name, **move the mouse off the row**, then press Return → the typed name is saved, not "New Folder". (This was broken.)
 - [ ] Type a name and press Return without moving → saved.
 - [x] Press Escape on a brand-new folder → the folder is removed entirely.
@@ -89,6 +93,8 @@ is broken they are *silently* dead, so click every one.
 - [ ] With folders but no pins → Folders, one divider, All Notes.
 - [x] Panel is noticeably wider than before and does not overlap the traffic lights at the smallest window size.
 - [x] The "All Notes" title is the **same size** as the "Settings" title.
+- [x] PINNED / FOLDERS / ALL NOTES read at the same contrast as the panel title,
+      in both appearances.
 - [x] Corner resize controls appear while **All Notes** is open, and resizing works.
 - [x] Corner resize controls appear while **Settings** is open. Growing works; shrinking stops at the height Settings needs.
 - [ ] Resize with Settings open, then close Settings → the window keeps the new size.
