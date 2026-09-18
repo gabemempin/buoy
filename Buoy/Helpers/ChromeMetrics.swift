@@ -111,6 +111,54 @@ struct ChromeMetrics: Equatable {
     var footerHintFont: Font { isCompact ? .system(size: 9) : BuoyFont.caption }
     var footerTransferFont: Font { isCompact ? .system(size: 10) : BuoyFont.secondary }
 
+    // MARK: Width minimums
+    //
+    // Each bar's own horizontal need, so the panel's floor tracks the density
+    // the same way its height does. Compact controls take less room across as
+    // well as down, and a panel that could only shrink vertically would leave
+    // the compact chrome floating in space it no longer needs.
+
+    /// Traffic lights, the two header buttons, and the paddings either side.
+    var headerMinimumWidth: CGFloat {
+        trafficLightsLeadingPadding
+            + (trafficLightsNaturalWidth * trafficLightScale)
+            + 12
+            + (headerButtonSize * 2) + headerButtonSpacing
+            + headerButtonTrailingPadding
+    }
+
+    /// Three standard window buttons on AppKit's 23pt pitch.
+    private var trafficLightsNaturalWidth: CGFloat { 60 }
+
+    /// Enough title to be worth reading, plus its padding.
+    var titleRowMinimumWidth: CGFloat {
+        (titleHorizontalPadding * 2) + pick(180, 150)
+    }
+
+    /// Seven pill buttons, six 1pt dividers, and the capsule's own padding.
+    var toolbarMinimumWidth: CGFloat {
+        (toolbarHorizontalPadding * 2) + (toolbarPillWidth * 7) + 6
+    }
+
+    /// Two circle buttons on the left and the Copy capsule on the right.
+    var footerMinimumWidth: CGFloat {
+        (footerActionHorizontalPadding * 2)
+            + (footerButtonSize * 2) + footerButtonSpacing
+            + pick(104, 88)
+    }
+
+    /// The narrowest the panel is allowed to be, independent of what the bars
+    /// mechanically need.
+    ///
+    /// They fit in far less, but a note column that narrow wraps ordinary
+    /// prose every few words and the panel stops reading as a place to write.
+    /// This used to be set incidentally by the width of the old Settings
+    /// overlay; it is stated outright now, because it is a design decision
+    /// rather than a consequence of one. It scales with the density for the
+    /// same reason the text does — smaller type fits more words per line, so
+    /// the comfortable column is narrower.
+    var comfortableContentWidth: CGFloat { pick(292, 244) }
+
     // MARK: Section minimums
 
     var headerMinimumHeight: CGFloat { pick(70, 54) }
@@ -153,10 +201,16 @@ struct ChromeDensityReader: View {
     /// to, already raised past the hysteresis exit point so that undoing
     /// really does restore regular chrome rather than landing inside the band
     /// and appearing to do nothing.
-    var onAutomaticCompact: ((CGFloat) -> Void)? = nil
+    var onAutomaticCompact: ((CGSize) -> Void)? = nil
+    /// Called when a resize took the panel back to regular chrome, so anything
+    /// said about going compact can stop being said.
+    var onAutomaticRegular: (() -> Void)? = nil
 
-    /// The tallest the panel has been seen at while drawing regular chrome.
-    @State private var lastRegularWindowHeight: CGFloat = PanelLayoutMetrics.regularChromeWindowHeight
+    /// The size the panel was last seen at while drawing regular chrome.
+    @State private var lastRegularWindowSize = CGSize(
+        width: PanelLayoutMetrics.regularChromeWindowWidth,
+        height: PanelLayoutMetrics.regularChromeWindowHeight
+    )
     /// The first reading establishes the starting density; it is not a change
     /// the user made and must not announce itself.
     @State private var hasReadInitialHeight = false
@@ -164,52 +218,73 @@ struct ChromeDensityReader: View {
     var body: some View {
         GeometryReader { proxy in
             Color.clear
-                .onAppear { update(glassHeight: proxy.size.height) }
-                .onChange(of: proxy.size.height) { _, height in update(glassHeight: height) }
-                .onChange(of: isForced) { _, _ in update(glassHeight: proxy.size.height) }
+                .onAppear { update(glassSize: proxy.size) }
+                .onChange(of: proxy.size) { _, size in update(glassSize: size) }
+                .onChange(of: isForced) { _, _ in update(glassSize: proxy.size) }
         }
         .allowsHitTesting(false)
     }
 
-    private func update(glassHeight: CGFloat) {
+    private func update(glassSize: CGSize) {
         guard !isSuspended else { return }
-        let windowHeight = glassHeight + (PanelLayoutMetrics.glassEdgeInset * 2)
+        let inset = PanelLayoutMetrics.glassEdgeInset * 2
+        let windowSize = CGSize(width: glassSize.width + inset, height: glassSize.height + inset)
         if density == .regular {
-            lastRegularWindowHeight = windowHeight
+            lastRegularWindowSize = windowSize
         }
 
-        let next = Self.density(
-            forWindowHeight: windowHeight,
-            isForced: isForced,
-            current: density
-        )
+        let next = Self.density(forWindowSize: windowSize, isForced: isForced, current: density)
         defer { hasReadInitialHeight = true }
         guard next != density else { return }
 
-        let announces = next == .compact && !isForced && hasReadInitialHeight
-        let restoreHeight = max(lastRegularWindowHeight, PanelLayoutMetrics.compactChromeExitHeight)
+        let isFirstReading = !hasReadInitialHeight
+        // Per axis: an axis that already has room keeps whatever it is now, so
+        // undoing a shrink in one direction does not quietly grow the other.
+        // The axis that *is* short goes past its exit threshold rather than
+        // merely back to its old value — a size inside the hysteresis band
+        // leaves the chrome compact, so undoing would visibly do nothing.
+        let restoreSize = CGSize(
+            width: windowSize.width < PanelLayoutMetrics.compactChromeExitWidth
+                ? max(lastRegularWindowSize.width, PanelLayoutMetrics.compactChromeExitWidth)
+                : windowSize.width,
+            height: windowSize.height < PanelLayoutMetrics.compactChromeExitHeight
+                ? max(lastRegularWindowSize.height, PanelLayoutMetrics.compactChromeExitHeight)
+                : windowSize.height
+        )
 
         withAnimation(BuoyMotion.easeOut(0.15)) { density = next }
 
-        if announces {
-            onAutomaticCompact?(restoreHeight)
+        guard !isFirstReading, !isForced else { return }
+        if next == .compact {
+            onAutomaticCompact?(restoreSize)
+        } else {
+            onAutomaticRegular?()
         }
     }
 
     /// Hysteresis: compact engages the moment regular chrome no longer fits,
     /// and only lets go once there is a clear margin above that. Without the
     /// gap, a drag parked on the boundary flickers the whole chrome.
+    /// Either axis can ask for compact chrome, and regular only comes back
+    /// when both have room for it.
     static func density(
-        forWindowHeight height: CGFloat,
+        forWindowSize size: CGSize,
         isForced: Bool,
         current: ChromeDensity
     ) -> ChromeDensity {
         if isForced { return .compact }
         switch current {
         case .regular:
-            return height < PanelLayoutMetrics.compactChromeEnterHeight ? .compact : .regular
+            // Half a point of slack: the panel launches at exactly the regular
+            // minimum on both axes, and a rounding difference in the measured
+            // glass size would otherwise start it in compact chrome.
+            let tooShort = size.height < PanelLayoutMetrics.compactChromeEnterHeight - 0.5
+            let tooNarrow = size.width < PanelLayoutMetrics.compactChromeEnterWidth - 0.5
+            return (tooShort || tooNarrow) ? .compact : .regular
         case .compact:
-            return height >= PanelLayoutMetrics.compactChromeExitHeight ? .regular : .compact
+            let tallEnough = size.height >= PanelLayoutMetrics.compactChromeExitHeight
+            let wideEnough = size.width >= PanelLayoutMetrics.compactChromeExitWidth
+            return (tallEnough && wideEnough) ? .regular : .compact
         }
     }
 }

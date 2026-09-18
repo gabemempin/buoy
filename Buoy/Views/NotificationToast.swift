@@ -125,6 +125,9 @@ final class ToastState {
     var style: ToastStyle = .neutral
     var action: ToastAction? = nil
     var isShowing: Bool = false
+    /// Tags a toast so a later event can retract that specific one without
+    /// clearing whatever has since taken its place.
+    @ObservationIgnored private(set) var identity: String? = nil
 
     @ObservationIgnored private var hideTask: Task<Void, Never>?
 
@@ -136,12 +139,14 @@ final class ToastState {
     func show(
         _ message: String,
         style: ToastStyle = .neutral,
+        identity: String? = nil,
         actionTitle: String? = nil,
         action: (() -> Void)? = nil
     ) {
         hideTask?.cancel()
         self.message = message
         self.style = style
+        self.identity = identity
         if let actionTitle, let action {
             // Wrapped so pressing it dismisses the toast as well; leaving the
             // pill up after its offer has been taken reads as a no-op.
@@ -168,7 +173,14 @@ final class ToastState {
     func dismiss() {
         hideTask?.cancel()
         hideTask = nil
+        identity = nil
         withAnimation(BuoyMotion.easeOut(0.2)) { isShowing = false }
+    }
+
+    /// Retracts a toast only if it is still the one on screen.
+    func dismiss(ifShowing identity: String) {
+        guard isShowing, self.identity == identity else { return }
+        dismiss()
     }
 }
 

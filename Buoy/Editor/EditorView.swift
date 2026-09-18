@@ -407,7 +407,7 @@ struct EditorView: NSViewRepresentable {
         let contentSize = scrollView.contentSize
         let initialWidth = max(
             contentSize.width,
-            PanelLayoutMetrics.minimumContentWidth - (PanelLayoutMetrics.windowPadding * 2)
+            PanelLayoutMetrics.minimumContentWidth(for: .compact) - (PanelLayoutMetrics.windowPadding * 2)
         )
         let initialHeight = max(contentSize.height, ChromeMetrics.compact.editorMinimumHeight)
 

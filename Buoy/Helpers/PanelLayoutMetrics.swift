@@ -51,39 +51,42 @@ enum PanelLayoutMetrics {
     // the thing compact chrome shrinks. Everything below reads them from a
     // density rather than holding its own copy.
 
-    private static let headerControlsMinimumWidth: CGFloat = 12 + 60 + 74 + 8
-    private static let titleRowMinimumWidth: CGFloat = 24 + 180
-    /// Seven pill buttons at 30pt, six 1pt dividers, and the capsule's own
-    /// horizontal padding. This was written for six buttons and under-counted
-    /// by a whole pill; the error was masked while the Settings overlay set a
-    /// wider floor, and became load-bearing the moment Settings left the panel.
-    private static let toolbarMinimumWidth: CGFloat = 16 + (7 * 30) + 6
-    private static let footerMinimumWidth: CGFloat = 16 + 62 + 104
+    // Width minimums live on `ChromeMetrics` alongside the heights, because
+    // compact controls take less room across as well as down.
 
-    /// The narrowest the panel is allowed to be, independent of what the
-    /// chrome mechanically needs.
-    ///
-    /// The bars themselves fit in 232, but a note column that narrow wraps
-    /// ordinary prose every four or five words and the panel stops reading as
-    /// a place to write. This used to be set incidentally, by the width of the
-    /// old Settings overlay; it is stated outright now that the overlay is
-    /// gone, because it is a design decision rather than a consequence of one.
-    ///
-    /// Compact chrome is about *height* — see `ChromeMetrics` — so nothing
-    /// here needs to shrink for it.
-    private static let comfortableContentWidth: CGFloat = 292
+    static func minimumContentWidth(for metrics: ChromeMetrics) -> CGFloat {
+        max(
+            metrics.headerMinimumWidth,
+            metrics.titleRowMinimumWidth,
+            metrics.toolbarMinimumWidth,
+            metrics.footerMinimumWidth,
+            metrics.comfortableContentWidth
+        )
+    }
 
-    static let minimumContentWidth: CGFloat = max(
-        headerControlsMinimumWidth,
-        titleRowMinimumWidth,
-        toolbarMinimumWidth,
-        footerMinimumWidth,
-        comfortableContentWidth
-    )
+    /// Minimum size of the glass surface itself — what the SwiftUI content is
+    /// framed against, inside the shadow margin.
+    static func minimumGlassWidth(for metrics: ChromeMetrics) -> CGFloat {
+        minimumContentWidth(for: metrics)
+    }
 
-    // Minimum size of the glass surface itself — what the SwiftUI content is
-    // framed against, inside the shadow margin.
-    static let minimumGlassWidth: CGFloat = minimumContentWidth
+    static func minimumWindowWidth(for metrics: ChromeMetrics) -> CGFloat {
+        minimumGlassWidth(for: metrics) + (glassEdgeInset * 2)
+    }
+
+    /// The absolute floor the panel can be dragged to, on the same reasoning
+    /// as `minimumWindowHeight`: dragging below the regular minimum is what
+    /// asks for compact chrome, so the floor has to be the compact one.
+    static let minimumWindowWidth: CGFloat = minimumWindowWidth(for: .compact)
+
+    /// The narrowest the panel can be while still drawing regular chrome, and
+    /// the width it launches at.
+    static let regularChromeWindowWidth: CGFloat = minimumWindowWidth(for: .regular)
+
+    /// Hysteresis for the width half of the density switch, mirroring the
+    /// height thresholds.
+    static let compactChromeEnterWidth: CGFloat = regularChromeWindowWidth
+    static let compactChromeExitWidth: CGFloat = regularChromeWindowWidth + 14
 
     static func minimumGlassHeight(for metrics: ChromeMetrics) -> CGFloat {
         (windowPadding * 2)
@@ -96,7 +99,6 @@ enum PanelLayoutMetrics {
 
     // Minimum size of the panel *window* — the glass plus its shadow margin on
     // every side. All AppKit frame math works in these terms.
-    static let minimumWindowWidth: CGFloat = minimumGlassWidth + (glassEdgeInset * 2)
 
     static func minimumWindowHeight(for metrics: ChromeMetrics) -> CGFloat {
         minimumGlassHeight(for: metrics) + (glassEdgeInset * 2)
@@ -133,7 +135,9 @@ enum PanelLayoutMetrics {
     static let minimizedPillHeight: CGFloat = 56
     static let minimizedWindowHeight: CGFloat = minimizedPillHeight + (glassEdgeInset * 2)
     static let minimizedWindowMinimumWidth: CGFloat = 240
-    static let minimizedWindowMaximumWidth: CGFloat = minimumWindowWidth
+    /// The pill never narrows with the chrome: it is its own layout, sized to
+    /// the title, and it keeps the panel's regular width as its ceiling.
+    static let minimizedWindowMaximumWidth: CGFloat = regularChromeWindowWidth
     static let minimizedPillLeadingPadding: CGFloat = 22
     static let minimizedPillTrailingPadding: CGFloat = 12
     static let minimizedTitleButtonSpacing: CGFloat = 14

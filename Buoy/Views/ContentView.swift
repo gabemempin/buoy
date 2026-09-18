@@ -40,7 +40,7 @@ struct ContentView: View {
     var onOpenShortcuts: () -> Void
     /// Grows the panel back to a given window height. Used by the Undo on the
     /// compact-mode toast.
-    var onRestorePanelHeight: ((CGFloat) -> Void)?
+    var onRestorePanelSize: ((CGSize) -> Void)?
     var onClose: () -> Void
     var onMinimize: () -> Void
     var onExpand: () -> Void
@@ -107,7 +107,7 @@ struct ContentView: View {
         onCornerResizeAvailabilityChange: ((Bool) -> Void)? = nil,
         onOpenSettings: @escaping () -> Void,
         onOpenShortcuts: @escaping () -> Void,
-        onRestorePanelHeight: ((CGFloat) -> Void)? = nil,
+        onRestorePanelSize: ((CGSize) -> Void)? = nil,
         onClose: @escaping () -> Void,
         onMinimize: @escaping () -> Void,
         onExpand: @escaping () -> Void,
@@ -122,7 +122,7 @@ struct ContentView: View {
         self.onCornerResizeAvailabilityChange = onCornerResizeAvailabilityChange
         self.onOpenSettings = onOpenSettings
         self.onOpenShortcuts = onOpenShortcuts
-        self.onRestorePanelHeight = onRestorePanelHeight
+        self.onRestorePanelSize = onRestorePanelSize
         self.onClose = onClose
         self.onMinimize = onMinimize
         self.onExpand = onExpand
@@ -227,7 +227,11 @@ struct ContentView: View {
             .animation(BuoyMotion.easeOut(0.16), value: isConfirmingDelete)
             .padding(PanelLayoutMetrics.windowPadding)
             .frame(
-                minWidth: PanelLayoutMetrics.minimumGlassWidth,
+                // Always the compact floor, for the same reason as the height
+                // below: AppKit already refuses to go narrower, and pinning
+                // this to the live density would clip the content for the one
+                // frame between the window shrinking and the density catching up.
+                minWidth: PanelLayoutMetrics.minimumGlassWidth(for: .compact),
                 // Always the compact floor, never the current density's. AppKit
                 // already refuses to shrink the window below this, and pinning
                 // the SwiftUI minimum to the live density would clip the content
@@ -240,7 +244,8 @@ struct ContentView: View {
                     density: $chromeDensity,
                     isForced: settings.compactChrome,
                     isSuspended: panelPresentation.isMinimized || isRestoringFromHarbor,
-                    onAutomaticCompact: announceCompactMode
+                    onAutomaticCompact: announceCompactMode,
+                    onAutomaticRegular: { toastState.dismiss(ifShowing: compactToastIdentity) }
                 )
             )
             .background(WindowDragBlocker())
@@ -664,10 +669,16 @@ struct ContentView: View {
     /// panel changes every control at once, which is startling the first time
     /// and easy to do by accident on the way to some other size; the Undo is
     /// the cheap way back without hunting for the exact height.
-    private func announceCompactMode(restoreHeight: CGFloat) {
+    private var compactToastIdentity: String { "compactMode" }
+
+    private func announceCompactMode(restoreSize: CGSize) {
         guard !showOnboarding, !showWhatsNew, !isBugReport else { return }
-        toastState.show("Entered Compact Mode", actionTitle: "Undo") {
-            onRestorePanelHeight?(restoreHeight)
+        toastState.show(
+            "Entered Compact Mode",
+            identity: compactToastIdentity,
+            actionTitle: "Undo"
+        ) {
+            onRestorePanelSize?(restoreSize)
         }
     }
 

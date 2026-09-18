@@ -199,7 +199,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func restoredFullSizeFrame(around currentFrame: NSRect, in panel: NSPanel) -> NSRect {
         let contentSize = lastFullSizeFrame
             .flatMap { restorableFullContentSize(fromFrame: $0, in: panel) }
-            ?? NSSize(width: PanelLayoutMetrics.minimumWindowWidth, height: currentHeight)
+            ?? NSSize(width: PanelLayoutMetrics.regularChromeWindowWidth, height: currentHeight)
         return resizedFrame(contentSize: contentSize, currentFrame: currentFrame, in: panel, centerHorizontally: true)
     }
 
@@ -336,8 +336,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             },
             onOpenSettings: { [weak self] in self?.openSettings() },
             onOpenShortcuts: { [weak self] in self?.openShortcutsSettings() },
-            onRestorePanelHeight: { [weak self] height in
-                self?.animateHeight(height, allowShrink: false, duration: 0.22, timingName: .easeInEaseOut)
+            onRestorePanelSize: { [weak self] size in
+                self?.restorePanelSize(size)
             },
             onClose: { [weak self] in self?.hidePanel() },
             onMinimize: { [weak self] in self?.enterMinimizedMode() },
@@ -345,7 +345,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             onRestoreFromMinimized: { [weak self] in self?.exitMinimizedMode() }
         )
 
-        let initialWidth = isFirstRun ? onboardingWidth : PanelLayoutMetrics.minimumWindowWidth
+        let initialWidth = isFirstRun ? onboardingWidth : PanelLayoutMetrics.regularChromeWindowWidth
         let initialRect = NSRect(x: 0, y: 0, width: initialWidth, height: initialHeight)
 
         let hosting = NSHostingView(rootView: contentView)
@@ -411,7 +411,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func animateOnboardingDismiss() {
         guard let p = panel else { return }
-        let targetWidth = PanelLayoutMetrics.minimumWindowWidth
+        let targetWidth = PanelLayoutMetrics.regularChromeWindowWidth
         let targetHeight = compactHeight
         let currentFrame = p.frame
         let newFrame = centeredFrame(
@@ -731,6 +731,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             centerHorizontally: false
         )
         animatePanel(to: targetFrame, duration: duration, timingName: timingName)
+        if overlayOverrideHeight == 0 {
+            lastFullSizeFrame = targetFrame
+        }
+    }
+
+    /// Grows the panel back to a size that clears the compact thresholds on
+    /// both axes. Behind the Undo on the compact-mode toast.
+    ///
+    /// Only ever grows: the user asked to take back a shrink, and an Undo that
+    /// could also make the panel smaller than they left it would be a second
+    /// surprise on top of the first.
+    func restorePanelSize(_ size: CGSize) {
+        guard let p = panel else { return }
+        guard !panelPresentation.isMinimized, !isMinimizeAnimating else { return }
+        let live = panelContentSize(p)
+        let target = NSSize(
+            width: max(live.width, size.width),
+            height: max(live.height, min(PanelLayoutMetrics.maximumAutoHeight, size.height))
+        )
+        guard abs(target.width - live.width) > 0.5 || abs(target.height - live.height) > 0.5 else { return }
+        currentHeight = target.height
+        let targetFrame = resizedFrame(
+            contentSize: target,
+            currentFrame: p.frame,
+            in: p,
+            centerHorizontally: false
+        )
+        animatePanel(to: targetFrame, duration: 0.22, timingName: .easeInEaseOut)
         if overlayOverrideHeight == 0 {
             lastFullSizeFrame = targetFrame
         }
