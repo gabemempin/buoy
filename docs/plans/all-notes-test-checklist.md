@@ -72,11 +72,11 @@ is broken they are *silently* dead, so click every one.
 
 ## 5. Folder disclosure and persistence
 
-- [ ] Click a folder row anywhere → toggles open/closed.
+- [x] Click a folder row anywhere → toggles open/closed, both directions.
 - [x] Only **one** chevron is visible on a folder row. (AppKit's own triangle should be suppressed.)
 - [x] The note count sits on the folder name's **baseline**, not floating above it.
 - [ ] Collapse a folder, quit Buoy, relaunch → still collapsed.
-- [ ] File a note into a **collapsed** folder → the count increments even though nothing expands.
+- [ ] File a note into a **collapsed** folder → the folder opens so the note is visible.
 
 ## 6. Folder delete
 

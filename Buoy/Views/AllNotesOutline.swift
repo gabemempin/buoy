@@ -604,9 +604,24 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
 
         // MARK: Data source
 
+        /// A collapsed folder reports **no children**, rather than relying on
+        /// `NSOutlineView`'s own expansion state.
+        ///
+        /// `collapseItem` does not register on this outline view — the chevron
+        /// would flip while the child rows stayed on screen, and `reloadData`
+        /// preserves AppKit's expanded flag so it could not clear them either.
+        /// Letting the data source answer makes `Folder.isExpanded` the only
+        /// thing that decides which rows exist. Folder nodes are therefore kept
+        /// permanently expanded as far as AppKit is concerned (see
+        /// `applyExpansionState`).
         func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
             guard let node = item as? AllNotesNode else { return tree.topLevel.count }
-            return node.children.count
+            guard let folderID = node.folderID else { return node.children.count }
+            return isFolderExpanded(folderID) ? node.children.count : 0
+        }
+
+        private func isFolderExpanded(_ folderID: String) -> Bool {
+            folder(for: folderID)?.isExpanded ?? false
         }
 
         func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
@@ -704,16 +719,15 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
             refreshRow(node)
         }
 
+        /// Keeps every folder node expanded as far as AppKit is concerned, so
+        /// it renders whatever the data source reports. Whether a folder's
+        /// children are *reported* is decided by `Folder.isExpanded` in
+        /// `numberOfChildrenOfItem`, which is the one place that answers it.
         func applyExpansionState() {
             guard let outlineView else { return }
             isRestoringExpansion = true
-            for node in tree.topLevel {
-                guard let folderID = node.folderID else { continue }
-                if folder(for: folderID)?.isExpanded == true {
-                    outlineView.expandItem(node)
-                } else {
-                    outlineView.collapseItem(node)
-                }
+            for node in tree.topLevel where node.folderID != nil {
+                outlineView.expandItem(node)
             }
             isRestoringExpansion = false
         }
@@ -753,7 +767,11 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
 
             case .folder(let folderID):
                 guard let folder = folder(for: folderID) else { return AnyView(EmptyView()) }
-                let isExpanded = outlineView?.isItemExpanded(node) ?? false
+                // `Folder.isExpanded` is the single source of truth, not
+                // `NSOutlineView.isItemExpanded`. The two can disagree, and
+                // when they did the chevron and the toggle read opposite
+                // answers, so clicking a folder appeared to do nothing.
+                let isExpanded = folder.isExpanded
                 return AnyView(
                     FolderRow(
                         folder: folder,
@@ -798,7 +816,7 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
                 return [
                     folder.name,
                     String(node.children.count),
-                    (outlineView?.isItemExpanded(node) ?? false) ? "1" : "0",
+                    folder.isExpanded ? "1" : "0",
                     hoveredKey == node.key ? "1" : "0",
                     renamingFolderID == folderID ? "1" : "0"
                 ].joined(separator: "|")
@@ -880,15 +898,39 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
             }
         }
 
+        /// Expand/collapse is animated through `NSAnimationContext`, never
+        /// through `animator()`. The animator proxy only forwards *animatable
+        /// properties*; `collapseItem`/`expandItem` are plain methods, so it
+        /// swallowed them and a folder row could not be toggled at all.
+        /// Expand/collapse is animated through `NSAnimationContext`, never
+        /// through `animator()` — the animator proxy only forwards *animatable
+        /// properties*, so it swallowed `collapseItem` entirely.
+        ///
+        /// The decision is made from `Folder.isExpanded` rather than
+        /// `NSOutlineView.isItemExpanded`, which could disagree with it; when
+        /// it did, a click on an open folder asked the outline view to expand
+        /// an already-expanded row and nothing happened at all.
         func toggleExpansion(_ node: AllNotesNode) {
-            guard let outlineView else { return }
-            let duration = BuoyMotion.duration(0.2)
-            let target: NSOutlineView = duration > 0 ? outlineView.animator() : outlineView
-            if outlineView.isItemExpanded(node) {
-                target.collapseItem(node)
-            } else {
-                target.expandItem(node)
+            guard let outlineView, let folderID = node.folderID else { return }
+            let shouldExpand = !(folder(for: folderID)?.isExpanded ?? false)
+            actions.setFolderExpanded(folderID, shouldExpand)
+            // The store write only reaches this coordinator on the next
+            // `updateNSView`, so apply it locally first — the rebuild below
+            // reads `folders` and would otherwise draw the old chevron and
+            // re-open the folder it just closed.
+            if let index = folders.firstIndex(where: { $0.id == folderID }) {
+                folders[index].isExpanded = shouldExpand
             }
+
+            // Rebuild rather than calling `collapseItem`, which does not
+            // register on this outline view — the chevron would flip while the
+            // children stayed on screen. `reloadData` leaves every item
+            // collapsed, and `applyExpansionState` then re-opens exactly the
+            // folders the store says are open, so the list always matches
+            // `Folder.isExpanded` whichever way the toggle went.
+            outlineView.reloadData()
+            applyExpansionState()
+            refreshRenderSignatures()
         }
 
         // MARK: Drag source
@@ -898,10 +940,14 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
             pasteboardWriterForItem item: Any
         ) -> NSPasteboardWriting? {
             guard !isSearching, let node = item as? AllNotesNode else { return nil }
-            // Called synchronously the moment AppKit decides this press is a
-            // drag — earlier and more reliably than the session's `willBeginAt`
-            // — so it is the signal that stops `mouseDown` reporting a click.
-            (outlineView as? NotesOutlineView)?.didStartDragDuringTracking = true
+            // Deliberately does NOT flag a drag. AppKit asks for a row's
+            // pasteboard writer on *mouse down*, to find out whether the row
+            // could be dragged at all — not once a drag has actually begun. It
+            // was setting `didStartDragDuringTracking` here, so every press on
+            // a draggable row looked like a drag and no click ever fired: a
+            // folder would not collapse and a note would not open. The flag is
+            // set in `willBeginAt`, and the pointer-travel check in `mouseDown`
+            // covers the case where that callback lands late.
             switch node.kind {
             case .header:
                 return nil
@@ -1403,6 +1449,20 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
 
             case .fileIntoFolder(let noteID, let folderID, let index):
                 guard let parent = folderNode(for: folderID) else { return }
+                // Open the folder first: a collapsed one reports no children,
+                // so the inserted row would have nowhere to appear and the
+                // note would seem to vanish.
+                if !isFolderExpanded(folderID) {
+                    actions.setFolderExpanded(folderID, true)
+                    if let index = folders.firstIndex(where: { $0.id == folderID }) {
+                        folders[index].isExpanded = true
+                    }
+                    outlineView.reloadData()
+                    applyExpansionState()
+                    refreshRenderSignatures()
+                    actions.fileNote(noteID, folderID, nil)
+                    return
+                }
                 let previousFolderID = note(for: noteID)?.folderID
                 let insertIndex = min(max(index ?? parent.children.count, 0), parent.children.count)
                 let child = node(
