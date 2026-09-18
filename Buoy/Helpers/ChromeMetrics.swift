@@ -43,6 +43,19 @@ struct ChromeMetrics: Equatable {
     /// Keeps the close button's centre where the old hand-drawn circles sat;
     /// the native buttons are inset 7pt inside their own group.
     var trafficLightsLeadingPadding: CGFloat { pick(15, 11) }
+    /// The lights are real AppKit window buttons and have no smaller size to
+    /// ask for, so the compact density scales their coordinate system instead.
+    /// Held well above a half so they keep their standard proportions and stay
+    /// comfortably clickable.
+    var trafficLightScale: CGFloat { pick(1, 0.82) }
+    /// Rendering scale for the note text.
+    ///
+    /// Applied as scroll-view magnification, never by changing the editor's
+    /// font size. Font size lives in the text storage, so driving it from the
+    /// panel's height would rewrite — and save — every note's RTF each time
+    /// the window crossed the threshold. A layout gesture must not edit the
+    /// document.
+    var editorMagnification: CGFloat { pick(1, 0.86) }
     var titleMinHeight: CGFloat { pick(26, 20) }
     var titleHorizontalPadding: CGFloat { pick(12, 10) }
     var titleBottomPadding: CGFloat { pick(4, 2) }
@@ -134,6 +147,19 @@ struct ChromeDensityReader: View {
     /// size; a density recomputed from those intermediate heights would be
     /// meaningless and would land just as the panel is restoring.
     var isSuspended: Bool
+    /// Called only when a *resize* turned compact chrome on, never when the
+    /// Settings toggle did — the toggle is a deliberate choice and does not
+    /// need announcing or undoing. The value is the window height to go back
+    /// to, already raised past the hysteresis exit point so that undoing
+    /// really does restore regular chrome rather than landing inside the band
+    /// and appearing to do nothing.
+    var onAutomaticCompact: ((CGFloat) -> Void)? = nil
+
+    /// The tallest the panel has been seen at while drawing regular chrome.
+    @State private var lastRegularWindowHeight: CGFloat = PanelLayoutMetrics.regularChromeWindowHeight
+    /// The first reading establishes the starting density; it is not a change
+    /// the user made and must not announce itself.
+    @State private var hasReadInitialHeight = false
 
     var body: some View {
         GeometryReader { proxy in
@@ -148,13 +174,26 @@ struct ChromeDensityReader: View {
     private func update(glassHeight: CGFloat) {
         guard !isSuspended else { return }
         let windowHeight = glassHeight + (PanelLayoutMetrics.glassEdgeInset * 2)
+        if density == .regular {
+            lastRegularWindowHeight = windowHeight
+        }
+
         let next = Self.density(
             forWindowHeight: windowHeight,
             isForced: isForced,
             current: density
         )
+        defer { hasReadInitialHeight = true }
         guard next != density else { return }
+
+        let announces = next == .compact && !isForced && hasReadInitialHeight
+        let restoreHeight = max(lastRegularWindowHeight, PanelLayoutMetrics.compactChromeExitHeight)
+
         withAnimation(BuoyMotion.easeOut(0.15)) { density = next }
+
+        if announces {
+            onAutomaticCompact?(restoreHeight)
+        }
     }
 
     /// Hysteresis: compact engages the moment regular chrome no longer fits,

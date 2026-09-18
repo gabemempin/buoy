@@ -60,11 +60,25 @@ enum PanelLayoutMetrics {
     private static let toolbarMinimumWidth: CGFloat = 16 + (7 * 30) + 6
     private static let footerMinimumWidth: CGFloat = 16 + 62 + 104
 
+    /// The narrowest the panel is allowed to be, independent of what the
+    /// chrome mechanically needs.
+    ///
+    /// The bars themselves fit in 232, but a note column that narrow wraps
+    /// ordinary prose every four or five words and the panel stops reading as
+    /// a place to write. This used to be set incidentally, by the width of the
+    /// old Settings overlay; it is stated outright now that the overlay is
+    /// gone, because it is a design decision rather than a consequence of one.
+    ///
+    /// Compact chrome is about *height* — see `ChromeMetrics` — so nothing
+    /// here needs to shrink for it.
+    private static let comfortableContentWidth: CGFloat = 292
+
     static let minimumContentWidth: CGFloat = max(
         headerControlsMinimumWidth,
         titleRowMinimumWidth,
         toolbarMinimumWidth,
-        footerMinimumWidth
+        footerMinimumWidth,
+        comfortableContentWidth
     )
 
     // Minimum size of the glass surface itself — what the SwiftUI content is

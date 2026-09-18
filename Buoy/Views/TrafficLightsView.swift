@@ -13,19 +13,26 @@ struct TrafficLightsView: NSViewRepresentable {
     var onClose: () -> Void
     var onMinimize: () -> Void
     var onExpand: () -> Void
+    /// Compact chrome's size reduction. These are real AppKit window buttons
+    /// with no smaller variant to ask for, so the group scales its own
+    /// coordinate system instead of its subviews' frames.
+    var scale: CGFloat = 1
 
     func makeCoordinator() -> Coordinator {
         Coordinator(onClose: onClose, onMinimize: onMinimize, onExpand: onExpand)
     }
 
     func makeNSView(context: Context) -> TrafficLightGroupView {
-        TrafficLightGroupView(coordinator: context.coordinator)
+        let view = TrafficLightGroupView(coordinator: context.coordinator)
+        view.scale = scale
+        return view
     }
 
     func updateNSView(_ nsView: TrafficLightGroupView, context: Context) {
         context.coordinator.onClose = onClose
         context.coordinator.onMinimize = onMinimize
         context.coordinator.onExpand = onExpand
+        nsView.scale = scale
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, nsView: TrafficLightGroupView, context: Context) -> CGSize? {
@@ -128,7 +135,40 @@ final class TrafficLightGroupView: NSView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    override var intrinsicContentSize: NSSize { buttonsRect.size }
+    /// Shrinks the group without touching the buttons.
+    ///
+    /// Done by keeping `bounds` at the buttons' natural size while `frame`
+    /// takes the scaled one. That is a genuine coordinate transform, so
+    /// AppKit's own hit testing, cursor rects and coordinate conversions all
+    /// follow it — which a `layer.transform` or a SwiftUI `scaleEffect` would
+    /// not, leaving the lights drawn in one place and clickable in another.
+    var scale: CGFloat = 1 {
+        didSet {
+            guard scale != oldValue, scale > 0 else { return }
+            applyScale()
+        }
+    }
+
+    override var intrinsicContentSize: NSSize {
+        let natural = buttonsRect.size
+        return NSSize(width: natural.width * scale, height: natural.height * scale)
+    }
+
+    private func applyScale() {
+        invalidateIntrinsicContentSize()
+        // `setFrameSize` below re-asserts the bounds for the new scale.
+        setFrameSize(intrinsicContentSize)
+        needsLayout = true
+        needsDisplay = true
+    }
+
+    /// Keeps `bounds` at the buttons' natural size whatever frame SwiftUI
+    /// hands this view, which is what makes the scale a coordinate transform
+    /// rather than a redraw.
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        setBoundsSize(NSSize(width: newSize.width / scale, height: newSize.height / scale))
+    }
 
     /// Union of the buttons themselves rather than `bounds`, so hover testing
     /// stays correct even if SwiftUI hands the container a different size.

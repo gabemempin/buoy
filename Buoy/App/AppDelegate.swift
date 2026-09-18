@@ -336,6 +336,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             },
             onOpenSettings: { [weak self] in self?.openSettings() },
             onOpenShortcuts: { [weak self] in self?.openShortcutsSettings() },
+            onRestorePanelHeight: { [weak self] height in
+                self?.animateHeight(height, allowShrink: false, duration: 0.22, timingName: .easeInEaseOut)
+            },
             onClose: { [weak self] in self?.hidePanel() },
             onMinimize: { [weak self] in self?.enterMinimizedMode() },
             onExpand: { [weak self] in self?.toggleExpand() },

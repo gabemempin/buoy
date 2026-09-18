@@ -38,6 +38,9 @@ struct ContentView: View {
     var onCornerResizeAvailabilityChange: ((Bool) -> Void)?
     var onOpenSettings: () -> Void
     var onOpenShortcuts: () -> Void
+    /// Grows the panel back to a given window height. Used by the Undo on the
+    /// compact-mode toast.
+    var onRestorePanelHeight: ((CGFloat) -> Void)?
     var onClose: () -> Void
     var onMinimize: () -> Void
     var onExpand: () -> Void
@@ -104,6 +107,7 @@ struct ContentView: View {
         onCornerResizeAvailabilityChange: ((Bool) -> Void)? = nil,
         onOpenSettings: @escaping () -> Void,
         onOpenShortcuts: @escaping () -> Void,
+        onRestorePanelHeight: ((CGFloat) -> Void)? = nil,
         onClose: @escaping () -> Void,
         onMinimize: @escaping () -> Void,
         onExpand: @escaping () -> Void,
@@ -118,6 +122,7 @@ struct ContentView: View {
         self.onCornerResizeAvailabilityChange = onCornerResizeAvailabilityChange
         self.onOpenSettings = onOpenSettings
         self.onOpenShortcuts = onOpenShortcuts
+        self.onRestorePanelHeight = onRestorePanelHeight
         self.onClose = onClose
         self.onMinimize = onMinimize
         self.onExpand = onExpand
@@ -234,7 +239,8 @@ struct ContentView: View {
                 ChromeDensityReader(
                     density: $chromeDensity,
                     isForced: settings.compactChrome,
-                    isSuspended: panelPresentation.isMinimized || isRestoringFromHarbor
+                    isSuspended: panelPresentation.isMinimized || isRestoringFromHarbor,
+                    onAutomaticCompact: announceCompactMode
                 )
             )
             .background(WindowDragBlocker())
@@ -334,6 +340,7 @@ struct ContentView: View {
                     EditorView(
                         rtfData: note.contentRTF,
                         fontSize: settings.fontSize,
+                        magnification: chromeMetrics.editorMagnification,
                         usesDarkAppearance: usesDarkAppearance,
                         noteID: note.id,
                         placeholder: isBugReport
@@ -649,6 +656,19 @@ struct ContentView: View {
         showSelectionLinkDialog = false
         showLinkDialog = false
         withAnimation(BuoyMotion.easeOut(0.16)) { showAllNotes = false }
+    }
+
+    /// Says what just happened and offers to put it back.
+    ///
+    /// Only fires when a *resize* turned compact chrome on. Shrinking the
+    /// panel changes every control at once, which is startling the first time
+    /// and easy to do by accident on the way to some other size; the Undo is
+    /// the cheap way back without hunting for the exact height.
+    private func announceCompactMode(restoreHeight: CGFloat) {
+        guard !showOnboarding, !showWhatsNew, !isBugReport else { return }
+        toastState.show("Entered Compact Mode", actionTitle: "Undo") {
+            onRestorePanelHeight?(restoreHeight)
+        }
     }
 
     private func toggleAllNotes() {

@@ -368,6 +368,12 @@ private final class DragBlockingScrollView: NSScrollView {
 struct EditorView: NSViewRepresentable {
     var rtfData: Data
     var fontSize: CGFloat
+    /// Rendering scale for compact chrome, applied as scroll-view
+    /// magnification. Deliberately *not* folded into `fontSize`: font size is
+    /// an attribute of the text storage, so shrinking it there would rewrite
+    /// and re-save every note's RTF each time the panel crossed the compact
+    /// threshold. Magnification is display-only and the document never moves.
+    var magnification: CGFloat = 1
     var usesDarkAppearance: Bool
     var noteID: String
     var placeholder: String = "Start typing…"
@@ -394,6 +400,9 @@ struct EditorView: NSViewRepresentable {
         scrollView.autoresizesSubviews = true
         scrollView.backgroundColor = .clear
         scrollView.drawsBackground = false
+        // Set programmatically only; there is no pinch-to-zoom in a note.
+        scrollView.allowsMagnification = false
+        scrollView.magnification = magnification
 
         let contentSize = scrollView.contentSize
         let initialWidth = max(
@@ -446,6 +455,15 @@ struct EditorView: NSViewRepresentable {
             textView.fontSize = fontSize
             // Line height drives the fade height, and relaid-out text changes how
             // much is left to scroll.
+            (scrollView as? DragBlockingScrollView)?.refreshEdgeFade()
+        }
+
+        if abs(scrollView.magnification - magnification) > 0.001 {
+            scrollView.magnification = magnification
+            // The text container tracks the clip view's width in document
+            // coordinates, which magnification changes, so the text reflows
+            // and the amount left to scroll with it.
+            scrollView.layoutSubtreeIfNeeded()
             (scrollView as? DragBlockingScrollView)?.refreshEdgeFade()
         }
 

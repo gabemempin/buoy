@@ -172,8 +172,13 @@ struct HeaderView: View {
     var body: some View {
         VStack(spacing: metrics.headerRowSpacing) {
             HStack(spacing: 0) {
-                TrafficLightsView(onClose: onClose, onMinimize: onMinimize, onExpand: onExpand)
-                    .padding(.leading, metrics.trafficLightsLeadingPadding)
+                TrafficLightsView(
+                    onClose: onClose,
+                    onMinimize: onMinimize,
+                    onExpand: onExpand,
+                    scale: metrics.trafficLightScale
+                )
+                .padding(.leading, metrics.trafficLightsLeadingPadding)
 
                 Spacer()
 
