@@ -338,7 +338,7 @@ struct NoteRow: View {
                 RowActionButton(
                     systemName: note.isPinned ? "pin.fill" : "pin",
                     label: note.isPinned ? "Unpin note" : "Pin note",
-                    tint: note.isPinned ? Color.accentColor : Color.secondary,
+                    tint: note.isPinned ? BuoyTheme.current.accent : Color.secondary,
                     action: onTogglePin
                 )
             }

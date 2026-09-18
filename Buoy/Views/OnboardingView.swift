@@ -88,7 +88,7 @@ struct OnboardingView: View {
             HStack(spacing: 6) {
                 ForEach(0..<4, id: \.self) { i in
                     Capsule()
-                        .fill(i == currentSlide ? Color.accentColor : Color.primary.opacity(0.2))
+                        .fill(i == currentSlide ? BuoyTheme.current.accent : Color.primary.opacity(0.2))
                         .frame(width: i == currentSlide ? 18 : 6, height: 6)
                 }
             }
@@ -112,7 +112,7 @@ struct OnboardingView: View {
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
             .environment(\.controlActiveState, .active)
-            .shadow(color: Color.accentColor.opacity(0.32), radius: 4, y: 2)
+            .shadow(color: BuoyTheme.current.accent.opacity(0.32), radius: 4, y: 2)
 
             Button("Back") {
                 guard currentSlide > 0 else { return }
@@ -535,7 +535,7 @@ private struct MiniEditorPanel: View {
                 Text("Test it here!")
                     .font(.system(size: 16, weight: .semibold))
                     .fontWidth(.expanded)
-                    .foregroundStyle(usesDarkAppearance ? Color.white : Color.accentColor)
+                    .foregroundStyle(usesDarkAppearance ? Color.white : BuoyTheme.current.accent)
                     .frame(maxWidth: .infinity)
                     .padding(.bottom, 3)
             }
@@ -675,7 +675,7 @@ private struct HarborModeDemoPanel: View {
                 Text("My note")
                     .font(.system(size: 16, weight: .semibold))
                     .fontWidth(.expanded)
-                    .foregroundStyle(colorScheme == .dark ? Color.white : Color.accentColor)
+                    .foregroundStyle(colorScheme == .dark ? Color.white : BuoyTheme.current.accent)
                     .frame(maxWidth: .infinity)
                     .padding(.bottom, 3)
             }
@@ -808,7 +808,7 @@ struct SlideHeaderText: View {
             .font(.system(size: 20, weight: .bold))
             .fontWidth(.expanded)
             .multilineTextAlignment(.center)
-            .foregroundStyle(colorScheme == .dark ? Color.primary : Color.accentColor)
+            .foregroundStyle(colorScheme == .dark ? Color.primary : BuoyTheme.current.accent)
             .padding(.horizontal, 8)
     }
 }

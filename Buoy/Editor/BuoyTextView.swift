@@ -121,7 +121,14 @@ final class BuoyTextView: NSTextView {
         }
     }
 
+    private var themeObserver: NSObjectProtocol?
     private lazy var listReorder = ListReorderController(textView: self)
+
+    deinit {
+        if let themeObserver {
+            NotificationCenter.default.removeObserver(themeObserver)
+        }
+    }
     var currentEditorTextColor: NSColor { editorTextColor }
 
     /// Last known non-zero selection — preserved even after the view resigns first responder.
@@ -171,7 +178,7 @@ final class BuoyTextView: NSTextView {
         )
         maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         selectedTextAttributes = [
-            .backgroundColor: NSColor.controlAccentColor.withAlphaComponent(0.35)
+            .backgroundColor: BuoyTheme.current.accentNSColor.withAlphaComponent(0.35)
         ]
         linkTextAttributes = [
             .foregroundColor: NSColor.linkColor,
@@ -181,6 +188,33 @@ final class BuoyTextView: NSTextView {
         insertionPointColor = editorTextColor
         setAccessibilityLabel("Note")
         updateDefaultTypingAttributes()
+        themeObserver = NotificationCenter.default.addObserver(
+            forName: .buoyThemeDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.applyThemeColors()
+        }
+    }
+
+    /// Re-applies everything the accent colour reaches inside the editor.
+    ///
+    /// None of this comes from the SwiftUI environment, so a colour change has
+    /// to be pushed in. The to-do checkboxes are the awkward part: each one
+    /// bakes its colours into an `NSImage` when it is built, so every
+    /// attachment in the storage has to be asked to redraw itself.
+    private func applyThemeColors() {
+        selectedTextAttributes = [
+            .backgroundColor: BuoyTheme.current.accentNSColor.withAlphaComponent(0.35)
+        ]
+        guard let storage = textStorage else { return }
+        storage.enumerateAttribute(
+            .attachment,
+            in: NSRange(location: 0, length: storage.length)
+        ) { value, _, _ in
+            (value as? TodoAttachment)?.refreshForThemeChange()
+        }
+        needsDisplay = true
     }
 
     // MARK: - Text Checking Preferences

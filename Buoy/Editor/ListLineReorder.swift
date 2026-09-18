@@ -11,7 +11,7 @@ final class ListInsertionIndicatorView: NSView {
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
-        layer?.backgroundColor = NSColor.controlAccentColor.cgColor
+        layer?.backgroundColor = BuoyTheme.current.accentNSColor.cgColor
         layer?.cornerRadius = 1
     }
 

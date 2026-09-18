@@ -15,7 +15,7 @@ struct UpdateBubble: View {
         HStack(spacing: 10) {
             Image(systemName: "arrow.up.circle.fill")
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(BuoyTheme.current.accent)
 
             Text("Buoy v\(version) is available")
                 .font(BuoyFont.control.weight(.medium))
@@ -28,7 +28,7 @@ struct UpdateBubble: View {
                     .fixedSize()
                     .padding(.horizontal, 12)
                     .padding(.vertical, 4)
-                    .buoyGlassButton(tint: .accentColor, isHovering: isUpdateHovering)
+                    .buoyGlassButton(tint: BuoyTheme.current.accent, isHovering: isUpdateHovering)
             }
             .buttonStyle(.plain)
             .onHover { isUpdateHovering = $0 }

@@ -26,6 +26,16 @@ final class TodoAttachment: NSTextAttachment {
         updateImage()
     }
 
+    /// Redraws the checkbox after the accent colour changes.
+    ///
+    /// The colours are baked into an `NSImage` at construction, so an
+    /// attachment already sitting in the text storage keeps the old accent
+    /// until something asks it to redraw. `BuoyTextView` walks its storage on
+    /// `.buoyThemeDidChange` and calls this on every one.
+    func refreshForThemeChange() {
+        updateImage()
+    }
+
     /// Rescales the checkbox to match a new editor font size.
     func apply(fontSize: CGFloat) {
         guard fontSize != self.fontSize else { return }
@@ -46,10 +56,10 @@ final class TodoAttachment: NSTextAttachment {
         let image = NSImage(size: displaySize, flipped: false) { rect in
             let c = rect.insetBy(dx: side * 0.06, dy: side * 0.06)
             if self.isChecked {
-                NSColor.controlAccentColor.setFill()
+                BuoyTheme.current.accentNSColor.setFill()
                 NSBezierPath(ovalIn: c).fill()
 
-                NSColor.alternateSelectedControlTextColor.setStroke()
+                BuoyTheme.current.onAccentNSColor.setStroke()
                 let check = NSBezierPath()
                 check.lineWidth = lineWidth
                 check.lineCapStyle = .round

@@ -144,7 +144,7 @@ struct WhatsNewView: View {
         // The panel is non-activating, so without this the button renders in
         // its inactive grey instead of the accent colour.
         .environment(\.controlActiveState, .active)
-        .shadow(color: Color.accentColor.opacity(0.32), radius: 4, y: 2)
+        .shadow(color: BuoyTheme.current.accent.opacity(0.32), radius: 4, y: 2)
         .accessibilityLabel("Continue")
         .accessibilityHint("Closes What's New. Return does the same.")
         .pointingHandCursor()
@@ -219,7 +219,7 @@ private struct WhatsNewRow: View {
             Image(systemName: item.symbol)
                 .font(.system(size: 22, weight: .medium))
                 .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(BuoyTheme.current.accent)
                 .frame(width: 32)
 
             VStack(alignment: .leading, spacing: 2) {

@@ -22,7 +22,7 @@ enum ToastStyle {
     /// appearance, Graphite and Increase Contrast like every other alert.
     var tint: Color {
         switch self {
-        case .neutral: return .accentColor
+        case .neutral: return BuoyTheme.current.accent
         case .warning: return Color(nsColor: .systemOrange)
         case .error:   return Color(nsColor: .systemRed)
         }

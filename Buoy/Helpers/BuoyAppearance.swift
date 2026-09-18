@@ -27,11 +27,18 @@ extension Color {
     /// Foreground for content drawn on top of an accent-filled control.
     ///
     /// Buoy used a literal `.white` here, which is only correct while the accent
-    /// color happens to be dark. AppKit vends the matching foreground for a
-    /// selected/accent-filled control, and it tracks the user's accent choice,
-    /// the Graphite appearance and Increase Contrast.
+    /// color happens to be dark. With no custom accent set this is AppKit's own
+    /// matching foreground for a selected control, which tracks the system
+    /// accent, the Graphite appearance and Increase Contrast. With one set it
+    /// is derived from that colour's luminance instead — see
+    /// `BuoyTheme.onAccentNSColor` for why AppKit's answer goes wrong there.
+    ///
+    /// Reads `BuoyTheme.current` rather than the environment because it is a
+    /// static on `Color` and has none. Same caveat as the tokens below: it
+    /// resolves at body evaluation, so a change applies on the next render.
+    /// Every settings write re-renders the panel, so that is immediate here.
     static var buoyOnAccent: Color {
-        Color(nsColor: .alternateSelectedControlTextColor)
+        BuoyTheme.current.onAccent
     }
 
     /// Same, dimmed for a resting (non-hovered) control. Kept as one place so the

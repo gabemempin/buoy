@@ -47,59 +47,18 @@ extension View {
     }
 
     /// Solid accent-colored circle button with specular highlight and shadow.
-    func buoyAccentCircle(color: Color = .accentColor, isHovering: Bool = false) -> some View {
-        self.background(color.opacity(isHovering ? 1 : 0.96), in: Circle())
-            .overlay(
-                LinearGradient(
-                    colors: [.white.opacity(isHovering ? 0.4 : 0.28), .clear],
-                    startPoint: .top,
-                    endPoint: .center
-                )
-                .clipShape(Circle())
-                .allowsHitTesting(false)
-            )
-            .overlay(
-                Circle()
-                    .stroke(Color.white.opacity(isHovering ? BuoyGlassMetrics.accentHoverBorderOpacity : 0.08), lineWidth: 0.7)
-                    .padding(0.5)
-                    .allowsHitTesting(false)
-            )
-            .shadow(color: color.opacity(isHovering ? BuoyGlassMetrics.accentHoverGlowOpacity : 0.4), radius: isHovering ? 8 : 4, x: 0, y: isHovering ? 3 : 2)
-            .overlay(
-                Circle()
-                    .fill(Color.white.opacity(isHovering ? BuoyGlassMetrics.accentHoverHighlightOpacity : 0))
-                    .blur(radius: isHovering ? 5 : 0)
-                    .allowsHitTesting(false)
-            )
-            .animation(BuoyGlassMetrics.hoverAnimation, value: isHovering)
+    ///
+    /// `color` overrides the app accent for the handful of controls that carry
+    /// their own meaning (the red Cancel Report button, the blue Send Report
+    /// one). Left `nil` — which is almost everywhere — it follows the user's
+    /// accent, or the system's when they have not picked one.
+    func buoyAccentCircle(color: Color? = nil, isHovering: Bool = false) -> some View {
+        modifier(BuoyAccentFillModifier(shape: Circle(), explicitColor: color, isHovering: isHovering, hoverGlowRadius: 8))
     }
 
     /// Solid accent-colored capsule with specular highlight and shadow.
-    func buoyAccentCapsule(color: Color = .accentColor, isHovering: Bool = false) -> some View {
-        self.background(color.opacity(isHovering ? 1 : 0.96), in: Capsule())
-            .overlay(
-                LinearGradient(
-                    colors: [.white.opacity(isHovering ? 0.38 : 0.28), .clear],
-                    startPoint: .top,
-                    endPoint: .center
-                )
-                .clipShape(Capsule())
-                .allowsHitTesting(false)
-            )
-            .overlay(
-                Capsule()
-                    .stroke(Color.white.opacity(isHovering ? BuoyGlassMetrics.accentHoverBorderOpacity : 0.08), lineWidth: 0.7)
-                    .padding(0.5)
-                    .allowsHitTesting(false)
-            )
-            .shadow(color: color.opacity(isHovering ? BuoyGlassMetrics.accentHoverGlowOpacity : 0.4), radius: isHovering ? 9 : 4, x: 0, y: isHovering ? 3 : 2)
-            .overlay(
-                Capsule()
-                    .fill(Color.white.opacity(isHovering ? BuoyGlassMetrics.accentHoverHighlightOpacity : 0))
-                    .blur(radius: isHovering ? 5 : 0)
-                    .allowsHitTesting(false)
-            )
-            .animation(BuoyGlassMetrics.hoverAnimation, value: isHovering)
+    func buoyAccentCapsule(color: Color? = nil, isHovering: Bool = false) -> some View {
+        modifier(BuoyAccentFillModifier(shape: Capsule(), explicitColor: color, isHovering: isHovering, hoverGlowRadius: 9))
     }
 
     /// Tinted interactive glass rounded rect on macOS 26+, filled tint on earlier macOS.
@@ -131,39 +90,11 @@ extension View {
     }
 
     func buoyAccentHoverPlate(isHovering: Bool, cornerRadius: CGFloat = 8) -> some View {
-        self.background(
-            RoundedRectangle(cornerRadius: cornerRadius)
-                .fill(Color.white.opacity(isHovering ? 0.16 : 0))
-                .overlay(
-                    RoundedRectangle(cornerRadius: cornerRadius)
-                        .stroke(Color.white.opacity(isHovering ? 0.16 : 0), lineWidth: 0.6)
-                )
-                .shadow(color: Color.accentColor.opacity(isHovering ? 0.28 : 0), radius: isHovering ? 6 : 0, x: 0, y: 2)
-                .animation(BuoyGlassMetrics.hoverAnimation, value: isHovering)
-        )
+        modifier(BuoyHoverPlateModifier(cornerRadius: cornerRadius, isHovering: isHovering))
     }
 
     func buoyAccentChevronHoverPlate(isHovering: Bool, cornerRadius: CGFloat = 999) -> some View {
-        self.background(
-            UnevenRoundedRectangle(
-                topLeadingRadius: cornerRadius,
-                bottomLeadingRadius: cornerRadius,
-                bottomTrailingRadius: 8,
-                topTrailingRadius: 8
-            )
-            .fill(Color.white.opacity(isHovering ? 0.16 : 0))
-            .overlay(
-                UnevenRoundedRectangle(
-                    topLeadingRadius: cornerRadius,
-                    bottomLeadingRadius: cornerRadius,
-                    bottomTrailingRadius: 8,
-                    topTrailingRadius: 8
-                )
-                .stroke(Color.white.opacity(isHovering ? 0.16 : 0), lineWidth: 0.6)
-            )
-            .shadow(color: Color.accentColor.opacity(isHovering ? 0.28 : 0), radius: isHovering ? 6 : 0, x: 0, y: 2)
-            .animation(BuoyGlassMetrics.hoverAnimation, value: isHovering)
-        )
+        modifier(BuoyChevronHoverPlateModifier(cornerRadius: cornerRadius, isHovering: isHovering))
     }
 
     /// Applies a capsule Liquid Glass effect on macOS 26+, static capsule fallback on earlier macOS.
@@ -174,6 +105,101 @@ extension View {
                 shape: Capsule(),
                 fallbackMaterial: .popover
             )
+        )
+    }
+}
+
+/// The solid accent fill shared by every round and capsule control.
+///
+/// A `ViewModifier` rather than a plain `View` extension so it can read the
+/// user's accent out of the environment; as a function with a
+/// `color: Color = .accentColor` default it could only ever see the system's.
+private struct BuoyAccentFillModifier<S: InsettableShape>: ViewModifier {
+    let shape: S
+    let explicitColor: Color?
+    let isHovering: Bool
+    let hoverGlowRadius: CGFloat
+
+    @Environment(\.buoyTheme) private var theme
+
+    private var color: Color { explicitColor ?? theme.accent }
+
+    func body(content: Content) -> some View {
+        content
+            .background(color.opacity(isHovering ? 1 : 0.96), in: shape)
+            .overlay(
+                LinearGradient(
+                    colors: [.white.opacity(isHovering ? 0.4 : 0.28), .clear],
+                    startPoint: .top,
+                    endPoint: .center
+                )
+                .clipShape(shape)
+                .allowsHitTesting(false)
+            )
+            .overlay(
+                shape
+                    .stroke(Color.white.opacity(isHovering ? BuoyGlassMetrics.accentHoverBorderOpacity : 0.08), lineWidth: 0.7)
+                    .padding(0.5)
+                    .allowsHitTesting(false)
+            )
+            .shadow(
+                color: color.opacity(isHovering ? BuoyGlassMetrics.accentHoverGlowOpacity : 0.4),
+                radius: isHovering ? hoverGlowRadius : 4,
+                x: 0,
+                y: isHovering ? 3 : 2
+            )
+            .overlay(
+                shape
+                    .fill(Color.white.opacity(isHovering ? BuoyGlassMetrics.accentHoverHighlightOpacity : 0))
+                    .blur(radius: isHovering ? 5 : 0)
+                    .allowsHitTesting(false)
+            )
+            .animation(BuoyGlassMetrics.hoverAnimation, value: isHovering)
+    }
+}
+
+private struct BuoyHoverPlateModifier: ViewModifier {
+    let cornerRadius: CGFloat
+    let isHovering: Bool
+
+    @Environment(\.buoyTheme) private var theme
+
+    func body(content: Content) -> some View {
+        content.background(
+            RoundedRectangle(cornerRadius: cornerRadius)
+                .fill(Color.white.opacity(isHovering ? 0.16 : 0))
+                .overlay(
+                    RoundedRectangle(cornerRadius: cornerRadius)
+                        .stroke(Color.white.opacity(isHovering ? 0.16 : 0), lineWidth: 0.6)
+                )
+                .shadow(color: theme.accent.opacity(isHovering ? 0.28 : 0), radius: isHovering ? 6 : 0, x: 0, y: 2)
+                .animation(BuoyGlassMetrics.hoverAnimation, value: isHovering)
+        )
+    }
+}
+
+private struct BuoyChevronHoverPlateModifier: ViewModifier {
+    let cornerRadius: CGFloat
+    let isHovering: Bool
+
+    @Environment(\.buoyTheme) private var theme
+
+    private var shape: UnevenRoundedRectangle {
+        UnevenRoundedRectangle(
+            topLeadingRadius: cornerRadius,
+            bottomLeadingRadius: cornerRadius,
+            bottomTrailingRadius: 8,
+            topTrailingRadius: 8
+        )
+    }
+
+    func body(content: Content) -> some View {
+        content.background(
+            shape
+                .fill(Color.white.opacity(isHovering ? 0.16 : 0))
+                .overlay(shape.stroke(Color.white.opacity(isHovering ? 0.16 : 0), lineWidth: 0.6))
+                .shadow(color: theme.accent.opacity(isHovering ? 0.28 : 0), radius: isHovering ? 6 : 0, x: 0, y: 2)
+                .animation(BuoyGlassMetrics.hoverAnimation, value: isHovering)
         )
     }
 }
@@ -190,9 +216,19 @@ private struct BuoyOpaqueSurfaceBackground<S: InsettableShape>: View {
     /// background; the window surface itself takes the window background.
     var isRaised: Bool = false
 
+    @Environment(\.buoyTheme) private var theme
+
     var body: some View {
         shape
             .fill(Color(nsColor: isRaised ? .controlBackgroundColor : .windowBackgroundColor))
+            .overlay {
+                // The tint still applies with Reduce Transparency on — it is a
+                // colour preference, not an effect — but at half strength,
+                // because there is no blur here to soften it.
+                if let tint = theme.tint {
+                    shape.fill(tint.opacity(theme.opaqueTintOpacity))
+                }
+            }
             .overlay(
                 shape.strokeBorder(Color(nsColor: .separatorColor), lineWidth: 1)
             )
@@ -203,6 +239,7 @@ private struct BuoyPanelGlassModifier: ViewModifier {
     let cornerRadius: CGFloat
 
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.buoyTheme) private var theme
 
     func body(content: Content) -> some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius)
@@ -212,7 +249,7 @@ private struct BuoyPanelGlassModifier: ViewModifier {
                 .clipShape(shape)
         } else if #available(macOS 26, *) {
             content
-                .glassEffect(in: shape)
+                .glassEffect(theme.glassStyle(), in: shape)
                 .clipShape(shape)
                 .overlay(shape.strokeBorder(.white.opacity(0.18), lineWidth: 0.5))
         } else {
@@ -243,6 +280,7 @@ private struct Pre26StaticGlassBackground<S: Shape>: View {
     let surface: Pre26GlassSurface
 
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.buoyTheme) private var theme
 
     private var isDark: Bool {
         colorScheme == .dark
@@ -338,11 +376,15 @@ private struct Pre26StaticGlassBackground<S: Shape>: View {
                     )
                 )
 
+            // The surface has carried a faint accent wash since long before
+            // the tint was a setting. A chosen tint simply takes it over, at
+            // the strength the intensity slider asks for.
             shape
                 .fill(
                     LinearGradient(
                         colors: [
-                            Color.accentColor.opacity(tintOpacity),
+                            (theme.tint ?? theme.accent)
+                                .opacity(theme.tint == nil ? tintOpacity : theme.tintOpacity),
                             .clear,
                             Color.white.opacity(isDark ? 0.02 : 0.04)
                         ],
@@ -388,6 +430,7 @@ private struct BuoyRegularGlassModifier<S: InsettableShape>: ViewModifier {
 
     @State private var isWindowFocused = true
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.buoyTheme) private var theme
 
     func body(content: Content) -> some View {
         glassSurface(content)
@@ -445,7 +488,7 @@ private struct BuoyRegularGlassModifier<S: InsettableShape>: ViewModifier {
                 // The clip is load-bearing: `in: shape` shapes the visible
                 // material, but the backdrop layer behind it is not bounded by
                 // that shape and will spill to the layout rect as a square haze.
-                .glassEffect(.regular, in: shape)
+                .glassEffect(theme.glassStyle(), in: shape)
                 .clipShape(shape)
                 .overlay {
                     if BuoyGlassMetrics.enableWindowFocusPolish && !isWindowFocused {

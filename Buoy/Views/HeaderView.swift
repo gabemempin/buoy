@@ -81,7 +81,7 @@ private struct TitleTextField: NSViewRepresentable {
     /// Single source for the title colour, so the field and any overlay standing
     /// in for it cannot drift apart.
     static func textColor(for colorScheme: ColorScheme) -> NSColor {
-        colorScheme == .dark ? .white : .controlAccentColor
+        colorScheme == .dark ? .white : BuoyTheme.current.accentNSColor
     }
 
     /// Colour of the auto-title "thinking" glow: the title's own colour,

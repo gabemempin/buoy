@@ -228,7 +228,6 @@ struct ContentView: View {
                 // catching up.
                 minHeight: PanelLayoutMetrics.minimumGlassHeight(for: .compact)
             )
-            .environment(\.chromeMetrics, chromeMetrics)
             .background(
                 ChromeDensityReader(
                     density: $chromeDensity,
@@ -239,6 +238,12 @@ struct ContentView: View {
             .background(WindowDragBlocker())
             .overlay { deleteConfirmOverlay }
             .buoyGlass()
+            // Applied outermost on purpose. `.environment` reaches the modified
+            // view and everything *inside* it, so setting it above `.buoyGlass`
+            // leaves the glass itself — an ancestor — reading the defaults, and
+            // the window tint silently does nothing.
+            .environment(\.chromeMetrics, chromeMetrics)
+            .environment(\.buoyTheme, buoyTheme)
     }
 
     @ViewBuilder
@@ -294,6 +299,7 @@ struct ContentView: View {
 
     private var minimizedPanelContent: some View {
         minimizedContent
+            .environment(\.buoyTheme, buoyTheme)
             .frame(
                 width: panelPresentation.minimizedContentWidth,
                 height: PanelLayoutMetrics.minimizedWindowHeight
@@ -469,6 +475,10 @@ struct ContentView: View {
 
     private var chromeMetrics: ChromeMetrics {
         ChromeMetrics(density: chromeDensity)
+    }
+
+    private var buoyTheme: BuoyTheme {
+        BuoyTheme(settings: settings)
     }
 
     private var usesDarkAppearance: Bool {

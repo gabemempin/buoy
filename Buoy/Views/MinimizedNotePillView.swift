@@ -62,10 +62,10 @@ private struct MinimizedTitleLane: View {
 private func minimizedTitleColor(theme: AppTheme, colorScheme: ColorScheme) -> Color {
     switch theme {
     case .light:
-        return .accentColor
+        return BuoyTheme.current.accent
     case .dark:
         return .white
     case .system:
-        return colorScheme == .dark ? .white : .accentColor
+        return colorScheme == .dark ? .white : BuoyTheme.current.accent
     }
 }

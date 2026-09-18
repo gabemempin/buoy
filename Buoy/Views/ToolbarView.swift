@@ -36,7 +36,7 @@ struct ToolbarView: View {
             linkButton
         }
         .clipShape(Capsule())
-        .buoyAccentCapsule(color: isBugReport ? .blue : .accentColor)
+        .buoyAccentCapsule(color: isBugReport ? .blue : nil)
         .padding(.horizontal, metrics.toolbarHorizontalPadding)
         .padding(.vertical, metrics.toolbarVerticalPadding)
         .accessibilityElement(children: .contain)

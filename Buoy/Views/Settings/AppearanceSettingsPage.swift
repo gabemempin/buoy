@@ -15,6 +15,25 @@ struct AppearanceSettingsPage: View {
                 .fixedSize()
             }
 
+            Section("Colours") {
+                ColorWheelRow(
+                    title: "Window colour",
+                    selection: $settings.windowTint,
+                    intensity: $settings.windowTintIntensity,
+                    defaultName: "None",
+                    brightness: 1
+                )
+                ColorWheelRow(
+                    title: "Accent colour",
+                    selection: $settings.accentColor,
+                    intensity: nil,
+                    defaultName: "System accent",
+                    // Held just short of full so an accent never blows out
+                    // white text sitting on it.
+                    brightness: 0.92
+                )
+            }
+
             Section("Layout") {
                 Toggle(isOn: $settings.compactChrome) {
                     Text("Compact controls")

@@ -22,6 +22,12 @@ struct AppSettings: Codable {
     /// Shortening the panel turns compact chrome on by itself; this is for
     /// users who simply prefer the smaller controls.
     var compactChrome: Bool = false
+    /// Hue washed over the panel's glass. `nil` is the untinted default.
+    var windowTint: HSBColor? = nil
+    /// How strongly `windowTint` shows through, 0...1.
+    var windowTintIntensity: Double = 0.35
+    /// Replaces the macOS accent throughout the app. `nil` follows the system.
+    var accentColor: HSBColor? = nil
 
     /// Decodes leniently: any key missing from the file keeps this struct's
     /// default rather than failing the whole decode.
@@ -56,6 +62,10 @@ struct AppSettings: Codable {
         fontSize = (try? container.decodeIfPresent(CGFloat.self, forKey: .fontSize)) ?? nil ?? fallback.fontSize
         theme = (try? container.decodeIfPresent(AppTheme.self, forKey: .theme)) ?? nil ?? fallback.theme
         globalShortcut = text(.globalShortcut) ?? fallback.globalShortcut
+
+        windowTint = try? container.decodeIfPresent(HSBColor.self, forKey: .windowTint) ?? nil
+        accentColor = try? container.decodeIfPresent(HSBColor.self, forKey: .accentColor) ?? nil
+        windowTintIntensity = (try? container.decodeIfPresent(Double.self, forKey: .windowTintIntensity)) ?? nil ?? fallback.windowTintIntensity
 
         lastSelectedNoteID = text(.lastSelectedNoteID)
         dismissedUpdateVersion = text(.dismissedUpdateVersion)

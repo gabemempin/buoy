@@ -382,7 +382,7 @@ private final class CornerResizeOverlayView: NSView {
         path.lineJoinStyle = .round
         let arcColor = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             ? NSColor.white
-            : NSColor.controlAccentColor
+            : BuoyTheme.current.accentNSColor
         let strokeWidth = CornerResizeMetrics.strokeWidth
             + ((CornerResizeMetrics.draggingStrokeWidth - CornerResizeMetrics.strokeWidth)
                 * dragEmphasis)

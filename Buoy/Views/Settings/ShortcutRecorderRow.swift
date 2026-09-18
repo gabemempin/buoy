@@ -28,7 +28,7 @@ struct ShortcutRecorderRow: View {
                 HStack(spacing: 10) {
                     if isCustomised && !isRecording {
                         Circle()
-                            .fill(Color.accentColor)
+                            .fill(BuoyTheme.current.accent)
                             .frame(width: 6, height: 6)
                             .accessibilityHidden(true)
                     }

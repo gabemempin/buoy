@@ -269,6 +269,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             if showInDock { NSApp.activate(ignoringOtherApps: true) }
         }
         appliedSettings = settingsStore.value
+        BuoyTheme.setCurrent(BuoyTheme(settings: settingsStore.value))
         noteStore.restoreSelection(noteID: settingsStore.value.lastSelectedNoteID)
         setupPanel()
         installOutsideClickMonitor()
@@ -775,6 +776,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let settings = settingsStore.value
         defer { appliedSettings = settings }
 
+        // Published before anything renders, because the AppKit side of the
+        // app (the editor's selection colour, the to-do checkboxes, the corner
+        // arcs) reads the theme from this static rather than the environment.
+        BuoyTheme.setCurrent(BuoyTheme(settings: settings))
         applyTheme(settings.theme)
         panel?.level = settings.alwaysOnTop ? .statusBar : .normal
         cornerResizeOverlayController.syncWindowProperties()

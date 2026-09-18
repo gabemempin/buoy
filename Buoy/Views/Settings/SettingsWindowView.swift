@@ -45,10 +45,30 @@ struct SettingsWindowView: View {
                     maxHeight: .infinity,
                     alignment: .top
                 )
+                .background(detailBackground)
         }
         .navigationSplitViewStyle(.balanced)
+        .environment(\.buoyTheme, theme)
+        .tint(theme.accent)
         .onAppear { onPageChange(page) }
         .onChange(of: model.page) { _, newValue in onPageChange(newValue) }
+    }
+
+    private var theme: BuoyTheme {
+        BuoyTheme(settings: store.value)
+    }
+
+    /// The window background, plus the user's tint if they picked one — kept
+    /// far weaker than on the panel. This is a settings window full of text and
+    /// system controls, and it only needs to read as the same app.
+    private var detailBackground: some View {
+        Color(nsColor: .windowBackgroundColor)
+            .overlay {
+                if let tint = theme.tint {
+                    tint.opacity(min(0.10, theme.tintIntensity * 0.10))
+                }
+            }
+            .ignoresSafeArea()
     }
 
     private var selection: Binding<SettingsPage> {
