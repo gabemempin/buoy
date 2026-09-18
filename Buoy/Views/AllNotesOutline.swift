@@ -253,18 +253,10 @@ final class NotesOutlineView: NSOutlineView {
     /// click rather than a drag.
     private static let clickSlop: CGFloat = 4
 
-    /// True while the press that started this tracking loop began inside a
-    /// row's drag-handle gutter. `pasteboardWriterForItem` refuses to start a
-    /// drag otherwise, which is what confines dragging to the grip.
-    private(set) var pressBeganInDragHandle = false
-
     override func mouseDown(with event: NSEvent) {
-        let point = convert(event.locationInWindow, from: nil)
-        let clickedRow = row(at: point)
+        let clickedRow = row(at: convert(event.locationInWindow, from: nil))
         let pressLocation = NSEvent.mouseLocation
         didStartDragDuringTracking = false
-        pressBeganInDragHandle = clickedRow >= 0
-            && point.x <= PanelLayoutMetrics.allNotesDragHandleWidth
         super.mouseDown(with: event)
 
         // `didStartDragDuringTracking` alone is not enough. AppKit can begin
@@ -279,15 +271,9 @@ final class NotesOutlineView: NSOutlineView {
             released.y - pressLocation.y
         )
 
-        let startedOnHandle = pressBeganInDragHandle
-        pressBeganInDragHandle = false
-
         guard !didStartDragDuringTracking,
               travelled < Self.clickSlop,
-              clickedRow >= 0,
-              // A press on the grip that never became a drag is a no-op, not a
-              // request to open the note.
-              !startedOnHandle
+              clickedRow >= 0
         else { return }
         onRowClicked?(clickedRow)
     }
@@ -340,7 +326,12 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
         // Our own chevron is drawn inside the folder row, so the list needs
         // neither AppKit's disclosure cell nor its indentation.
         outlineView.indentationPerLevel = 0
-        outlineView.draggingDestinationFeedbackStyle = .gap
+        // `.regular` draws an insertion *line* between rows and a rounded
+        // highlight when hovering onto a folder. `.gap` was tried and reverted:
+        // it opened a row-sized hole at the drop point, which together with the
+        // dimmed source row read as the note having vanished from the list, and
+        // it never showed a drop-onto-folder affordance at all.
+        outlineView.draggingDestinationFeedbackStyle = .regular
         outlineView.registerForDraggedTypes([
             Self.notePasteboardType,
             Self.folderPasteboardType
@@ -902,11 +893,6 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
             pasteboardWriterForItem item: Any
         ) -> NSPasteboardWriting? {
             guard !isSearching, let node = item as? AllNotesNode else { return nil }
-            // Dragging is confined to the grip in the row's leading gutter, so
-            // a press anywhere else can still scroll, select or hit a button
-            // without the list second-guessing whether it was a drag.
-            guard (outlineView as? NotesOutlineView)?.pressBeganInDragHandle == true
-            else { return nil }
             // Called synchronously the moment AppKit decides this press is a
             // drag — earlier and more reliably than the session's `willBeginAt`
             // — so it is the signal that stops `mouseDown` reporting a click.
@@ -971,8 +957,10 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
             }
 
             // The card is the lift; the row it came from recedes behind it.
+            // Not far, though — at 0.28 the row read as gone rather than
+            // moving, especially in Dark Mode.
             dimmedRowKeys = nodes.map(\.key)
-            setSourceRowAlpha(0.28)
+            setSourceRowAlpha(0.6)
         }
 
         func outlineView(
@@ -1290,6 +1278,29 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
                 if source < destination { destination -= 1 }
                 guard destination != source else { return nil }
                 return .reorderPinned(noteID: noteID, to: destination)
+            }
+
+            // Anywhere in the folders band means "file it into that folder".
+            // Nothing else can be meant there — only a *folder* drag reorders
+            // folders — and AppKit often proposes a top-level insertion rather
+            // than a drop-on when the pointer is over a folder row, which used
+            // to be rejected outright. Accept the whole band instead of only
+            // the few pixels AppKit calls a drop-on target.
+            if !tree.folderRange.isEmpty,
+               index >= tree.folderRange.lowerBound,
+               index <= tree.folderRange.upperBound,
+               !folders.isEmpty {
+                let offset = min(
+                    max(index - tree.folderRange.lowerBound, 0),
+                    folders.count - 1
+                )
+                let targetFolderID = folders[offset].id
+                guard draggedNote.folderID != targetFolderID else { return nil }
+                return .fileIntoFolder(
+                    noteID: noteID,
+                    folderID: targetFolderID,
+                    index: nil
+                )
             }
 
             guard index >= tree.allNotesRange.lowerBound,

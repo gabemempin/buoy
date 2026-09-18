@@ -47,6 +47,7 @@ struct DeleteConfirmDialog: View {
                 Button("Cancel") { onCancel() }
                     .buttonStyle(.plain)
                     .font(BuoyFont.control)
+                    .lineLimit(1)
                     .foregroundStyle(.primary)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 5)
@@ -61,6 +62,8 @@ struct DeleteConfirmDialog: View {
                     HStack(spacing: 5) {
                         Text(confirmTitle)
                             .font(BuoyFont.control.weight(.semibold))
+                            .lineLimit(1)
+                            .fixedSize()
                         Text("⏎")
                             .font(BuoyFont.caption.weight(.semibold))
                             .frame(width: 15, height: 15)
@@ -83,7 +86,10 @@ struct DeleteConfirmDialog: View {
             .padding(.top, 2)
         }
         .padding(16)
-        .frame(width: 220)
+        // Wide enough for the longest confirm label ("Delete Folder") beside
+        // Cancel. At 220 that button wrapped to two lines and the whole dialog
+        // went lopsided.
+        .frame(width: 244)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Delete “\(displayTitle)”?")
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))

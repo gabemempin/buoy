@@ -480,6 +480,24 @@ private final class CornerResizeOverlayView: NSView {
             frame.origin.x = dragStartWindowFrame.minX
         }
 
+        // `setFrame` does not call `windowWillResize`, so ask the delegate
+        // directly. Otherwise a corner drag would slip under floors that the
+        // ordinary resize path enforces — most visibly the height an open
+        // overlay (Settings) needs to stay laid out.
+        if let delegate = parentWindow.delegate,
+           delegate.responds(to: #selector(NSWindowDelegate.windowWillResize(_:to:))) {
+            let constrained = delegate.windowWillResize?(parentWindow, to: frame.size) ?? frame.size
+            frame.size = constrained
+            // Re-anchor against the same edges the branches above used: a
+            // leading drag pins the right edge, a bottom drag pins the top.
+            if corner.isLeading {
+                frame.origin.x = dragStartWindowFrame.maxX - constrained.width
+            }
+            if !corner.isTop {
+                frame.origin.y = dragStartWindowFrame.maxY - constrained.height
+            }
+        }
+
         parentWindow.setFrame(frame, display: true)
     }
 

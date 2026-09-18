@@ -544,8 +544,6 @@ struct ContentView: View {
             && showMainContent
             && !showOnboarding
             && !showWhatsNew
-            && !showAllNotes
-            && !showSettings
             && !showShortcuts
             && !isLinkDialogPresented
             && !isConfirmingDelete

@@ -1,10 +1,15 @@
 # All Notes rewrite — manual test checklist
 
-> **Automated pass, 2026-09-18.** Items marked `[x]` were driven and verified
-> with real synthesized input against the running Debug build. Everything still
-> marked `[ ]` needs your hands. The drag items below were genuinely exercised —
-> a real press, intermediate motion and release — not a single synthetic
-> click-drag, so they carry weight.
+> **Automated pass, 2026-09-18 (second round).** Items marked `[x]` were driven
+> and verified with real synthesized input against the running Debug build.
+> Everything still marked `[ ]` needs your hands. Drag items were genuinely
+> exercised — a real press, intermediate motion and release — not a synthetic
+> click-drag.
+>
+> The drag model changed after the first round: the grip handle was reverted,
+> the whole row drags again, and the drop feedback is now an insertion line
+> (`.regular`) instead of an opening gap. Drag items were re-ticked against the
+> new model.
 
 Everything below is hand-testable in a Debug build. Ordered by risk: the top
 group is where a regression would be worst and where the implementation is
@@ -15,6 +20,10 @@ newest. Tick as you go; anything that fails, note which section it was in.
 - [x] Click a note row in **All Notes** → it opens and the panel closes. No lift, no flash.
 - [ ] Press and hold a row for 2 seconds without moving, release → same as a click, nothing else happens.
 - [ ] Drag a **pinned** row and drop it elsewhere in the pinned band → it reorders and **the panel stays open**.
+- [x] Press on a row's **title** and drag → the drag starts (no grip needed; the grip was reverted).
+- [x] Mid-drag: the row being moved stays visible in the list, dimmed but readable.
+- [x] Mid-drag between two rows: a blue **insertion line** shows where it will land.
+- [ ] Reorder two rows in **All Notes** → order persists across a relaunch.
 - [x] Drag a row and release somewhere invalid → the card slides back and the panel stays open.
 - [ ] Drag a row, release outside the panel entirely → nothing happens, panel stays open.
 - [ ] Drag while a search is active → nothing drags at all (drag is off while searching).
@@ -33,10 +42,11 @@ is broken they are *silently* dead, so click every one.
 
 ## 3. Folder rename
 
-- [ ] New folder button → folder appears, already in rename mode, cursor in the field.
+- [x] New folder button → folder appears, already in rename mode, cursor in the field.
+- [x] The rename field has **no gray box** behind it in Dark Mode.
 - [ ] Type a name, **move the mouse off the row**, then press Return → the typed name is saved, not "New Folder". (This was broken.)
 - [ ] Type a name and press Return without moving → saved.
-- [ ] Press Escape on a brand-new folder → the folder is removed entirely.
+- [x] Press Escape on a brand-new folder → the folder is removed entirely.
 - [ ] Press Return with the name cleared on a brand-new folder → also removed.
 - [ ] Rename an **existing** folder to empty and press Return → reverts to "New Folder", folder survives.
 - [ ] Rename, then close the panel mid-edit → no crash, no duplicate folder.
@@ -51,7 +61,7 @@ is broken they are *silently* dead, so click every one.
 - [ ] Drag a child between two other children of the same folder → reorders.
 - [ ] Drag a child onto a *different* folder → moves, both counts update.
 - [ ] Drag a **pinned** note onto a folder → it is in the pinned band, the folder, and All Notes at once, pin icon in all three.
-- [ ] Try to reorder two **All Notes** rows → rejected, card slides back. (All Notes is chronological by design.)
+- [x] Drop a note anywhere on the **Folders** band → it files into that folder (the whole band is a target, not just the exact row centre).
 - [ ] Drop a note onto the divider line above All Notes → behaves as "top of All Notes", not a dead zone.
 - [ ] Drag a folder row up and down among the other folders → reorders.
 - [ ] Try to drag a folder into the pinned band or All Notes → rejected.
@@ -60,12 +70,14 @@ is broken they are *silently* dead, so click every one.
 
 - [ ] Click a folder row anywhere → toggles open/closed.
 - [x] Only **one** chevron is visible on a folder row. (AppKit's own triangle should be suppressed.)
+- [x] The note count sits on the folder name's **baseline**, not floating above it.
 - [ ] Collapse a folder, quit Buoy, relaunch → still collapsed.
 - [ ] File a note into a **collapsed** folder → the count increments even though nothing expands.
 
 ## 6. Folder delete
 
-- [ ] Click a folder's x → confirm dialog, wording says the notes stay in All Notes.
+- [x] Click a folder's x → confirm dialog, wording says the notes stay in All Notes.
+- [x] "Delete Folder" sits on **one line**; the dialog is not lopsided.
 - [ ] Confirm → folder gone, every note that was in it still present in All Notes.
 - [ ] Delete a folder with 1 note → copy reads "Its note", not "Its 1 notes".
 - [ ] Escape / click outside → cancels, folder survives.
@@ -76,6 +88,10 @@ is broken they are *silently* dead, so click every one.
 - [x] With pins but no folders → Pinned, one divider, All Notes.
 - [ ] With folders but no pins → Folders, one divider, All Notes.
 - [x] Panel is noticeably wider than before and does not overlap the traffic lights at the smallest window size.
+- [x] The "All Notes" title is the **same size** as the "Settings" title.
+- [x] Corner resize controls appear while **All Notes** is open, and resizing works.
+- [x] Corner resize controls appear while **Settings** is open. Growing works; shrinking stops at the height Settings needs.
+- [ ] Resize with Settings open, then close Settings → the window keeps the new size.
 - [ ] Resize the window to minimum → panel still fits, no horizontal clipping.
 
 ## 8. Search
@@ -103,7 +119,28 @@ is broken they are *silently* dead, so click every one.
 - [ ] Harbor Mode (⌘M) while All Notes is open → no crash, panel dismisses cleanly.
 - [ ] The cursor stays an arrow over the panel and never turns into an I-beam.
 
-## Found and fixed during the automated pass
+## Round two: seven reported bugs, all fixed
+
+1. Gray box behind the folder rename field in Dark Mode — the window's shared
+   field editor arrives drawing an opaque background, and clearing it on the
+   `NSTextField` does not reach it. Turned off in `controlTextDidBeginEditing`,
+   plus `isBezeled = false` (the bezeled convenience init leaves it on).
+2. Folder count floated above the name — now baseline-aligned.
+3. Could not resize while Settings or All Notes was open — the corner controls
+   were gated off by both. Corner drags now also run through
+   `windowWillResize`, so Settings keeps its height floor on that path too.
+4. All Notes title now matches the Settings title exactly.
+5. Grip handle reverted; the whole row drags again, with an insertion line.
+6. The dragged note vanished — `.gap` opened a row-sized hole and the source
+   row was dimmed to 0.28. Now `.regular` (insertion line) and 0.6.
+7. Dropping onto a folder did nothing — AppKit proposes a top-level insertion
+   over a folder row as often as a drop-on, and only the latter was handled.
+   The whole Folders band is now a valid file target.
+8. (Reported mid-round) The delete-folder dialog was lopsided because "Delete
+   Folder" wrapped to two lines at 220pt. Dialog is 244pt and labels are
+   single-line.
+
+## Found and fixed during the first automated pass
 
 - On opening the panel, a row could show its hover controls while the pointer
   was somewhere else entirely, and stay that way until the mouse was moved.

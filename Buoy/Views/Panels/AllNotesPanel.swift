@@ -81,7 +81,9 @@ struct AllNotesPanel: View {
     private var header: some View {
         HStack(spacing: 6) {
             Text("All Notes")
-                .font(BuoyFont.sectionTitle)
+                // Matches SettingsPanel's title exactly; the two panels sit in
+                // the same corner and a size mismatch between them shows.
+                .font(.system(size: 14, weight: .semibold))
 
             Spacer()
 
@@ -159,8 +161,7 @@ struct AllNotesSectionHeader: View {
                 .foregroundStyle(.tertiary)
                 .lineLimit(1)
         }
-        .padding(.leading, 4 + PanelLayoutMetrics.allNotesDragHandleWidth)
-        .padding(.trailing, 10)
+        .padding(.horizontal, 10)
         .padding(.top, showsRule ? 4 : 2)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
         .accessibilityElement(children: .ignore)
@@ -217,34 +218,6 @@ struct RowActionButton: View {
     }
 }
 
-// MARK: - Drag handle
-
-/// The reorder grip in a row's leading gutter.
-///
-/// Deliberately *not* an `.interactiveRegion`: the whole point is that the
-/// press falls through to the outline view, which is the one and only thing
-/// that starts a drag. `NotesOutlineView` decides a press is a drag by testing
-/// it against `allNotesDragHandleWidth`, so this draws against the same
-/// constant and the visible dots are exactly the draggable strip.
-struct RowDragHandle: View {
-    let isVisible: Bool
-
-    var body: some View {
-        VStack(spacing: 2) {
-            ForEach(0..<3, id: \.self) { _ in
-                HStack(spacing: 2) {
-                    Circle().frame(width: 2, height: 2)
-                    Circle().frame(width: 2, height: 2)
-                }
-            }
-        }
-        .foregroundStyle(.tertiary)
-        .frame(width: PanelLayoutMetrics.allNotesDragHandleWidth)
-        .opacity(isVisible ? 1 : 0)
-        .accessibilityHidden(true)
-    }
-}
-
 // MARK: - NoteRow
 
 struct NoteRow: View {
@@ -263,8 +236,6 @@ struct NoteRow: View {
 
     var body: some View {
         HStack(spacing: 2) {
-            RowDragHandle(isVisible: isHovering)
-
             Text(note.title.isEmpty ? "Untitled" : note.title)
                 .font(isActive ? BuoyFont.sectionTitle : BuoyFont.control)
                 .foregroundStyle(isActive ? Color.primary : Color.secondary)
@@ -288,8 +259,10 @@ struct NoteRow: View {
                 )
             }
         }
-        // The grip occupies the leading gutter, so the row's own leading
-        // padding is 0 — the handle's fixed width is the inset.
+        // Text sits 10pt from the panel edge, level with the section headers.
+        // The pill it sits in stops 4pt short of that edge so the fill never
+        // runs into the panel's rounded corner.
+        .padding(.leading, 6)
         .padding(.trailing, 2)
         .padding(.vertical, 4)
         .background(
@@ -328,8 +301,6 @@ struct FolderRow: View {
 
     var body: some View {
         HStack(spacing: 5) {
-            RowDragHandle(isVisible: isHovering && !isRenaming)
-
             // Affordance only — the whole row toggles, so this is not a button
             // and never competes with the row's own click handling.
             Image(systemName: "chevron.right")
@@ -353,15 +324,19 @@ struct FolderRow: View {
                 .frame(height: 16)
                 .interactiveRegion(in: space)
             } else {
-                Text(folder.displayName)
-                    .font(BuoyFont.control)
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
+                // Baseline-aligned: the count is a smaller type size, so
+                // centering it against the name's frame floats it high.
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text(folder.displayName)
+                        .font(BuoyFont.control)
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
 
-                Text("\(noteCount)")
-                    .font(BuoyFont.caption)
-                    .foregroundStyle(.tertiary)
-                    .accessibilityHidden(true)
+                    Text("\(noteCount)")
+                        .font(BuoyFont.caption)
+                        .foregroundStyle(.tertiary)
+                        .accessibilityHidden(true)
+                }
             }
 
             Spacer(minLength: 4)
@@ -379,6 +354,7 @@ struct FolderRow: View {
                 )
             }
         }
+        .padding(.leading, 6)
         .padding(.trailing, 2)
         .padding(.vertical, 3)
         .padding(.leading, 4)
@@ -411,7 +387,13 @@ struct InlineRenameField: NSViewRepresentable {
     func makeNSView(context: Context) -> NSTextField {
         let field = NSTextField(string: text)
         field.isBordered = false
+        // `NSTextField(string:)` is the *bezeled* convenience init, and
+        // `isBordered` is a separate cell flag from `isBezeled` — clearing one
+        // leaves the other. The leftover square bezel is what drew a gray box
+        // behind the text while editing in Dark Mode.
+        field.isBezeled = false
         field.drawsBackground = false
+        field.backgroundColor = .clear
         // No focus ring, matching every other borderless field in the app.
         field.focusRingType = .none
         field.font = NSFont.systemFont(ofSize: 12)
@@ -467,6 +449,20 @@ struct InlineRenameField: NSViewRepresentable {
             default:
                 return false
             }
+        }
+
+        /// The window's shared field editor is configured by AppKit when
+        /// editing begins, *after* everything set on the field itself, and it
+        /// arrives drawing an opaque background — the gray box that showed up
+        /// behind the name in Dark Mode. Clearing the field's own
+        /// `drawsBackground` does not reach it; it has to be turned off here,
+        /// once the editor actually exists.
+        func controlTextDidBeginEditing(_ obj: Notification) {
+            guard let field = obj.object as? NSTextField,
+                  let editor = field.currentEditor() as? NSTextView
+            else { return }
+            editor.drawsBackground = false
+            editor.backgroundColor = .clear
         }
 
         func controlTextDidEndEditing(_ obj: Notification) {
