@@ -10,6 +10,9 @@ enum NavigationDirection {
 @Observable
 final class NoteStore {
     var notes: [Note] = []
+    /// One-level note folders, ordered by `sortOrder`. Purely an All Notes
+    /// panel concern — nothing else in the app reads this.
+    var folders: [Folder] = []
     var currentNote: Note?
     var lastNavigationDirection: NavigationDirection?
     /// Set the instant an auto-generated title lands on the current note, so
@@ -199,6 +202,33 @@ final class NoteStore {
             try db.execute(sql: "UPDATE notes SET autoTitleStage = 3 WHERE autoTitleStage >= 2")
         }
 
+        // One-level note folders. `notes.folderID` deliberately carries no
+        // foreign key: deleting a folder must leave its notes alone, which is
+        // then a single UPDATE rather than a cascade to reason about.
+        migrator.registerMigration("v8_folders") { db in
+            try db.execute(sql: """
+                CREATE TABLE IF NOT EXISTS folders (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    name TEXT NOT NULL,
+                    sortOrder INTEGER NOT NULL,
+                    isExpanded INTEGER NOT NULL DEFAULT 0,
+                    createdAt INTEGER NOT NULL
+                )
+            """)
+
+            let columns = try db.columns(in: "notes").map { $0.name }
+            if !columns.contains("folderID") {
+                try db.alter(table: "notes") { t in
+                    t.add(column: "folderID", .text)
+                }
+            }
+            if !columns.contains("folderOrder") {
+                try db.alter(table: "notes") { t in
+                    t.add(column: "folderOrder", .integer)
+                }
+            }
+        }
+
         try? migrator.migrate(db)
     }
 
@@ -209,6 +239,11 @@ final class NoteStore {
         notes = (try? db.read { db in
             try Note
                 .order(Note.Columns.createdAt.asc)
+                .fetchAll(db)
+        }) ?? []
+        folders = (try? db.read { db in
+            try Folder
+                .order(Folder.Columns.sortOrder.asc)
                 .fetchAll(db)
         }) ?? []
     }
@@ -261,7 +296,9 @@ final class NoteStore {
             // Only notes created with no explicit title (i.e. not scratch
             // notes like the bug report) are eligible for auto-naming.
             autoTitleLocked: title != nil,
-            autoTitleDefaultTitle: defaultTitle
+            autoTitleDefaultTitle: defaultTitle,
+            folderID: nil,
+            folderOrder: nil
         )
         _ = try? db.write { db in
             try newNote.insert(db)
@@ -329,14 +366,266 @@ final class NoteStore {
         }
     }
 
+    // MARK: - Folders
+
+    /// Notes filed in `folderID`, in their manual order. `folderOrder` is kept
+    /// contiguous by every mutator below, so the secondary sorts only matter
+    /// for rows written before a renumber landed.
+    func notesInFolder(_ folderID: String) -> [Note] {
+        notes
+            .filter { $0.folderID == folderID }
+            .sorted { lhs, rhs in
+                let lhsOrder = lhs.folderOrder ?? Int64.max
+                let rhsOrder = rhs.folderOrder ?? Int64.max
+                if lhsOrder != rhsOrder { return lhsOrder < rhsOrder }
+                if lhs.createdAt != rhs.createdAt { return lhs.createdAt < rhs.createdAt }
+                return lhs.id < rhs.id
+            }
+    }
+
+    @discardableResult
+    func createFolder(named name: String = Folder.defaultName) -> Folder? {
+        guard let db else { return nil }
+        do {
+            let nextOrder = (try db.read { db in
+                try Int64.fetchOne(db, sql: "SELECT MAX(sortOrder) FROM folders")
+            } ?? -1) + 1
+            let folder = Folder(
+                id: Folder.newID(),
+                name: name,
+                sortOrder: nextOrder,
+                // Expanded so the inline rename field lands in view.
+                isExpanded: true,
+                createdAt: Note.currentTimestamp()
+            )
+            try db.write { db in
+                try folder.insert(db)
+            }
+            loadNoteList()
+            return folder
+        } catch {
+            print("[NoteStore] Failed to create folder: \(error)")
+            return nil
+        }
+    }
+
+    func renameFolder(_ folderID: String, to name: String) {
+        guard let db else { return }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolved = trimmed.isEmpty ? Folder.defaultName : trimmed
+        do {
+            try db.write { db in
+                try db.execute(
+                    sql: "UPDATE folders SET name = ? WHERE id = ?",
+                    arguments: [resolved, folderID]
+                )
+            }
+            loadNoteList()
+        } catch {
+            print("[NoteStore] Failed to rename folder: \(error)")
+        }
+    }
+
+    /// Deletes the folder row and unfiles its notes. Never deletes a note —
+    /// every note is still listed in the All Notes section.
+    func deleteFolder(_ folderID: String) {
+        guard let db else { return }
+        do {
+            try db.write { db in
+                try db.execute(
+                    sql: "UPDATE notes SET folderID = NULL, folderOrder = NULL WHERE folderID = ?",
+                    arguments: [folderID]
+                )
+                try db.execute(sql: "DELETE FROM folders WHERE id = ?", arguments: [folderID])
+
+                let remaining = try String.fetchAll(
+                    db,
+                    sql: "SELECT id FROM folders ORDER BY sortOrder ASC, createdAt ASC"
+                )
+                for (index, id) in remaining.enumerated() {
+                    try db.execute(
+                        sql: "UPDATE folders SET sortOrder = ? WHERE id = ?",
+                        arguments: [Int64(index), id]
+                    )
+                }
+            }
+            loadNoteList()
+            if currentNote?.folderID == folderID {
+                currentNote?.folderID = nil
+                currentNote?.folderOrder = nil
+            }
+        } catch {
+            print("[NoteStore] Failed to delete folder: \(error)")
+        }
+    }
+
+    /// Disclosure state only. Deliberately does **not** call `loadNoteList`:
+    /// the outline view has already animated the expansion, so re-reading every
+    /// note and folder back out of SQLite on each disclosure click would be
+    /// pure waste. (The in-memory `folders` write below is still observed, so
+    /// SwiftUI does re-render — it just costs nothing and repaints one row.)
+    func setFolderExpanded(_ folderID: String, _ expanded: Bool) {
+        guard let db else { return }
+        guard let index = folders.firstIndex(where: { $0.id == folderID }),
+              folders[index].isExpanded != expanded
+        else { return }
+        folders[index].isExpanded = expanded
+        do {
+            try db.write { db in
+                try db.execute(
+                    sql: "UPDATE folders SET isExpanded = ? WHERE id = ?",
+                    arguments: [expanded, folderID]
+                )
+            }
+        } catch {
+            print("[NoteStore] Failed to persist folder expansion: \(error)")
+        }
+    }
+
+    func reorderFolders(_ orderedIDs: [String]) {
+        let currentIDs = folders.map(\.id)
+        guard orderedIDs.count == currentIDs.count,
+              Set(orderedIDs) == Set(currentIDs),
+              let db
+        else { return }
+
+        do {
+            try db.write { db in
+                for (index, id) in orderedIDs.enumerated() {
+                    try db.execute(
+                        sql: "UPDATE folders SET sortOrder = ? WHERE id = ?",
+                        arguments: [Int64(index), id]
+                    )
+                }
+            }
+            loadNoteList()
+        } catch {
+            print("[NoteStore] Failed to reorder folders: \(error)")
+        }
+    }
+
+    /// Files `noteID` into `folderID` at `index` (appended when `nil`).
+    /// Moving a note that is already filed elsewhere renumbers the folder it
+    /// left. Pin state is never touched — pinning and filing are independent.
+    func fileNote(_ noteID: String, inFolder folderID: String, at index: Int?) {
+        guard let db,
+              folders.contains(where: { $0.id == folderID }),
+              let note = notes.first(where: { $0.id == noteID })
+        else { return }
+
+        let previousFolderID = note.folderID
+        var ordered = notesInFolder(folderID).map(\.id).filter { $0 != noteID }
+        let insertIndex = min(max(index ?? ordered.count, 0), ordered.count)
+        ordered.insert(noteID, at: insertIndex)
+
+        do {
+            try db.write { db in
+                try db.execute(
+                    sql: "UPDATE notes SET folderID = ? WHERE id = ?",
+                    arguments: [folderID, noteID]
+                )
+                for (position, id) in ordered.enumerated() {
+                    try db.execute(
+                        sql: "UPDATE notes SET folderOrder = ? WHERE id = ?",
+                        arguments: [Int64(position), id]
+                    )
+                }
+                if let previousFolderID, previousFolderID != folderID {
+                    try Self.renumberFolderContents(previousFolderID, in: db)
+                }
+            }
+            loadNoteList()
+            if currentNote?.id == noteID {
+                currentNote?.folderID = folderID
+                currentNote?.folderOrder = Int64(insertIndex)
+            }
+        } catch {
+            print("[NoteStore] Failed to file note in folder: \(error)")
+        }
+    }
+
+    func unfileNote(_ noteID: String) {
+        guard let db,
+              let note = notes.first(where: { $0.id == noteID }),
+              let previousFolderID = note.folderID
+        else { return }
+
+        do {
+            try db.write { db in
+                try db.execute(
+                    sql: "UPDATE notes SET folderID = NULL, folderOrder = NULL WHERE id = ?",
+                    arguments: [noteID]
+                )
+                try Self.renumberFolderContents(previousFolderID, in: db)
+            }
+            loadNoteList()
+            if currentNote?.id == noteID {
+                currentNote?.folderID = nil
+                currentNote?.folderOrder = nil
+            }
+        } catch {
+            print("[NoteStore] Failed to unfile note: \(error)")
+        }
+    }
+
+    func reorderNotes(inFolder folderID: String, orderedIDs: [String]) {
+        let currentIDs = notesInFolder(folderID).map(\.id)
+        guard orderedIDs.count == currentIDs.count,
+              Set(orderedIDs) == Set(currentIDs),
+              let db
+        else { return }
+
+        do {
+            try db.write { db in
+                for (index, id) in orderedIDs.enumerated() {
+                    try db.execute(
+                        sql: "UPDATE notes SET folderOrder = ? WHERE id = ? AND folderID = ?",
+                        arguments: [Int64(index), id, folderID]
+                    )
+                }
+            }
+            loadNoteList()
+            if let currentID = currentNote?.id,
+               let index = orderedIDs.firstIndex(of: currentID) {
+                currentNote?.folderOrder = Int64(index)
+            }
+        } catch {
+            print("[NoteStore] Failed to reorder notes in folder: \(error)")
+        }
+    }
+
+    private static func renumberFolderContents(_ folderID: String, in db: Database) throws {
+        let remaining = try String.fetchAll(
+            db,
+            sql: """
+                SELECT id FROM notes
+                WHERE folderID = ?
+                ORDER BY folderOrder ASC, createdAt ASC, id ASC
+            """,
+            arguments: [folderID]
+        )
+        for (index, id) in remaining.enumerated() {
+            try db.execute(
+                sql: "UPDATE notes SET folderOrder = ? WHERE id = ?",
+                arguments: [Int64(index), id]
+            )
+        }
+    }
+
     func deleteNote(_ note: Note) {
         guard notes.count > 1 else { return }
         guard let db else { return }
         let deletedID = note.id
         let deletedIndex = notes.firstIndex { $0.id == deletedID }
         let wasDeletingCurrent = currentNote?.id == deletedID
+        let deletedFolderID = note.folderID
         _ = try? db.write { db in
             try Note.deleteOne(db, key: note.id)
+            // Keep the folder's manual order contiguous; a gap would otherwise
+            // survive until the next drag inside that folder.
+            if let deletedFolderID {
+                try Self.renumberFolderContents(deletedFolderID, in: db)
+            }
         }
         loadNoteList()
         if wasDeletingCurrent, !notes.isEmpty {
@@ -361,8 +650,12 @@ final class NoteStore {
 
         let discardedID = note.id
         let discardedIndex = notes.firstIndex { $0.id == discardedID }
+        let discardedFolderID = note.folderID
         _ = try? db.write { db in
             try Note.deleteOne(db, key: discardedID)
+            if let discardedFolderID {
+                try Self.renumberFolderContents(discardedFolderID, in: db)
+            }
         }
         loadNoteList()
 

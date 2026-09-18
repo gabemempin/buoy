@@ -1,10 +1,18 @@
 import SwiftUI
 import AppKit
 
-/// Centered confirmation shown before a note is permanently deleted.
-/// Used by both the ⌘⌫ shortcut and the All Notes panel delete button.
+/// Centered confirmation shown before something is deleted.
+/// Used by the ⌘⌫ shortcut, the All Notes panel note delete button, and the
+/// folder delete button — the copy and icon are parameters so a folder delete
+/// can say what it actually does (the notes survive) instead of borrowing the
+/// note wording.
 struct DeleteConfirmDialog: View {
     let noteTitle: String
+    var message: String = "This can’t be undone."
+    var confirmTitle: String = "Delete"
+    var confirmHint: String?
+    var cancelHint: String = "Keeps the note. Escape does the same."
+    var iconName: String = "trash"
     var onCancel: () -> Void
     var onConfirm: () -> Void
 
@@ -21,7 +29,7 @@ struct DeleteConfirmDialog: View {
 
     var body: some View {
         VStack(spacing: 10) {
-            Image(systemName: "trash")
+            Image(systemName: iconName)
                 .font(.system(size: 20, weight: .regular))
                 .foregroundStyle(.red)
 
@@ -30,7 +38,7 @@ struct DeleteConfirmDialog: View {
                     .font(BuoyFont.headline)
                     .multilineTextAlignment(.center)
                     .lineLimit(2)
-                Text("This can’t be undone.")
+                Text(message)
                     .font(BuoyFont.secondary)
                     .foregroundStyle(.secondary)
             }
@@ -44,14 +52,14 @@ struct DeleteConfirmDialog: View {
                     .padding(.vertical, 5)
                     .background(Color.buoyControlFill, in: RoundedRectangle(cornerRadius: 7))
                     .accessibilityLabel("Cancel")
-                    .accessibilityHint("Keeps the note. Escape does the same.")
+                    .accessibilityHint(cancelHint)
                     .pointingHandCursor()
 
                 Button {
                     onConfirm()
                 } label: {
                     HStack(spacing: 5) {
-                        Text("Delete")
+                        Text(confirmTitle)
                             .font(BuoyFont.control.weight(.semibold))
                         Text("⏎")
                             .font(BuoyFont.caption.weight(.semibold))
@@ -66,8 +74,10 @@ struct DeleteConfirmDialog: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Delete")
-                .accessibilityHint("Permanently deletes “\(displayTitle)”. Return does the same.")
+                .accessibilityLabel(confirmTitle)
+                .accessibilityHint(
+                    confirmHint ?? "Permanently deletes “\(displayTitle)”. Return does the same."
+                )
                 .pointingHandCursor()
             }
             .padding(.top, 2)

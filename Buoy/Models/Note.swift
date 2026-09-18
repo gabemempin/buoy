@@ -21,12 +21,19 @@ struct Note: Identifiable, Codable, FetchableRecord, PersistableRecord {
     /// The "Note N" title this note was created with, so clearing the note's
     /// text back to empty can restore it after an AI title was applied.
     var autoTitleDefaultTitle: String?
+    /// The folder this note belongs to, or `nil` when it is unfiled. At most
+    /// one folder per note. A filed note still appears in the All Notes
+    /// section — folders group, they do not move.
+    var folderID: String?
+    /// Manual position inside `folderID`. Contiguous from 0 after any reorder.
+    var folderOrder: Int64?
 
     static let databaseTableName = "notes"
 
     enum Columns: String, ColumnExpression {
         case id, title, contentRTF, createdAt, updatedAt, isPinned, pinnedOrder
         case autoTitleStage, autoTitleLocked, autoTitleDefaultTitle
+        case folderID, folderOrder
     }
 
     static func nowMs() -> Int64 { Int64(Date().timeIntervalSince1970 * 1000) }

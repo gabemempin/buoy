@@ -66,7 +66,7 @@ manually and reports any failures. Static inspection is the default verification
 | Notes | `~/.buoy/notes.db` | GRDB SQLite (RTF binary) |
 | Settings | `~/.buoy/settings.json` | JSON (Codable) |
 
-GRDB migrations are defined in `NoteStore.swift` (`v1_initial`, `v2_contentRTF`, `v3_isPinned`, `v4_pinnedOrder`, `v5_autoTitlePending`, `v6_autoTitleStages`, `v7_autoTitleRestage`).
+GRDB migrations are defined in `NoteStore.swift` (`v1_initial`, `v2_contentRTF`, `v3_isPinned`, `v4_pinnedOrder`, `v5_autoTitlePending`, `v6_autoTitleStages`, `v7_autoTitleRestage`, `v8_folders`).
 
 ### Key Services
 
@@ -212,6 +212,66 @@ coloured glint that never clashes with the system accent). Reduce Motion
 collapses both the reveal and the shimmer to short crossfades — same pattern
 as everywhere else, see `BuoyMotion.swift`.
 
+### All Notes Panel & Folders
+
+The list is an **`NSOutlineView`** (`Views/AllNotesOutline.swift`), not a table.
+Three sections separated by hairline dividers: **Pinned** (manual order via
+`pinnedOrder`), **Folders** (manual order via `Folder.sortOrder`, children via
+`Note.folderOrder`), **All Notes** (`createdAt` asc, never reorderable).
+
+**Folders group, they do not move.** A note with a `folderID` still appears in
+the All Notes section, and a pinned + filed note appears in all three sections
+at once. One note belongs to at most one folder. `Folder` rows carry no foreign
+key to `notes` on purpose — deleting a folder is one `UPDATE ... SET folderID =
+NULL` and never deletes a note.
+
+**One drag source, always.** Every drag starts from
+`outlineView(_:pasteboardWriterForItem:)` and nothing else. The previous
+implementation had *two* (a custom `NoteRowDragHandle` under the title plus the
+table's built-in row drag), so the feel depended on which pixel you grabbed:
+one had a 0.16s hold and a card image, the other neither. Do not add a second
+drag path. The card image is applied in
+`outlineView(_:draggingSession:willBeginAt:forItems:)` via
+`enumerateDraggingItems`; the source row dims to 0.28 there and restores in the
+`endedAt` callback. Never set `animatesToStartingPositionsOnCancelOrFail =
+false` — the slide-back is how a rejected drop tells the user it was rejected.
+
+**Commit with `moveItem`/`insertItems`/`removeItems`, never `reloadData`.**
+`acceptDrop` mutates the coordinator's node tree, animates inside
+`beginUpdates`/`endUpdates`, *then* writes to the store. The store write
+re-renders SwiftUI, which calls `updateNSView` — which compares the rebuilt
+tree's `signature` to the one the drop already produced, finds them equal, and
+does nothing structural. That is what keeps the old double-snap from coming
+back. `reloadData` is the fallback for structural changes nobody animated (new
+note, delete, pin toggle, search edit).
+
+**Row content is SwiftUI but not hit-testable.** `PassthroughHostingView`
+returns `nil` from `hitTest` except over rects the row published through
+`InteractiveRegionKey`, so `mouseDown` reaches the outline view (which owns
+selection and drag) while buttons still work. **Every clickable control in a row
+must carry `.interactiveRegion(in:)` or it is dead.** Hover is owned by
+`NotesRowView`'s tracking area, not SwiftUI's `onHover`, for the same reason —
+and that structurally prevents hover state from leaking between rows on cell
+reuse.
+
+**Clicks** come from `NotesOutlineView.mouseDown`: it runs `super.mouseDown`
+(AppKit's tracking loop, which starts drags) and treats anything that finishes
+without a drag session as a click. The delegate sets
+`didStartDragDuringTracking`. A click on a folder row toggles its disclosure —
+the chevron is a drawn affordance, not a button, so there is no double-fire.
+
+**Row heights are per-item** (`heightOfRowByItem`): note 30, folder 28, divider
+9. There is no global `rowHeight`. `indentationPerLevel` is 0 and folder
+children indent themselves in SwiftUI via `allNotesChildIndent`.
+
+**Search flattens everything**: sections, folders and all dragging are off while
+`searchText` is non-empty (`searchMatches != nil`).
+
+**Panel width** is the window content width minus `overlayHorizontalInset * 2`,
+set by `AllNotesOverlay`, not a literal. `AllNotesOverlay` exists because
+`ContentView.body` is at the type-checker limit and the panel needs a dozen
+closures — keep new All Notes wiring in that file.
+
 ### Bug Report Mode
 
 Clicking "Report a Bug" in `SettingsPanel` creates an ephemeral note and sets `bugReportNoteID` in `ContentView`. `isBugReport` is a computed property — navigating away passively exits the mode with no cleanup needed. The `TitleTextField` text color is set to `.clear` so the `AnimatedBugTitle` overlay shows through.
@@ -234,6 +294,10 @@ The `View+Glass.swift` helper abstracts this behind `.buoyGlass()`.
 | `Editor/BuoyTextView.swift` | Core NSTextView with all formatting logic |
 | `Views/ContentView.swift` | Root SwiftUI layout and panel state |
 | `Views/OnboardingView.swift` | 4-slide carousel onboarding (Welcome, Formatting, Harbor Mode, Bug Report) |
+| `Views/AllNotesOutline.swift` | The All Notes `NSOutlineView`: nodes, drag/drop, passthrough hosting view |
+| `Views/Panels/AllNotesPanel.swift` | All Notes chrome + `NoteRow` / `FolderRow` / inline rename |
+| `Views/Panels/AllNotesOverlay.swift` | Mounts the panel and binds it to `NoteStore` |
+| `Models/Folder.swift` | One-level note folder record |
 | `Helpers/WindowDragBlocker.swift` | DragBlockingNSView + ArrowCursorOverlay NSViewRepresentables |
 | `Helpers/PanelLayoutMetrics.swift` | All window/panel sizing constants |
 | `App/MainMenu.swift` | Whole main menu bar (App/Edit/Format/Window) + `EditMenuDelegate` |

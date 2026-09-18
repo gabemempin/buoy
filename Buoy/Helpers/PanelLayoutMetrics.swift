@@ -26,6 +26,16 @@ enum PanelLayoutMetrics {
     static let overlayHorizontalInset: CGFloat = 8
     static let allNotesTopInset: CGFloat = 43
     static let allNotesBottomInset: CGFloat = 43
+
+    // All Notes list. The outline view sizes each row by kind rather than
+    // carrying one global rowHeight, so a folder row and a divider can differ
+    // from a note row without the list going out of alignment.
+    static let allNotesListMaxHeight: CGFloat = 300
+    static let allNotesNoteRowHeight: CGFloat = 30
+    static let allNotesFolderRowHeight: CGFloat = 28
+    static let allNotesDividerRowHeight: CGFloat = 9
+    /// Extra leading inset for a note shown inside a folder.
+    static let allNotesChildIndent: CGFloat = 18
     static let footerOverlayBottomInset: CGFloat = 43
 
     static let headerMinimumHeight: CGFloat = 70

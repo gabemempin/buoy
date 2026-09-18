@@ -57,6 +57,10 @@ struct ContentView: View {
 
     // Delete confirmation
     @State private var pendingDeleteNote: Note? = nil
+    @State private var pendingDeleteFolder: Folder? = nil
+
+    // All Notes: the folder row currently in inline-rename mode
+    @State private var renamingFolderID: String? = nil
 
     // Toast
     @State private var toastState = ToastState()
@@ -197,8 +201,8 @@ struct ContentView: View {
 
     private var fullPanelContent: some View {
         fullContent
-            .blur(radius: pendingDeleteNote != nil ? 9 : 0)
-            .animation(BuoyMotion.easeOut(0.16), value: pendingDeleteNote != nil)
+            .blur(radius: isConfirmingDelete ? 9 : 0)
+            .animation(BuoyMotion.easeOut(0.16), value: isConfirmingDelete)
             .padding(PanelLayoutMetrics.windowPadding)
             .frame(
                 minWidth: PanelLayoutMetrics.minimumGlassWidth,
@@ -212,20 +216,51 @@ struct ContentView: View {
     @ViewBuilder
     private var deleteConfirmOverlay: some View {
         if let note = pendingDeleteNote {
-            ZStack {
-                Color.black.opacity(0.12)
-                    .contentShape(Rectangle())
-                    .onTapGesture { cancelDeleteNote() }
-
+            confirmScrim(onDismiss: cancelDeleteNote) {
                 DeleteConfirmDialog(
                     noteTitle: note.title,
                     onCancel: { cancelDeleteNote() },
                     onConfirm: { confirmDeleteNote() }
                 )
             }
-            // Clip to the window corner radius so the scrim stays concentric with the glass.
-            .clipShape(RoundedRectangle(cornerRadius: PanelLayoutMetrics.windowCornerRadius))
-            .transition(.opacity)
+        } else if let folder = pendingDeleteFolder {
+            confirmScrim(onDismiss: cancelDeleteFolder) {
+                DeleteConfirmDialog(
+                    noteTitle: folder.displayName,
+                    message: folderDeleteMessage(for: folder),
+                    confirmTitle: "Delete Folder",
+                    confirmHint: "Deletes the folder. Return does the same.",
+                    cancelHint: "Keeps the folder. Escape does the same.",
+                    iconName: "folder.badge.minus",
+                    onCancel: { cancelDeleteFolder() },
+                    onConfirm: { confirmDeleteFolder() }
+                )
+            }
+        }
+    }
+
+    private func confirmScrim<Dialog: View>(
+        onDismiss: @escaping () -> Void,
+        @ViewBuilder dialog: () -> Dialog
+    ) -> some View {
+        ZStack {
+            Color.black.opacity(0.12)
+                .contentShape(Rectangle())
+                .onTapGesture { onDismiss() }
+
+            dialog()
+        }
+        // Clip to the window corner radius so the scrim stays concentric with the glass.
+        .clipShape(RoundedRectangle(cornerRadius: PanelLayoutMetrics.windowCornerRadius))
+        .transition(.opacity)
+    }
+
+    private func folderDeleteMessage(for folder: Folder) -> String {
+        let count = noteStore.notesInFolder(folder.id).count
+        switch count {
+        case 0: return "The folder is empty."
+        case 1: return "Its note stays in All Notes."
+        default: return "Its \(count) notes stay in All Notes."
         }
     }
 
@@ -329,40 +364,14 @@ struct ContentView: View {
                     }
             }
 
-            GeometryReader { proxy in
-                ZStack(alignment: .topTrailing) {
-                    if showAllNotes {
-                        AllNotesPanel(
-                            isShowing: $showAllNotes,
-                            notes: noteStore.notes,
-                            currentNoteID: noteStore.currentNote?.id,
-                            onSelect: { note in
-                                noteStore.switchNote(to: note)
-                                focusEditor()
-                            },
-                            onDelete: { note in requestDeleteNote(note) },
-                            onTogglePin: { note in noteStore.togglePin(note) },
-                            onReorderPinned: { noteIDs in
-                                noteStore.reorderPinnedNotes(noteIDs)
-                            }
-                        )
-                        .frame(
-                            maxHeight: max(
-                                CGFloat.zero,
-                                proxy.size.height
-                                    - PanelLayoutMetrics.allNotesTopInset
-                                    - PanelLayoutMetrics.allNotesBottomInset
-                            ),
-                            alignment: .top
-                        )
-                        .padding(.top, PanelLayoutMetrics.allNotesTopInset)
-                        .padding(.trailing, PanelLayoutMetrics.overlayHorizontalInset)
-                    }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-            }
-            .animation(BuoyMotion.easeOut(0.16), value: showAllNotes)
-            .allowsHitTesting(showAllNotes)
+            AllNotesOverlay(
+                isShowing: $showAllNotes,
+                noteStore: noteStore,
+                renamingFolderID: $renamingFolderID,
+                onDeleteNote: { note in requestDeleteNote(note) },
+                onDeleteFolder: { folder in requestDeleteFolder(folder) },
+                onFocusEditor: { focusEditor() }
+            )
 
             ZStack(alignment: .bottomLeading) {
                 if showSettings {
@@ -501,7 +510,7 @@ struct ContentView: View {
 
     /// Any overlay panel that covers the editor and should block window drags.
     private var isEditorCoveredByPanel: Bool {
-        showSettings || showShortcuts || showAllNotes || isLinkDialogPresented || pendingDeleteNote != nil
+        showSettings || showShortcuts || showAllNotes || isLinkDialogPresented || isConfirmingDelete
     }
 
     /// The editor's I-beam tracking area bleeds through SwiftUI overlays, so it
@@ -524,6 +533,12 @@ struct ContentView: View {
         showLinkDialog || showSelectionLinkDialog
     }
 
+    /// Either confirmation dialog is up. Both blur the panel and block the
+    /// shortcuts and corner controls behind them.
+    private var isConfirmingDelete: Bool {
+        pendingDeleteNote != nil || pendingDeleteFolder != nil
+    }
+
     private var canUseCornerResizeControls: Bool {
         !panelPresentation.isMinimized
             && showMainContent
@@ -533,7 +548,7 @@ struct ContentView: View {
             && !showSettings
             && !showShortcuts
             && !isLinkDialogPresented
-            && pendingDeleteNote == nil
+            && !isConfirmingDelete
     }
 
     // Dismissal beats, in order. Same choreography as the onboarding exit, just
@@ -551,7 +566,7 @@ struct ContentView: View {
     /// the bottom edge, so it never stacks on top of them.
     private var canShowUpdateBubble: Bool {
         !showOnboarding && !showWhatsNew && !showSettings && !showShortcuts && !showAllNotes
-            && !isLinkDialogPresented && !isBugReport && pendingDeleteNote == nil
+            && !isLinkDialogPresented && !isBugReport && !isConfirmingDelete
     }
 
     // MARK: - Actions
@@ -685,6 +700,26 @@ struct ContentView: View {
 
     private func cancelDeleteNote() {
         withAnimation(BuoyMotion.easeOut(0.16)) { pendingDeleteNote = nil }
+        focusEditor()
+    }
+
+    /// Deleting a folder never deletes a note — its notes are simply unfiled
+    /// and stay in the All Notes section — but it is still destructive enough
+    /// to confirm, since the grouping itself cannot be recovered.
+    private func requestDeleteFolder(_ folder: Folder) {
+        renamingFolderID = nil
+        withAnimation(BuoyMotion.easeOut(0.16)) { pendingDeleteFolder = folder }
+    }
+
+    private func confirmDeleteFolder() {
+        guard let folder = pendingDeleteFolder else { return }
+        withAnimation(BuoyMotion.easeOut(0.16)) { pendingDeleteFolder = nil }
+        noteStore.deleteFolder(folder.id)
+        focusEditor()
+    }
+
+    private func cancelDeleteFolder() {
+        withAnimation(BuoyMotion.easeOut(0.16)) { pendingDeleteFolder = nil }
         focusEditor()
     }
 
