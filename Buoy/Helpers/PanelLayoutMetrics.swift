@@ -47,10 +47,9 @@ enum PanelLayoutMetrics {
     static let allNotesChildIndent: CGFloat = 18
     static let footerOverlayBottomInset: CGFloat = 43
 
-    static let headerMinimumHeight: CGFloat = 70
-    static let toolbarMinimumHeight: CGFloat = 36
-    static let footerMinimumHeight: CGFloat = 68
-    static let editorMinimumHeight: CGFloat = 160
+    // Section minimum heights now live on `ChromeMetrics`, because they are
+    // the thing compact chrome shrinks. Everything below reads them from a
+    // density rather than holding its own copy.
 
     private static let headerControlsMinimumWidth: CGFloat = 12 + 60 + 74 + 8
     private static let titleRowMinimumWidth: CGFloat = 24 + 180
@@ -72,19 +71,38 @@ enum PanelLayoutMetrics {
     // framed against, inside the shadow margin.
     static let minimumGlassWidth: CGFloat = minimumContentWidth
 
-    static let minimumGlassHeight: CGFloat =
+    static func minimumGlassHeight(for metrics: ChromeMetrics) -> CGFloat {
         (windowPadding * 2)
-        + headerMinimumHeight
-        + toolbarMinimumHeight
-        + editorMinimumHeight
-        + footerMinimumHeight
+        + metrics.headerMinimumHeight
+        + metrics.toolbarMinimumHeight
+        + metrics.editorMinimumHeight
+        + metrics.footerMinimumHeight
         + (stackSpacing * 3)
+    }
 
     // Minimum size of the panel *window* — the glass plus its shadow margin on
     // every side. All AppKit frame math works in these terms.
     static let minimumWindowWidth: CGFloat = minimumGlassWidth + (glassEdgeInset * 2)
 
-    static let minimumWindowHeight: CGFloat = minimumGlassHeight + (glassEdgeInset * 2)
+    static func minimumWindowHeight(for metrics: ChromeMetrics) -> CGFloat {
+        minimumGlassHeight(for: metrics) + (glassEdgeInset * 2)
+    }
+
+    /// The absolute floor the panel can be dragged to: the compact chrome's
+    /// minimum. AppKit is floored here at all times rather than at the regular
+    /// minimum, because dragging *below* the regular minimum is precisely what
+    /// asks for compact chrome — a floor at 382 would make it unreachable.
+    static let minimumWindowHeight: CGFloat = minimumWindowHeight(for: .compact)
+
+    /// The shortest the panel can be while still drawing regular chrome, and
+    /// the height it launches at.
+    static let regularChromeWindowHeight: CGFloat = minimumWindowHeight(for: .regular)
+
+    /// Hysteresis for the automatic density switch. Going compact and going
+    /// back have different thresholds so a slow drag across the boundary
+    /// cannot flicker the chrome between two sizes.
+    static let compactChromeEnterHeight: CGFloat = regularChromeWindowHeight
+    static let compactChromeExitHeight: CGFloat = regularChromeWindowHeight + 14
 
     static let maximumAutoHeight: CGFloat = 700 + (glassEdgeInset * 2)
 

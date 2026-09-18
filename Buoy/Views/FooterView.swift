@@ -63,6 +63,7 @@ struct FooterView: View {
     @State private var isSendHovering = false
     @State private var isMoreHovering = false
     @State private var isCopyHovering = false
+    @Environment(\.chromeMetrics) private var metrics
 
     var body: some View {
         VStack(spacing: 0) {
@@ -75,7 +76,7 @@ struct FooterView: View {
                     }
                 } label: {
                     Text(infoLabel)
-                        .font(BuoyFont.caption)
+                        .font(metrics.footerInfoFont)
                         .foregroundStyle(.tertiary)
                 }
                 .buttonStyle(.plain)
@@ -84,17 +85,17 @@ struct FooterView: View {
                 .accessibilityHint(infoHelp)
             }
             .padding(.horizontal, 8)
-            .padding(.bottom, 4)
+            .padding(.bottom, metrics.footerInfoBottomPadding)
 
             if showTransfer && !isBugReport {
                 HStack {
                     Spacer()
                     Button(action: onTransferToAppleNotes) {
                         Text("Transfer to Apple Notes")
-                            .font(BuoyFont.secondary)
+                            .font(metrics.footerTransferFont)
                             .foregroundStyle(.primary)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 5)
+                            .padding(.horizontal, metrics.footerCopyHorizontalPadding + 2)
+                            .padding(.vertical, metrics.footerCopyVerticalPadding)
                             .overlay(Capsule().stroke(Color.buoyOutlineStroke, lineWidth: 0.8))
                     }
                     .buttonStyle(.plain)
@@ -105,14 +106,14 @@ struct FooterView: View {
                 .transition(BuoyMotion.transition(.opacity.combined(with: .move(edge: .bottom))))
             }
 
-            HStack(spacing: 6) {
+            HStack(spacing: metrics.footerButtonSpacing) {
                 if isBugReport {
                     Button(action: { onCancelBugReport?() }) {
                         Text("Cancel Report")
-                            .font(BuoyFont.secondaryEmphasized)
+                            .font(metrics.footerActionFont)
                             .foregroundStyle(Color.buoyOnAccent)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 7)
+                            .padding(.horizontal, metrics.footerBugButtonHorizontalPadding)
+                            .padding(.vertical, metrics.footerBugButtonVerticalPadding)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -123,9 +124,9 @@ struct FooterView: View {
                 } else {
                     Button(action: onShortcuts) {
                         Image(systemName: "keyboard")
-                            .font(.system(size: 12))
+                            .font(.system(size: metrics.footerButtonIconSize))
                             .foregroundStyle(Color.buoyOnAccent(isProminent: isShortcutsHovering))
-                            .frame(width: 28, height: 28)
+                            .frame(width: metrics.footerButtonSize, height: metrics.footerButtonSize)
                             .contentShape(Circle())
                             .buoyAccentCircle(isHovering: isShortcutsHovering)
                     }
@@ -136,9 +137,9 @@ struct FooterView: View {
 
                     Button(action: onSettings) {
                         Image(systemName: "gearshape")
-                            .font(.system(size: 12))
+                            .font(.system(size: metrics.footerButtonIconSize))
                             .foregroundStyle(Color.buoyOnAccent(isProminent: isSettingsHovering))
-                            .frame(width: 28, height: 28)
+                            .frame(width: metrics.footerButtonSize, height: metrics.footerButtonSize)
                             .contentShape(Circle())
                             .buoyAccentCircle(isHovering: isSettingsHovering)
                     }
@@ -154,13 +155,13 @@ struct FooterView: View {
                     Button(action: { onSendBugReport?() }) {
                         HStack(spacing: 4) {
                             Image(systemName: "arrowshape.turn.up.right")
-                                .font(.system(size: 11))
+                                .font(.system(size: metrics.footerButtonIconSize - 1))
                             Text("Send Report")
-                                .font(BuoyFont.secondaryEmphasized)
+                                .font(metrics.footerActionFont)
                         }
                         .foregroundStyle(Color.buoyOnAccent)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 7)
+                        .padding(.horizontal, metrics.footerBugButtonHorizontalPadding)
+                        .padding(.vertical, metrics.footerBugButtonVerticalPadding)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -175,9 +176,9 @@ struct FooterView: View {
                             withAnimation(BuoyMotion.easeOut(0.16)) { showTransfer.toggle() }
                         } label: {
                             Image(systemName: showTransfer ? "chevron.up" : "chevron.down")
-                                .font(.system(size: 9, weight: .semibold))
+                                .font(.system(size: metrics.footerChevronIconSize, weight: .semibold))
                                 .foregroundStyle(Color.buoyOnAccent(isProminent: isMoreHovering))
-                                .frame(width: 28, height: 28)
+                                .frame(width: metrics.footerButtonSize, height: metrics.footerButtonSize)
                                 .contentShape(Rectangle())
                                 .buoyAccentChevronHoverPlate(isHovering: isMoreHovering)
                         }
@@ -189,20 +190,20 @@ struct FooterView: View {
 
                         Rectangle()
                             .fill(Color.buoyOnAccentSeparator)
-                            .frame(width: 1, height: 16)
+                            .frame(width: 1, height: metrics.footerCapsuleSeparatorHeight)
                             .accessibilityHidden(true)
 
                         Button(action: onCopy) {
                             HStack(spacing: 3) {
                                 Text("Copy")
-                                    .font(BuoyFont.secondaryEmphasized)
+                                    .font(metrics.footerActionFont)
                                 Text("⌘⏎")
-                                    .font(BuoyFont.caption)
+                                    .font(metrics.footerHintFont)
                                     .opacity(0.8)
                             }
                             .foregroundStyle(Color.buoyOnAccent(isProminent: isCopyHovering))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
+                            .padding(.horizontal, metrics.footerCopyHorizontalPadding)
+                            .padding(.vertical, metrics.footerCopyVerticalPadding)
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
@@ -213,8 +214,8 @@ struct FooterView: View {
                     .buoyAccentCapsule(isHovering: isMoreHovering || isCopyHovering)
                 }
             }
-            .padding(.horizontal, 7)
-            .padding(.vertical, 6)
+            .padding(.horizontal, metrics.footerActionHorizontalPadding)
+            .padding(.vertical, metrics.footerActionVerticalPadding)
             .background(WindowDragHandle())
         }
     }

@@ -17,6 +17,8 @@ struct ToolbarView: View {
     var isBugReport: Bool = false
     var linkPopover: LinkPopoverPresentation? = nil
 
+    @Environment(\.chromeMetrics) private var metrics
+
     var body: some View {
         HStack(spacing: 0) {
             ToolbarPillButton(systemImage: "bold",        label: "Bold",          shortcut: "⌘B",  action: onBold)
@@ -29,14 +31,14 @@ struct ToolbarView: View {
             pillDivider
             ToolbarPillButton(systemImage: "list.bullet", label: "Bullet List",   action: onBullet)
             pillDivider
-            ToolbarPillButton(systemImage: "checklist",   label: "To-Do",         action: onTodo, iconSize: 15)
+            ToolbarPillButton(systemImage: "checklist",   label: "To-Do",         action: onTodo, usesTodoIconSize: true)
             pillDivider
             linkButton
         }
         .clipShape(Capsule())
         .buoyAccentCapsule(color: isBugReport ? .blue : .accentColor)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
+        .padding(.horizontal, metrics.toolbarHorizontalPadding)
+        .padding(.vertical, metrics.toolbarVerticalPadding)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Formatting")
     }
@@ -44,7 +46,7 @@ struct ToolbarView: View {
     private var pillDivider: some View {
         Rectangle()
             .fill(Color.buoyOnAccentSeparator)
-            .frame(width: 1, height: 14)
+            .frame(width: 1, height: metrics.toolbarDividerHeight)
             .accessibilityHidden(true)
     }
 
@@ -82,9 +84,16 @@ private struct ToolbarPillButton: View {
     let label: String
     var shortcut: String? = nil
     let action: () -> Void
-    var iconSize: CGFloat = 12
+    /// The to-do glyph reads smaller than the others at the same point size,
+    /// so it takes its own step on the density scale.
+    var usesTodoIconSize: Bool = false
 
     @State private var isHovering = false
+    @Environment(\.chromeMetrics) private var metrics
+
+    private var iconSize: CGFloat {
+        usesTodoIconSize ? metrics.toolbarTodoIconSize : metrics.toolbarIconSize
+    }
 
     private var tooltip: String {
         shortcut.map { "\(label) (\($0))" } ?? label
@@ -95,9 +104,9 @@ private struct ToolbarPillButton: View {
             Image(systemName: systemImage)
                 .font(.system(size: iconSize))
                 .foregroundStyle(Color.buoyOnAccent(isProminent: isHovering))
-                .frame(width: 30, height: 28)
+                .frame(width: metrics.toolbarPillWidth, height: metrics.toolbarPillHeight)
                 .contentShape(Rectangle())
-                .buoyAccentHoverPlate(isHovering: isHovering, cornerRadius: 7)
+                .buoyAccentHoverPlate(isHovering: isHovering, cornerRadius: metrics.toolbarPillCornerRadius)
         }
         .buttonStyle(.plain)
         .help(tooltip)

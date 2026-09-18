@@ -46,6 +46,16 @@ struct ContentView: View {
     // Panel visibility
     @State private var showAllNotes = false
 
+    /// How tightly the chrome is drawn. Driven by the panel's height and by
+    /// the Settings toggle; see `ChromeDensityReader`.
+    @State private var chromeDensity: ChromeDensity = .regular
+    /// True from the moment Harbor Mode is left until its frame animation has
+    /// finished. The full panel remounts at the *pill's* height and the window
+    /// then grows under it, so the heights the density reader would see during
+    /// that sweep are meaningless — without this the chrome visibly snaps to
+    /// compact and back on every restore.
+    @State private var isRestoringFromHarbor = false
+
     // Bug report mode — tracks the ID of the ephemeral bug report note
     @State private var bugReportNoteID: Note.ID? = nil
 
@@ -174,8 +184,10 @@ struct ContentView: View {
             if isMinimized {
                 dismissTransientUI()
             } else {
+                isRestoringFromHarbor = true
                 DispatchQueue.main.asyncAfter(deadline: .now() + PanelLayoutMetrics.minimizedFrameAnimationDuration) {
                     guard !panelPresentation.isMinimized else { return }
+                    isRestoringFromHarbor = false
                     guard !showOnboarding, !showWhatsNew else { return }
                     focusEditor()
                 }
@@ -209,7 +221,20 @@ struct ContentView: View {
             .padding(PanelLayoutMetrics.windowPadding)
             .frame(
                 minWidth: PanelLayoutMetrics.minimumGlassWidth,
-                minHeight: PanelLayoutMetrics.minimumGlassHeight
+                // Always the compact floor, never the current density's. AppKit
+                // already refuses to shrink the window below this, and pinning
+                // the SwiftUI minimum to the live density would clip the content
+                // for the one frame between the window shrinking and the density
+                // catching up.
+                minHeight: PanelLayoutMetrics.minimumGlassHeight(for: .compact)
+            )
+            .environment(\.chromeMetrics, chromeMetrics)
+            .background(
+                ChromeDensityReader(
+                    density: $chromeDensity,
+                    isForced: settings.compactChrome,
+                    isSuspended: panelPresentation.isMinimized || isRestoringFromHarbor
+                )
             )
             .background(WindowDragBlocker())
             .overlay { deleteConfirmOverlay }
@@ -319,7 +344,7 @@ struct ContentView: View {
                     )
                     .frame(
                         maxWidth: .infinity,
-                        minHeight: PanelLayoutMetrics.editorMinimumHeight,
+                        minHeight: chromeMetrics.editorMinimumHeight,
                         alignment: .leading
                     )
                     .id(slideID)
@@ -440,6 +465,10 @@ struct ContentView: View {
                 dismissLinkDialog(restoringSelection: false)
             }
         )
+    }
+
+    private var chromeMetrics: ChromeMetrics {
+        ChromeMetrics(density: chromeDensity)
     }
 
     private var usesDarkAppearance: Bool {

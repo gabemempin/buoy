@@ -18,6 +18,51 @@ struct AppSettings: Codable {
     var dismissedUpdateVersion: String? = nil
     var lastSeenWhatsNewVersion: String? = nil
     var autoTitleEnabled: Bool = true
+    /// Draw the panel's controls at the compact size regardless of its height.
+    /// Shortening the panel turns compact chrome on by itself; this is for
+    /// users who simply prefer the smaller controls.
+    var compactChrome: Bool = false
+
+    /// Decodes leniently: any key missing from the file keeps this struct's
+    /// default rather than failing the whole decode.
+    ///
+    /// Swift's synthesized `init(from:)` does **not** fall back to a property's
+    /// default value when its key is absent — it throws `keyNotFound`. With
+    /// `load()` swallowing errors and returning `AppSettings()`, that made
+    /// every new settings field a silent factory reset: the old file failed to
+    /// decode, the app came up on defaults, and the next write persisted them
+    /// over the user's real settings. Adding `compactChrome` did exactly that.
+    ///
+    /// Any new field must be added here as well as above.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let fallback = AppSettings()
+
+        func flag(_ key: CodingKeys, _ fallback: Bool) -> Bool {
+            (try? container.decodeIfPresent(Bool.self, forKey: key)) ?? nil ?? fallback
+        }
+        func text(_ key: CodingKeys) -> String? {
+            try? container.decodeIfPresent(String.self, forKey: key) ?? nil
+        }
+
+        showInDock = flag(.showInDock, fallback.showInDock)
+        alwaysOnTop = flag(.alwaysOnTop, fallback.alwaysOnTop)
+        launchAtLogin = flag(.launchAtLogin, fallback.launchAtLogin)
+        onboarded = flag(.onboarded, fallback.onboarded)
+        hasSeenHarborModeTip = flag(.hasSeenHarborModeTip, fallback.hasSeenHarborModeTip)
+        autoTitleEnabled = flag(.autoTitleEnabled, fallback.autoTitleEnabled)
+        compactChrome = flag(.compactChrome, fallback.compactChrome)
+
+        fontSize = (try? container.decodeIfPresent(CGFloat.self, forKey: .fontSize)) ?? nil ?? fallback.fontSize
+        theme = (try? container.decodeIfPresent(AppTheme.self, forKey: .theme)) ?? nil ?? fallback.theme
+        globalShortcut = text(.globalShortcut) ?? fallback.globalShortcut
+
+        lastSelectedNoteID = text(.lastSelectedNoteID)
+        dismissedUpdateVersion = text(.dismissedUpdateVersion)
+        lastSeenWhatsNewVersion = text(.lastSeenWhatsNewVersion)
+    }
+
+    init() {}
 
     /// The live settings value, kept in step by `SettingsStore`.
     ///

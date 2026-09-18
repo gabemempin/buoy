@@ -400,7 +400,7 @@ struct EditorView: NSViewRepresentable {
             contentSize.width,
             PanelLayoutMetrics.minimumContentWidth - (PanelLayoutMetrics.windowPadding * 2)
         )
-        let initialHeight = max(contentSize.height, PanelLayoutMetrics.editorMinimumHeight)
+        let initialHeight = max(contentSize.height, ChromeMetrics.compact.editorMinimumHeight)
 
         let textView = BuoyTextView(
             frame: NSRect(x: 0, y: 0, width: initialWidth, height: initialHeight)

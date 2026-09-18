@@ -27,6 +27,7 @@ private struct TitleTextField: NSViewRepresentable {
     /// the scrolling title) can stand in for them without doubling up.
     var hidesText: Bool = false
     var onEditingChanged: (Bool) -> Void = { _ in }
+    var fontSize: CGFloat = 19
     @Environment(\.colorScheme) var colorScheme
 
     func makeNSView(context: Context) -> TitleNSTextField {
@@ -37,7 +38,7 @@ private struct TitleTextField: NSViewRepresentable {
         field.isEditable = true
         field.isSelectable = true
         field.placeholderString = placeholder
-        field.font = NSFont.systemFont(ofSize: 19, weight: .semibold, width: .expanded)
+        field.font = NSFont.systemFont(ofSize: fontSize, weight: .semibold, width: .expanded)
         field.textColor = TitleTextField.textColor(for: colorScheme)
         field.alignment = .center
         // No focus ring by design. AppKit's masks to the cell frame, which on a
@@ -56,6 +57,11 @@ private struct TitleTextField: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: TitleNSTextField, context: Context) {
+        // Re-applied on every update so a chrome-density change resizes the
+        // title in place rather than only on the next remount.
+        if nsView.font?.pointSize != fontSize {
+            nsView.font = NSFont.systemFont(ofSize: fontSize, weight: .semibold, width: .expanded)
+        }
         if nsView.stringValue != text {
             // AppKit can notify the field delegate when its string value is
             // refreshed from SwiftUI. That is a model -> view update, not a
@@ -139,15 +145,15 @@ struct HeaderView: View {
     @State private var isEditingTitle = false
     @State private var titleLaneWidth: CGFloat = 0
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.chromeMetrics) private var metrics
 
     /// Scroll the title only when it cannot fit *and* nobody is editing it —
     /// text sliding out from under the caret would be unusable.
     private var showsScrollingTitle: Bool {
         guard !isBugReport, !isEditingTitle, titleLaneWidth > 0 else { return false }
-        return PanelLayoutMetrics.textWidth(
-            title,
-            font: PanelLayoutMetrics.minimizedTitleFont
-        ) > titleLaneWidth
+        // Measured in the face the field is actually drawing in at this
+        // density, or the marquee kicks in on a title that fits.
+        return PanelLayoutMetrics.textWidth(title, font: metrics.titleFont) > titleLaneWidth
     }
 
     /// The reveal wins over the marquee for its duration — an auto-generated
@@ -164,25 +170,23 @@ struct HeaderView: View {
     }
 
     var body: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: metrics.headerRowSpacing) {
             HStack(spacing: 0) {
                 TrafficLightsView(onClose: onClose, onMinimize: onMinimize, onExpand: onExpand)
-                    // 15 keeps the close button's centre where the old hand-drawn
-                    // circles sat (native buttons are inset 7pt in their group).
-                    .padding(.leading, 15)
+                    .padding(.leading, metrics.trafficLightsLeadingPadding)
 
                 Spacer()
 
                 if !isBugReport {
-                    HStack(spacing: 10) {
+                    HStack(spacing: metrics.headerButtonSpacing) {
                         HeaderButton(systemImage: "line.horizontal.3", tooltip: "All Notes", action: onAllNotes)
                         HeaderButton(systemImage: "plus",              tooltip: "New Note",  action: onNewNote)
                     }
-                    .padding(.trailing, 8)
+                    .padding(.trailing, metrics.headerButtonTrailingPadding)
                 }
             }
-            .frame(height: 28)
-            .padding(.top, 6)
+            .frame(height: metrics.headerControlRowHeight)
+            .padding(.top, metrics.headerTopPadding)
 
             ZStack {
                 TitleTextField(
@@ -194,40 +198,42 @@ struct HeaderView: View {
                     // real text, which is what keeps the letters from
                     // re-tracking when it starts.
                     hidesText: isBugReport || showsReveal || showsScrollingTitle,
-                    onEditingChanged: { isEditingTitle = $0 }
+                    onEditingChanged: { isEditingTitle = $0 },
+                    fontSize: metrics.titleFontSize
                 )
-                .frame(maxWidth: .infinity, minHeight: 26)
+                .frame(maxWidth: .infinity, minHeight: metrics.titleMinHeight)
                 // Measured *inside* the padding: the marquee below re-applies the
                 // same padding, so reading the outer width would make the overlay
                 // 24pt wider than the row and push the whole panel out of shape.
                 .background(TitleLaneWidthReader(width: $titleLaneWidth))
-                .padding(.horizontal, 12)
+                .padding(.horizontal, metrics.titleHorizontalPadding)
 
                 if isBugReport {
-                    AnimatedBugTitle(title: title)
-                        .frame(maxWidth: .infinity, minHeight: 26)
-                        .padding(.horizontal, 12)
+                    AnimatedBugTitle(title: title, fontSize: metrics.titleFontSize)
+                        .frame(maxWidth: .infinity, minHeight: metrics.titleMinHeight)
+                        .padding(.horizontal, metrics.titleHorizontalPadding)
                         .allowsHitTesting(false)
                 } else if showsReveal, let titleReveal {
                     TitleRevealText(
                         title: titleReveal.title,
                         color: Color(nsColor: TitleTextField.textColor(for: colorScheme)),
+                        fontSize: metrics.titleFontSize,
                         onFinished: onRevealFinished
                     )
                     .id(titleReveal.id)
-                    .frame(maxWidth: .infinity, minHeight: 26)
-                    .padding(.horizontal, 12)
+                    .frame(maxWidth: .infinity, minHeight: metrics.titleMinHeight)
+                    .padding(.horizontal, metrics.titleHorizontalPadding)
                     .allowsHitTesting(false)
                 } else if showsScrollingTitle {
                     MarqueeText(
                         text: title,
-                        font: PanelLayoutMetrics.minimizedTitleFont,
+                        font: metrics.titleFont,
                         color: Color(nsColor: TitleTextField.textColor(for: colorScheme)),
                         availableWidth: titleLaneWidth,
                         restingAlignment: .center
                     )
-                    .frame(minHeight: 26)
-                    .padding(.horizontal, 12)
+                    .frame(minHeight: metrics.titleMinHeight)
+                    .padding(.horizontal, metrics.titleHorizontalPadding)
                     .allowsHitTesting(false)
                 }
 
@@ -236,14 +242,15 @@ struct HeaderView: View {
                 if showsThinking {
                     TitleThinkingGlow(
                         title: title,
-                        color: TitleTextField.thinkingGlowColor(for: colorScheme)
+                        color: TitleTextField.thinkingGlowColor(for: colorScheme),
+                        fontSize: metrics.titleFontSize
                     )
-                    .frame(maxWidth: .infinity, minHeight: 26)
-                    .padding(.horizontal, 12)
+                    .frame(maxWidth: .infinity, minHeight: metrics.titleMinHeight)
+                    .padding(.horizontal, metrics.titleHorizontalPadding)
                     .allowsHitTesting(false)
                 }
             }
-            .padding(.bottom, 4)
+            .padding(.bottom, metrics.titleBottomPadding)
         }
         .background(dragEnabled ? WindowDragHandle() : nil)
         .onChange(of: focusTitleTrigger) { _, _ in
@@ -442,6 +449,7 @@ struct AnimatedBugTitle: View {
 struct TitleRevealText: View {
     let title: String
     let color: Color
+    var fontSize: CGFloat = 19
     var onFinished: () -> Void = {}
 
     /// A per-glyph stagger is movement, so Reduce Motion substitutes a single
@@ -462,7 +470,7 @@ struct TitleRevealText: View {
 
     var body: some View {
         Text(title)
-            .font(Font(PanelLayoutMetrics.minimizedTitleFont))
+            .font(Font(NSFont.systemFont(ofSize: fontSize, weight: .semibold, width: .expanded)))
             .foregroundStyle(color)
             .lineLimit(1)
             .modifier(RevealRendererModifier(
@@ -568,13 +576,14 @@ private struct HeaderButton: View {
     let action: () -> Void
 
     @State private var isHovering = false
+    @Environment(\.chromeMetrics) private var metrics
 
     var body: some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(.system(size: 12))
+                .font(.system(size: metrics.headerButtonIconSize))
                 .foregroundStyle(Color.buoyOnAccent(isProminent: isHovering))
-                .frame(width: 28, height: 28)
+                .frame(width: metrics.headerButtonSize, height: metrics.headerButtonSize)
                 .contentShape(Circle())
                 .buoyAccentCircle(isHovering: isHovering)
         }

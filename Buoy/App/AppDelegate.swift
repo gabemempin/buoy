@@ -30,11 +30,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var settingsStore = SettingsStore()
     let panelPresentation = PanelPresentationModel()
 
-    private let compactHeight: CGFloat = PanelLayoutMetrics.minimumWindowHeight
+    /// The panel's default height: the shortest it can be while still drawing
+    /// regular chrome. Distinct from `PanelLayoutMetrics.minimumWindowHeight`,
+    /// which is the compact chrome's floor and is what the user can drag to.
+    private let compactHeight: CGFloat = PanelLayoutMetrics.regularChromeWindowHeight
     private let onboardingWidth: CGFloat = 360
     private let onboardingHeight: CGFloat = 520
     private let expandedHeight: CGFloat = 780
-    private var currentHeight: CGFloat = PanelLayoutMetrics.minimumWindowHeight
+    private var currentHeight: CGFloat = PanelLayoutMetrics.regularChromeWindowHeight
     private var overlayOverrideHeight: CGFloat = 0
     private var hasPositioned = false
     private var lastFullSizeFrame: NSRect?

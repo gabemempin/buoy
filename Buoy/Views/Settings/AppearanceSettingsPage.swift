@@ -15,6 +15,13 @@ struct AppearanceSettingsPage: View {
                 .fixedSize()
             }
 
+            Section("Layout") {
+                Toggle(isOn: $settings.compactChrome) {
+                    Text("Compact controls")
+                    Text("Smaller buttons and title. Turns on by itself when the panel is short.")
+                }
+            }
+
             Section("Text") {
                 LabeledContent("Editor text size") {
                     HStack(spacing: 10) {
