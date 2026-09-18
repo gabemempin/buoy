@@ -33,6 +33,7 @@ manually and reports any failures. Static inspection is the default verification
 
 `BuoyApp.swift` is the `@main` entry. Almost all app logic lives in **`AppDelegate.swift`** (NSApplicationDelegateAdaptor), which:
 - Creates a borderless, always-on-top `NSPanel` (non-activating, transparent)
+- Owns a separate, titled `SettingsWindowController` with General, Appearance, Shortcuts, and About pages
 - Manages the `NSStatusItem` (menu bar icon) with left/right-click handling
 - Owns the `NoteStore` and `AppSettings` instances passed into SwiftUI
 - Registers the global hotkey via `HotkeyService`
@@ -43,14 +44,14 @@ manually and reports any failures. Static inspection is the default verification
 - **`NoteStore`** (`@Observable`) — single source of truth for notes; loaded from GRDB, with 1s/0.6s debounced auto-save for content/title respectively. Call `flushPendingSaves()` on termination.
 
 **Debounced-save note-identity critical bug pattern (fixed in 1.4.1+):** `saveTitle`/`saveContent` schedule a `DispatchWorkItem` that fires 0.6s/1s later. That work item must bind the **target note's `id` at schedule time** and pass it to `persistTitle(_:noteID:)`/`persistContent(_:noteID:)` — it must NOT read `currentNote` inside the persist body. Reason: `currentNote` can be repointed before the timer fires, so a lazily-resolved persist writes the edit onto the *wrong* note (symptom: a title you typed on Note A "transfers" to a newly-created note, and A reverts to its old title). `switchNote` guards this by calling `flushPendingSaves()` before repointing; **every other path that reassigns `currentNote` must flush first too** — `createNote()` does. Same "capture identity at schedule time, not execution time" trap as the Harbor-mode `lastFullSizeFrame` bug.
-- **`AppSettings`** (Codable struct) — persisted to `~/.buoy/settings.json`; changes broadcast via `NotificationCenter.settingsDidChange`
+- **`AppSettings`** (Codable struct) — persisted to `~/.buoy/settings.json`; `SettingsStore` broadcasts changes immediately and debounces the disk write by 0.25s. Call `settingsStore.flush()` on termination. Add every new field to `AppSettings.init(from:)`, which decodes missing keys using defaults so old files survive upgrades.
 - **`Note`** (GRDB record) — stores RTF as `Data` (`contentRTF`), timestamps as `Int64` milliseconds
 
 ### Rich Text Editor
 
 **`BuoyTextView`** (NSTextView subclass) is the core editing engine:
 - Stores/loads RTF via `NSAttributedString`
-- Handles all in-app keyboard shortcuts in `keyDown` (⌘N, ⌘⌫, ⌘⏎, ⌘←/→, ⌘K)
+- Handles text editing and fixed formatting shortcuts; rebindable app commands are intercepted first by `BuoyPanel.performKeyEquivalent` through `ShortcutRegistry`.
 - Auto-converts `- ` + Space → bullet `•`, `[] ` + Space → checkbox attachment
 - Bullets and todos continue on Enter; empty list line removes the marker
 - `TodoAttachment` is a custom `NSTextAttachment` subclass for checkboxes
@@ -78,7 +79,7 @@ GRDB migrations are defined in `NoteStore.swift` (`v1_initial`, `v2_contentRTF`,
 
 **Now live.** `NoteAutoTitler.featureEnabled` is `true`, so `isSupported`
 answers on real capability again (macOS 26 + Apple Silicon + Apple Intelligence)
-and the Settings row, the extra `settingsOverrideHeight`, and the `NoteStore`
+and the Settings row and the `NoteStore`
 call-in are all back. It shipped inert for one release because it shares commit
 `c651597` (and three source files) with the link popover, so there was no clean
 commit to omit; flipping this one constant is the whole switch in either
@@ -90,9 +91,8 @@ framework (macOS 26+, Apple Silicon, Apple Intelligence on). Everything that
 touches `FoundationModels` symbols in `NoteAutoTitler.swift` is gated behind
 `#available(macOS 26, *)` and `#if canImport(FoundationModels)`; on any
 unsupported Mac `NoteAutoTitler.isSupported` is `false` and the whole feature
-is inert — no fallback keyword generator, no partial UI. `SettingsPanel` and
-`PanelLayoutMetrics.settingsOverrideHeight` both check `isSupported` so the
-toggle row (and the extra height it needs) simply doesn't exist there.
+is inert — no fallback keyword generator, no partial UI. `GeneralSettingsPage`
+checks `isSupported` so the toggle row is absent on unsupported Macs.
 
 **Two-stage state machine, tracked in the DB.** `Note.autoTitleStage` (0/1/2)
 counts attempts spent; `Note.autoTitleLocked` (default `true`) permanently
@@ -315,7 +315,7 @@ closures — keep new All Notes wiring in that file.
 
 ### Bug Report Mode
 
-Clicking "Report a Bug" in `SettingsPanel` creates an ephemeral note and sets `bugReportNoteID` in `ContentView`. `isBugReport` is a computed property — navigating away passively exits the mode with no cleanup needed. The `TitleTextField` text color is set to `.clear` so the `AnimatedBugTitle` overlay shows through.
+Clicking "Report a Bug" in the Settings window's About page brings the note panel forward, creates an ephemeral note, and sets `bugReportNoteID` in `ContentView`. `isBugReport` is a computed property — navigating away passively exits the mode with no cleanup needed. The `TitleTextField` text color is set to `.clear` so the `AnimatedBugTitle` overlay shows through.
 
 ### macOS Version Conditionals
 
@@ -332,6 +332,11 @@ The `View+Glass.swift` helper abstracts this behind `.buoyGlass()`.
 | `App/AppDelegate.swift` | Window, menu bar, hotkey, theme management |
 | `Models/NoteStore.swift` | @Observable data store + GRDB CRUD |
 | `Models/AppSettings.swift` | Settings persistence |
+| `App/SettingsWindowController.swift` | Native Settings window, activation, position, theme, and level |
+| `Views/Settings/` | Sidebar and General, Appearance, Shortcuts, About pages |
+| `Helpers/ChromeMetrics.swift` | Regular and compact control sizes; height-triggered density reader |
+| `Helpers/BuoyTheme.swift` | Window tint and app accent, including AppKit bridge |
+| `Services/ShortcutRegistry.swift` | Rebindable in-app commands and conflict checks |
 | `Editor/BuoyTextView.swift` | Core NSTextView with all formatting logic |
 | `Views/ContentView.swift` | Root SwiftUI layout and panel state |
 | `Views/OnboardingView.swift` | 4-slide carousel onboarding (Welcome, Formatting, Harbor Mode, Bug Report) |
@@ -367,7 +372,7 @@ The phrases **"invoke onboarding"** or **"reset onboarding"** mean run this comm
 **Bug pattern (fixed in 1.1.3).** `DragEnablingNSView.mouseDragged` (in `WindowDragBlocker.swift`) called `window.setFrameOrigin(...)` with no clamping, so the header could drag the panel up under the menu bar / off any edge into an unreachable spot. The Harbor pill frames (`topCenteredFrame`/`bottomCenteredFrame`) in `enterMinimizedMode`/`updateMinimizedWidth` were likewise unclamped. **Fix:** clamp the dragged origin to `(window.screen ?? NSScreen.main).visibleFrame`, and wrap the pill anchored frames in `clampedToVisibleFrame(...)`. Not OS-dependent — purely a missing clamp.
 
 ### NSTextView Cursor Bleed into Overlay Panels
-**Fixed.** `BuoyTextView` registers an I-beam `NSTrackingArea` that used to bleed through SwiftUI overlay panels (SettingsPanel, AllNotesPanel, ShortcutsPanel, UpdateBubble) — a view-based overlay (`ArrowCursorOverlay`) tried to intercept it but never worked, because AppKit only dispatches `cursorUpdate` to the deepest hit-testable view, and the overlay was excluded from hit testing to let SwiftUI clicks through. **Fix: suppress at the source.** `BuoyTextView.suppressesIBeamCursor: Bool` — when true, `cursorUpdate(with:)` and `mouseMoved(with:)` skip `super`, so the tracking area never sets the I-beam. `ContentView` drives this flag from a dedicated `.onChange` keyed on `showSettings || showShortcuts || showAllNotes || showOnboarding`, and re-syncs it in the `textViewRef` callback (covers the initial-onboarding-visible case, since `onChange` doesn't fire for a value that's already true at first render). Buttons inside overlay panels get the pointing-hand cursor via a shared `pointingHandCursor()` modifier (`WindowDragBlocker.swift`) that pushes/pops `NSCursor.pointingHand` on hover — apply it to every clickable control in a new overlay panel, it was previously duplicated per-file and easy to forget.
+**Fixed.** `BuoyTextView` registers an I-beam `NSTrackingArea` that used to bleed through SwiftUI overlays (All Notes, Update Bubble, onboarding). A view-based overlay (`ArrowCursorOverlay`) could not intercept it because AppKit dispatches `cursorUpdate` to the deepest hit-testable view. `BuoyTextView.suppressesIBeamCursor` now skips `super` while an in-panel overlay is up. `ContentView` updates the flag and re-syncs it in the `textViewRef` callback for the initial onboarding case. The Settings window is independent and does not suppress the panel's cursor. Clickable controls in panel overlays use `pointingHandCursor()` from `WindowDragBlocker.swift`.
 
 ### Shift + Scroll Note Navigation
 
@@ -408,7 +413,7 @@ Shift events are consumed either way (never forwarded to `super`), so the
 editor does not also scroll while Shift is held.
 
 ### Carousel Onboarding
-`OnboardingView.swift` — 4 slides: Welcome (skeumorphic key caps + ShortcutRecorderView), Formatting (live BuoyTextView demo), Harbor Mode (⌘M animates a mini panel to pill), Bug Report (shimmer title via `AnimatedBugTitle`). A local `NSEvent` monitor captures ⌘M during onboarding — on slide 3 it toggles the demo, on all other slides it consumes the event to prevent accidental Harbor Mode. `AnimatedBugTitle` in `HeaderView.swift` is `internal` (not private) so it can be reused in Slide 4. `hasSeenHarborModeTip` remains in `AppSettings` for backwards-compat but is never set.
+`OnboardingView.swift` — 4 slides: Welcome (key caps + global shortcut recorder), Formatting (live BuoyTextView demo), Harbor Mode (the current Harbor shortcut animates a mini panel to pill), Bug Report (shimmer title via `AnimatedBugTitle`). A local `NSEvent` monitor captures the registry's Harbor combo during onboarding — on slide 3 it toggles the demo, on all other slides it consumes the event. `AnimatedBugTitle` in `HeaderView.swift` is `internal` so it can be reused in Slide 4. `hasSeenHarborModeTip` remains for backwards compatibility but is never set.
 
 ### Scrolling Note Titles
 `Views/MarqueeText.swift` is shared by the Harbor pill (`MinimizedNotePillView`)
@@ -431,8 +436,15 @@ trick Bug Report mode uses for `AnimatedBugTitle`. The overlay is suppressed whi
 text sliding out from under the caret is unusable. `TitleTextField.textColor(for:)`
 is the single source for the colour so the field and the overlay can't drift.
 
-### Keyboard Shortcuts Panel
-`ShortcutsPanel.swift` — shortcuts list ends with `("⌘M", "Harbor Mode")`. Does not include auto-bullet or auto-todo entries.
+### Settings Window, Colours, Compact Chrome, and Shortcuts
+
+`SettingsWindowController` owns one standard titled window, activated explicitly because Buoy normally runs as an accessory app. Its level and appearance track the note panel. The footer gear opens General; the keyboard button opens Shortcuts. Opening the window never resizes or restores the note panel.
+
+`ChromeMetrics` holds the regular and compact sizes for header, toolbar, and footer controls. `ChromeDensityReader` switches to compact when the full panel is shortened and uses separate enter/exit thresholds so the chrome cannot flicker at the boundary. The Appearance toggle forces compact controls at any height. Editor text keeps `settings.fontSize`. Suspend the reader during the Harbor pill-to-panel restore, when intermediate frame heights are meaningless.
+
+`BuoyTheme` resolves the optional window tint and accent. SwiftUI surfaces read the environment; AppKit selection, checkbox images, list reorder indicator, title field, and corner arcs read `BuoyTheme.current`. A checked `TodoAttachment` bakes its accent into an image, so `BuoyTextView` refreshes existing attachments on `.buoyThemeDidChange`. Derive text on a custom accent from that accent's luminance; `alternateSelectedControlTextColor` only knows the system accent.
+
+`ShortcutRegistry` owns the rebindable app commands. `BuoyPanel.performKeyEquivalent` dispatches them before the responder chain, so a binding works with the editor or title focused. Keep fixed formatting and standard text editing keys in `BuoyTextView`. `ShortcutsSettingsPage` records physical key codes through `KeyCombo`, rejects conflicts with another command, the global hotkey, or fixed/system keys, and resets only the overrides. Rebuild the main menu when a binding changes; the status item menu reads the registry each time it opens. Do not add a second hard-coded match in `BuoyTextView` or a stale literal shortcut hint in a button.
 
 ### Accessibility & Menu Conventions
 Added in the HIG pass (2026-08-22):
@@ -544,10 +556,10 @@ description under "What's New" and "Bug Fixes", Continue pinned at the bottom.
   still mounted, so `WhatsNewView` installs a local key monitor that swallows
   bare typing (chords with ⌘/⌃/⌥ pass through for ⌘Q, ⌘W and VoiceOver), and
   `ContentView` guards `createNote`, `navigateNote`, `deleteCurrentNote`,
-  `toggleAllNotes`, `toggleSettings`, `toggleShortcuts` and `presentLinkDialog`
+  `toggleAllNotes` and `presentLinkDialog`
   with `!showWhatsNew`. ⌘⌫ matters most: `deleteConfirmOverlay` is an `.overlay`
   on `fullPanelContent`, so it would render *above* the splash.
-- **⌘M is swallowed too**, because Harbor Mode unmounts the splash and restores
+- **The current Harbor shortcut is swallowed too**, because Harbor Mode unmounts the splash and restores
   at compact height, clipping it. The Dock-mode Window menu item bypasses that
   monitor, so `dismissTransientUI` calls `dismissWhatsNew()` as the fallback.
 - **The panel launches pre-sized** (`AppDelegate.setupPanel`), the way onboarding
@@ -562,8 +574,8 @@ sed -i '' 's/"lastSeenWhatsNewVersion":"[^"]*"/"lastSeenWhatsNewVersion":null/' 
 ```
 
 ### Overlay Panel Height Override
-Settings, Shortcuts, Onboarding, and the What's New splash animate the window taller when shown. Key pieces:
-- `PanelLayoutMetrics.settingsOverrideHeight` / `shortcutsOverrideHeight` / `onboardingOverrideHeight` / `whatsNewOverrideHeight` — target heights
+Onboarding and the What's New splash animate the panel taller when shown. Settings and Shortcuts are pages in their own window. Key pieces:
+- `PanelLayoutMetrics.onboardingOverrideHeight` / `whatsNewOverrideHeight` — target heights
 - `AppDelegate.applyOverrideHeight(_ height: CGFloat?)` — pass `nil` to restore; 0.25s easeInEaseOut
 - `ContentView` fires `onOverrideHeight` via `.onChange(of: activeFooterOverlayHeight)` and directly in `onAppear` for whichever overlay is already up at first render
 - Panel bottom offset from footer: `.padding(.bottom, 43)` in `ContentView`
