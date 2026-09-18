@@ -62,6 +62,9 @@ struct AllNotesPanel: View {
             }
         }
         .frame(maxWidth: .infinity)
+        // Without this the list runs straight into the panel's rounded corner,
+        // so the scroller's track crossed the curve instead of following it.
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .background(WindowDragBlocker())
         .buoyGlassPanel(cornerRadius: 14)
         .shadow(radius: 8)
@@ -266,9 +269,12 @@ struct NoteRow: View {
         // runs into the panel's rounded corner.
         .padding(.leading, 6)
         .padding(.trailing, 2)
-        .padding(.vertical, 4)
+        // The pill needs to sit *inside* the row with air above and below, or
+        // consecutive rows read as one block and the rounding has nothing to
+        // round against.
+        .padding(.vertical, 6)
         .background(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(isActive ? Color.buoySelectionFill : Color.clear)
         )
         .padding(.leading, 4 + (isIndented ? PanelLayoutMetrics.allNotesChildIndent : 0))
@@ -358,7 +364,7 @@ struct FolderRow: View {
         }
         .padding(.leading, 6)
         .padding(.trailing, 2)
-        .padding(.vertical, 3)
+        .padding(.vertical, 5)
         .padding(.leading, 4)
         .padding(.trailing, 4)
         .animation(BuoyMotion.easeInOut(0.1), value: isHovering)

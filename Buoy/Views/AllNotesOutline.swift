@@ -305,6 +305,8 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
         scrollView.drawsBackground = false
         scrollView.hasVerticalScroller = true
         scrollView.autohidesScrollers = true
+        // Keep the scroller clear of the panel's rounded bottom corner.
+        scrollView.scrollerInsets = NSEdgeInsets(top: 2, left: 0, bottom: 8, right: 2)
 
         let outlineView = NotesOutlineView()
         outlineView.headerView = nil

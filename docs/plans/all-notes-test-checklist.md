@@ -95,6 +95,10 @@ is broken they are *silently* dead, so click every one.
 - [x] The "All Notes" title is the **same size** as the "Settings" title.
 - [x] PINNED / FOLDERS / ALL NOTES read at the same contrast as the panel title,
       in both appearances.
+- [x] The active row's pill has air above and below it and does not crowd its
+      neighbours.
+- [x] The scroller stops short of the panel's rounded bottom corner instead of
+      crossing the curve.
 - [x] Corner resize controls appear while **All Notes** is open, and resizing works.
 - [x] Corner resize controls appear while **Settings** is open. Growing works; shrinking stops at the height Settings needs.
 - [ ] Resize with Settings open, then close Settings → the window keeps the new size.

@@ -31,8 +31,8 @@ enum PanelLayoutMetrics {
     // carrying one global rowHeight, so a folder row and a divider can differ
     // from a note row without the list going out of alignment.
     static let allNotesListMaxHeight: CGFloat = 300
-    static let allNotesNoteRowHeight: CGFloat = 30
-    static let allNotesFolderRowHeight: CGFloat = 28
+    static let allNotesNoteRowHeight: CGFloat = 34
+    static let allNotesFolderRowHeight: CGFloat = 32
     static let allNotesDividerRowHeight: CGFloat = 9
     /// A labelled section header ("Pinned", "Folders", "All Notes"). A bare
     /// rule told the user the list was grouped but never why.
