@@ -264,6 +264,44 @@ The phrases **"invoke onboarding"** or **"reset onboarding"** mean run this comm
 ### NSTextView Cursor Bleed into Overlay Panels
 **Fixed.** `BuoyTextView` registers an I-beam `NSTrackingArea` that used to bleed through SwiftUI overlay panels (SettingsPanel, AllNotesPanel, ShortcutsPanel, UpdateBubble) — a view-based overlay (`ArrowCursorOverlay`) tried to intercept it but never worked, because AppKit only dispatches `cursorUpdate` to the deepest hit-testable view, and the overlay was excluded from hit testing to let SwiftUI clicks through. **Fix: suppress at the source.** `BuoyTextView.suppressesIBeamCursor: Bool` — when true, `cursorUpdate(with:)` and `mouseMoved(with:)` skip `super`, so the tracking area never sets the I-beam. `ContentView` drives this flag from a dedicated `.onChange` keyed on `showSettings || showShortcuts || showAllNotes || showOnboarding`, and re-syncs it in the `textViewRef` callback (covers the initial-onboarding-visible case, since `onChange` doesn't fire for a value that's already true at first render). Buttons inside overlay panels get the pointing-hand cursor via a shared `pointingHandCursor()` modifier (`WindowDragBlocker.swift`) that pushes/pops `NSCursor.pointingHand` on hover — apply it to every clickable control in a new overlay panel, it was previously duplicated per-file and easy to forget.
 
+### Shift + Scroll Note Navigation
+
+**Critical bug pattern (fixed after 1.4.5).** `DragBlockingScrollView.scrollWheel`
+(`Editor/EditorView.swift`) has two gestures: the original horizontal two-finger
+swipe, and Shift + scroll. The Shift path originally opened with
+`if !event.hasPreciseScrollingDeltas, event.modifierFlags.contains(.shift)`, on
+the reasoning that a trackpad or Magic Mouse could just swipe horizontally
+instead. **That made the gesture unreachable on the hardware the app actually
+runs on.** macOS only transposes Shift + scroll onto the X axis for a *plain
+wheel* mouse; a precise device already has a horizontal axis, so it keeps
+reporting the movement on Y. The swipe path requires `abs(deltaX) >
+abs(deltaY)` at `phase == .began`, so a precise device holding Shift matched
+neither branch and just scrolled the text. Anyone on a MacBook trackpad or a
+Magic Mouse — i.e. nearly everyone — saw nothing happen.
+
+Rules for this handler:
+- **Gate on the modifier, not the device.** `isNavigationModifier(_:)` checks
+  Shift is down and Cmd/Option/Control are not, and deliberately ignores Caps
+  Lock rather than matching `deviceIndependentFlagsMask` exactly.
+- **Pick the axis by magnitude, never by `!= 0`.** A vertical trackpad swipe
+  always carries a little X jitter, so `scrollingDeltaX != 0 ? X : Y` selects
+  the jitter and throws away the real movement.
+- **Two separation strategies, by device.** Precise devices report a real
+  phase, so `navigateByPreciseScroll` latches `hasNavigatedInCurrentGesture`
+  on fire and clears it at `.ended`/`.cancelled` — one swipe, exactly one note,
+  however far it runs. A plain wheel has no phase, so `navigateByWheel` falls
+  back to a time cooldown plus an idle reset; that only *rate-limits* a long
+  continuous spin (~one note per 0.35s), it does not reduce it to one.
+- **Drop momentum events** (`event.momentumPhase == []`), or the coast after a
+  flick keeps firing.
+- **Sign convention:** positive delta means *previous*, matching the horizontal
+  swipe where a rightward swipe goes back. Direction follows the system's
+  natural-scrolling pref rather than normalising against
+  `isDirectionInvertedFromDevice`, same as the swipe.
+
+Shift events are consumed either way (never forwarded to `super`), so the
+editor does not also scroll while Shift is held.
+
 ### Carousel Onboarding
 `OnboardingView.swift` — 4 slides: Welcome (skeumorphic key caps + ShortcutRecorderView), Formatting (live BuoyTextView demo), Harbor Mode (⌘M animates a mini panel to pill), Bug Report (shimmer title via `AnimatedBugTitle`). A local `NSEvent` monitor captures ⌘M during onboarding — on slide 3 it toggles the demo, on all other slides it consumes the event to prevent accidental Harbor Mode. `AnimatedBugTitle` in `HeaderView.swift` is `internal` (not private) so it can be reused in Slide 4. `hasSeenHarborModeTip` remains in `AppSettings` for backwards-compat but is never set.
 

@@ -45,28 +45,36 @@ private final class DragBlockingScrollView: NSScrollView {
     private var accumulatedDeltaX: CGFloat = 0
     private var isTrackingSwipe = false
 
-    /// Shift + wheel accumulation for mice with no horizontal axis, plus the
-    /// timestamps that separate one flick from the next.
-    private var accumulatedWheelDelta: CGFloat = 0
+    /// Shift + scroll accumulation, plus the timestamps that separate one
+    /// flick from the next on a device that reports no gesture phase.
+    private var accumulatedNavigationDelta: CGFloat = 0
     private var lastWheelNavigation = Date.distantPast
     private var lastWheelEvent = Date.distantPast
+    /// Precise devices report a real phase, so a gesture that has already
+    /// moved a note stays latched until the fingers lift.
+    private var hasNavigatedInCurrentGesture = false
 
-    /// A wheel reports lines, not points, so this counts notches rather than
-    /// the ~50pt of travel the trackpad path below wants.
+    /// A wheel reports lines, not points, so this counts notches.
     private static let wheelNavigationThreshold: CGFloat = 2
+    /// A trackpad or Magic Mouse reports points: match the horizontal swipe
+    /// below so both gestures need a comparable amount of travel.
+    private static let preciseNavigationThreshold: CGFloat = 50
     /// Keep one continuous spin from flipping through several notes at once.
     private static let wheelNavigationCooldown: TimeInterval = 0.35
     /// A gap this long means the user let go: start the next flick from zero.
     private static let wheelIdleReset: TimeInterval = 0.5
 
     override func scrollWheel(with event: NSEvent) {
-        // A mouse with only a vertical wheel: hold Shift and scroll. These
-        // events carry no phase at all, so the trackpad path below never sees
-        // them and the note never changes. Precise devices (trackpad, Magic
-        // Mouse) already produce a real horizontal delta, so they keep using
-        // that path and are unaffected by holding Shift.
-        if !event.hasPreciseScrollingDeltas, event.modifierFlags.contains(.shift) {
-            navigateByWheel(event)
+        // Shift + scroll navigates notes on *every* device. This used to be
+        // gated on `!event.hasPreciseScrollingDeltas`, on the theory that a
+        // trackpad or Magic Mouse could just swipe horizontally instead. But
+        // macOS only transposes Shift + scroll onto the X axis for a plain
+        // wheel — a precise device already has a horizontal axis, so it keeps
+        // reporting Y and the swipe path below (which wants X to dominate)
+        // never fired. The gesture was unreachable on exactly the hardware
+        // most people use.
+        if Self.isNavigationModifier(event.modifierFlags) {
+            navigateByScroll(event)
             return
         }
 
@@ -96,35 +104,95 @@ private final class DragBlockingScrollView: NSScrollView {
         }
     }
 
-    /// Turns Shift + wheel into note navigation. The event is consumed either
+    /// Shift alone. Shift + Cmd and Shift + Option stay out of it so they can
+    /// keep whatever meaning AppKit gives them. Caps Lock is ignored rather
+    /// than matched exactly, since it has nothing to do with scrolling.
+    private static func isNavigationModifier(_ flags: NSEvent.ModifierFlags) -> Bool {
+        let flags = flags.intersection(.deviceIndependentFlagsMask)
+        return flags.contains(.shift)
+            && !flags.contains(.command)
+            && !flags.contains(.option)
+            && !flags.contains(.control)
+    }
+
+    /// Turns Shift + scroll into note navigation. The event is consumed either
     /// way, so the editor doesn't also scroll while the user is holding Shift.
-    private func navigateByWheel(_ event: NSEvent) {
+    private func navigateByScroll(_ event: NSEvent) {
+        // Momentum after a flick is that same gesture coasting, not a new one.
+        guard event.momentumPhase == [] else { return }
+
+        // Take whichever axis actually carries the movement. macOS transposes
+        // Shift + wheel onto X for a plain mouse but leaves a precise device
+        // on Y, and a vertical trackpad swipe always carries a little X
+        // jitter — so compare magnitudes rather than testing X against zero,
+        // which would let that jitter stand in for the real movement.
+        let deltaX = event.scrollingDeltaX
+        let deltaY = event.scrollingDeltaY
+        let delta = abs(deltaX) > abs(deltaY) ? deltaX : deltaY
+
+        if event.hasPreciseScrollingDeltas {
+            navigateByPreciseScroll(delta, phase: event.phase)
+        } else {
+            navigateByWheel(delta)
+        }
+    }
+
+    /// Trackpad and Magic Mouse. These report a gesture phase, so the gesture's
+    /// own start and end do the separating: one swipe moves exactly one note,
+    /// however far it runs.
+    private func navigateByPreciseScroll(_ delta: CGFloat, phase: NSEvent.Phase) {
+        if phase.contains(.began) {
+            accumulatedNavigationDelta = 0
+            hasNavigatedInCurrentGesture = false
+        }
+        if phase.contains(.ended) || phase.contains(.cancelled) {
+            accumulatedNavigationDelta = 0
+            hasNavigatedInCurrentGesture = false
+            return
+        }
+
+        guard !hasNavigatedInCurrentGesture else { return }
+        accumulatedNavigationDelta += delta
+        guard abs(accumulatedNavigationDelta) >= Self.preciseNavigationThreshold else { return }
+
+        postNavigation(forward: accumulatedNavigationDelta < 0)
+        hasNavigatedInCurrentGesture = true
+        accumulatedNavigationDelta = 0
+    }
+
+    /// A plain wheel mouse. No phase at all, so time has to do the separating:
+    /// a cooldown after a jump, and an idle gap that starts the next flick
+    /// from zero.
+    private func navigateByWheel(_ delta: CGFloat) {
         let now = Date()
         defer { lastWheelEvent = now }
 
         // Still settling from the last jump: swallow the rest of the spin
         // instead of letting it queue up into another one.
         guard now.timeIntervalSince(lastWheelNavigation) > Self.wheelNavigationCooldown else {
-            accumulatedWheelDelta = 0
+            accumulatedNavigationDelta = 0
             return
         }
         if now.timeIntervalSince(lastWheelEvent) > Self.wheelIdleReset {
-            accumulatedWheelDelta = 0
+            accumulatedNavigationDelta = 0
         }
 
-        // AppKit puts Shift + wheel on the X axis for some setups and leaves
-        // it on Y for others, so take whichever axis actually moved.
-        let delta = event.scrollingDeltaX != 0 ? event.scrollingDeltaX : event.scrollingDeltaY
         guard delta != 0 else { return }
-        accumulatedWheelDelta += delta
+        accumulatedNavigationDelta += delta
+        guard abs(accumulatedNavigationDelta) >= Self.wheelNavigationThreshold else { return }
 
-        guard abs(accumulatedWheelDelta) >= Self.wheelNavigationThreshold else { return }
+        postNavigation(forward: accumulatedNavigationDelta < 0)
+        accumulatedNavigationDelta = 0
+        lastWheelNavigation = now
+    }
+
+    /// Positive delta means "back", matching the horizontal swipe above where
+    /// a rightward swipe reaches the previous note.
+    private func postNavigation(forward: Bool) {
         NotificationCenter.default.post(
-            name: accumulatedWheelDelta > 0 ? .buoyPreviousNote : .buoyNextNote,
+            name: forward ? .buoyNextNote : .buoyPreviousNote,
             object: nil
         )
-        accumulatedWheelDelta = 0
-        lastWheelNavigation = now
     }
 
     override var intrinsicContentSize: NSSize {
