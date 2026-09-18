@@ -37,7 +37,9 @@ final class AllNotesNode: NSObject {
     enum Kind {
         case note(id: String)
         case folder(id: String)
-        case divider
+        /// A labelled section header. `showsRule` draws the hairline above it,
+        /// which the first header in the list does not need.
+        case header(title: String, showsRule: Bool)
     }
 
     enum Placement: Equatable {
@@ -70,8 +72,8 @@ final class AllNotesNode: NSObject {
         return nil
     }
 
-    var isDivider: Bool {
-        if case .divider = kind { return true }
+    var isHeader: Bool {
+        if case .header = kind { return true }
         return false
     }
 
@@ -91,6 +93,9 @@ final class AllNotesNode: NSObject {
     static func allNotesKey(_ noteID: String) -> String { "all:\(noteID)" }
     static func folderKey(_ folderID: String) -> String { "fold:\(folderID)" }
     static func childKey(folderID: String, noteID: String) -> String { "kid:\(folderID):\(noteID)" }
+    static let pinnedHeaderKey = "hdr:pinned"
+    static let foldersHeaderKey = "hdr:folders"
+    static let allNotesHeaderKey = "hdr:all"
 }
 
 /// The flattened row tree plus the top-level index bands each section occupies.
@@ -460,6 +465,20 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
                 built.allNotesRange = 0..<built.topLevel.count
             } else {
                 let pinned = pinnedNotes
+                // Headers only earn their space once there is more than one
+                // section to tell apart.
+                let needsHeaders = !pinned.isEmpty || !folders.isEmpty
+
+                if !pinned.isEmpty {
+                    built.topLevel.append(
+                        node(
+                            key: AllNotesNode.pinnedHeaderKey,
+                            kind: .header(title: "Pinned", showsRule: false),
+                            placement: .separator
+                        )
+                    )
+                }
+                let pinnedStart = built.topLevel.count
                 for note in pinned {
                     built.topLevel.append(
                         node(
@@ -469,14 +488,19 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
                         )
                     )
                 }
-                built.pinnedRange = 0..<pinned.count
+                built.pinnedRange = pinnedStart..<built.topLevel.count
 
                 if !folders.isEmpty {
-                    if !pinned.isEmpty {
-                        built.topLevel.append(
-                            node(key: "sep:folders", kind: .divider, placement: .separator)
+                    built.topLevel.append(
+                        node(
+                            key: AllNotesNode.foldersHeaderKey,
+                            kind: .header(
+                                title: "Folders",
+                                showsRule: !built.topLevel.isEmpty
+                            ),
+                            placement: .separator
                         )
-                    }
+                    )
                     let start = built.topLevel.count
                     for folder in folders {
                         let folderNode = node(
@@ -496,9 +520,16 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
                     built.folderRange = start..<built.topLevel.count
                 }
 
-                if !built.topLevel.isEmpty {
+                if needsHeaders {
                     built.topLevel.append(
-                        node(key: "sep:all", kind: .divider, placement: .separator)
+                        node(
+                            key: AllNotesNode.allNotesHeaderKey,
+                            kind: .header(
+                                title: "All Notes",
+                                showsRule: !built.topLevel.isEmpty
+                            ),
+                            placement: .separator
+                        )
                     )
                 }
                 let allStart = built.topLevel.count
@@ -579,7 +610,7 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
             switch node.kind {
             case .note: return PanelLayoutMetrics.allNotesNoteRowHeight
             case .folder: return PanelLayoutMetrics.allNotesFolderRowHeight
-            case .divider: return PanelLayoutMetrics.allNotesDividerRowHeight
+            case .header: return PanelLayoutMetrics.allNotesHeaderRowHeight
             }
         }
 
@@ -595,12 +626,12 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
 
         func outlineView(_ outlineView: NSOutlineView, shouldSelectItem item: Any) -> Bool {
             guard let node = item as? AllNotesNode else { return false }
-            return !node.isDivider
+            return !node.isHeader
         }
 
         func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? {
             let rowView = NotesRowView()
-            guard let node = item as? AllNotesNode, !node.isDivider else { return rowView }
+            guard let node = item as? AllNotesNode, !node.isHeader else { return rowView }
             rowView.onHoverChange = { [weak self] hovering in
                 self?.setHovered(node.key, hovering)
             }
@@ -634,7 +665,7 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
             switch node.kind {
             case .note: return "AllNotesNoteCell"
             case .folder: return "AllNotesFolderCell"
-            case .divider: return "AllNotesDividerCell"
+            case .header: return "AllNotesHeaderCell"
             }
         }
 
@@ -682,8 +713,10 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
             }
 
             switch node.kind {
-            case .divider:
-                return AnyView(AllNotesSectionDivider())
+            case .header(let title, let showsRule):
+                return AnyView(
+                    AllNotesSectionHeader(title: title, showsRule: showsRule)
+                )
 
             case .note(let noteID):
                 guard let note = note(for: noteID) else { return AnyView(EmptyView()) }
@@ -732,8 +765,8 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
         /// each update so only genuinely changed rows repaint.
         private func renderSignature(for node: AllNotesNode) -> String {
             switch node.kind {
-            case .divider:
-                return "divider"
+            case .header(let title, _):
+                return "header:\(title)"
             case .note(let noteID):
                 guard let note = note(for: noteID) else { return "missing" }
                 return [
@@ -817,7 +850,7 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
             else { return }
 
             switch node.kind {
-            case .divider:
+            case .header:
                 return
             case .note(let noteID):
                 guard let note = note(for: noteID) else { return }
@@ -853,7 +886,7 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
             // — so it is the signal that stops `mouseDown` reporting a click.
             (outlineView as? NotesOutlineView)?.didStartDragDuringTracking = true
             switch node.kind {
-            case .divider:
+            case .header:
                 return nil
             case .folder(let folderID):
                 guard renamingFolderID != folderID else { return nil }
@@ -895,7 +928,7 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
                 let frame = outlineView
                     .convert(rowView.bounds, from: rowView)
                     .insetBy(dx: -Self.dragShadowPadding, dy: -Self.dragShadowPadding)
-                previews.append((frame, Self.cardImage(for: rowView)))
+                previews.append((frame, cardImage(for: node, size: rowView.bounds.size)))
             }
 
             var index = 0
@@ -952,42 +985,111 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
             }
         }
 
-        private static func cardImage(for rowView: NSTableRowView) -> NSImage {
-            let snapshot = NSImage(size: rowView.bounds.size)
-            if let representation = rowView.bitmapImageRepForCachingDisplay(in: rowView.bounds) {
-                rowView.cacheDisplay(in: rowView.bounds, to: representation)
-                snapshot.addRepresentation(representation)
+        /// The card that follows the cursor during a drag.
+        ///
+        /// Drawn from the note's own title rather than snapshotted from the
+        /// row. `cacheDisplay` walks `draw(_:)`, and the row's content is a
+        /// layer-backed `NSHostingView`, so the snapshot came back **empty** —
+        /// the card was a blank slab with no indication of what was being
+        /// dragged. Drawing the title directly also drops the hover buttons,
+        /// which had no business riding along on the card anyway.
+        private func cardImage(for node: AllNotesNode, size: NSSize) -> NSImage {
+            let padding = Self.dragShadowPadding
+            let title: String
+            let symbolName: String?
+            switch node.kind {
+            case .note(let noteID):
+                let raw = note(for: noteID)?.title ?? ""
+                title = raw.isEmpty ? "Untitled" : raw
+                symbolName = nil
+            case .folder(let folderID):
+                title = folder(for: folderID)?.displayName ?? "Folder"
+                symbolName = "folder"
+            case .header:
+                title = ""
+                symbolName = nil
             }
 
-            let padding = dragShadowPadding
             let image = NSImage(
                 size: NSSize(
-                    width: rowView.bounds.width + padding * 2,
-                    height: rowView.bounds.height + padding * 2
+                    width: size.width + padding * 2,
+                    height: size.height + padding * 2
                 )
             )
             let cardRect = NSRect(
                 x: padding,
                 y: padding,
-                width: rowView.bounds.width,
-                height: rowView.bounds.height
+                width: size.width,
+                height: size.height
             )
 
             image.lockFocus()
+
             NSGraphicsContext.saveGraphicsState()
             let shadow = NSShadow()
-            shadow.shadowColor = NSColor.black.withAlphaComponent(0.16)
-            shadow.shadowBlurRadius = 6
+            shadow.shadowColor = NSColor.black.withAlphaComponent(0.18)
+            shadow.shadowBlurRadius = 7
             shadow.shadowOffset = NSSize(width: 0, height: -1)
             shadow.set()
-            NSColor.windowBackgroundColor.withAlphaComponent(0.96).setFill()
+            NSColor.windowBackgroundColor.withAlphaComponent(0.97).setFill()
             NSBezierPath(roundedRect: cardRect, xRadius: 7, yRadius: 7).fill()
             NSGraphicsContext.restoreGraphicsState()
 
-            NSGraphicsContext.saveGraphicsState()
-            NSBezierPath(roundedRect: cardRect, xRadius: 7, yRadius: 7).addClip()
-            snapshot.draw(in: cardRect)
-            NSGraphicsContext.restoreGraphicsState()
+            NSColor.separatorColor.setStroke()
+            let border = NSBezierPath(
+                roundedRect: cardRect.insetBy(dx: 0.5, dy: 0.5),
+                xRadius: 7,
+                yRadius: 7
+            )
+            border.lineWidth = 1
+            border.stroke()
+
+            var textOrigin = cardRect.minX + 10
+            let font = NSFont.preferredFont(forTextStyle: .callout)
+
+            if let symbolName,
+               let symbol = NSImage(
+                   systemSymbolName: symbolName,
+                   accessibilityDescription: nil
+               ) {
+                let glyphSize: CGFloat = 12
+                let glyphRect = NSRect(
+                    x: textOrigin,
+                    y: cardRect.midY - glyphSize / 2,
+                    width: glyphSize,
+                    height: glyphSize
+                )
+                symbol.isTemplate = true
+                NSColor.secondaryLabelColor.set()
+                symbol.draw(
+                    in: glyphRect,
+                    from: .zero,
+                    operation: .sourceOver,
+                    fraction: 1,
+                    respectFlipped: true,
+                    hints: [.interpolation: NSImageInterpolation.high.rawValue]
+                )
+                textOrigin += glyphSize + 6
+            }
+
+            let paragraph = NSMutableParagraphStyle()
+            paragraph.lineBreakMode = .byTruncatingTail
+            let attributed = NSAttributedString(
+                string: title,
+                attributes: [
+                    .font: font,
+                    .foregroundColor: NSColor.labelColor,
+                    .paragraphStyle: paragraph
+                ]
+            )
+            let textRect = NSRect(
+                x: textOrigin,
+                y: cardRect.midY - font.capHeight,
+                width: max(0, cardRect.maxX - 10 - textOrigin),
+                height: font.ascender - font.descender
+            )
+            attributed.draw(with: textRect, options: [.usesLineFragmentOrigin])
+
             image.unlockFocus()
             return image
         }
@@ -1020,14 +1122,19 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
             if targetIndex == NSOutlineViewDropOnItemIndex,
                let node = targetItem,
                node.folderID == nil {
-                if node.isDivider {
-                    // A divider's own index sits outside every band, so taking
+                if node.isHeader {
+                    // A header's own index sits outside every band, so taking
                     // it literally rejected the drop. It reads as "the start of
-                    // the section under this line".
+                    // the section this header names".
                     targetItem = nil
-                    targetIndex = node.key == "sep:all"
-                        ? tree.allNotesRange.lowerBound
-                        : tree.folderRange.lowerBound
+                    switch node.key {
+                    case AllNotesNode.pinnedHeaderKey:
+                        targetIndex = tree.pinnedRange.lowerBound
+                    case AllNotesNode.foldersHeaderKey:
+                        targetIndex = tree.folderRange.lowerBound
+                    default:
+                        targetIndex = tree.allNotesRange.lowerBound
+                    }
                 } else if let parentID = node.parentFolderID,
                           let parent = folderNode(for: parentID),
                           let childIndex = parent.children.firstIndex(of: node) {

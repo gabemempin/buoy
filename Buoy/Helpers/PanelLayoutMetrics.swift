@@ -34,6 +34,9 @@ enum PanelLayoutMetrics {
     static let allNotesNoteRowHeight: CGFloat = 30
     static let allNotesFolderRowHeight: CGFloat = 28
     static let allNotesDividerRowHeight: CGFloat = 9
+    /// A labelled section header ("Pinned", "Folders", "All Notes"). A bare
+    /// rule told the user the list was grouped but never why.
+    static let allNotesHeaderRowHeight: CGFloat = 26
     /// Extra leading inset for a note shown inside a folder.
     static let allNotesChildIndent: CGFloat = 18
     static let footerOverlayBottomInset: CGFloat = 43

@@ -133,17 +133,37 @@ struct AllNotesPanel: View {
     }
 }
 
-// MARK: - Section divider
+// MARK: - Section header
 
-/// The hairline between the Pinned, Folders and All Notes sections.
-struct AllNotesSectionDivider: View {
+/// Names a section of the list: Pinned, Folders, All Notes.
+///
+/// This replaced a bare hairline. The rule alone said the list was grouped but
+/// never why, so the pinned band and a folder's contents read as an unexplained
+/// split rather than as sections.
+struct AllNotesSectionHeader: View {
+    let title: String
+    /// The first header in the list has nothing above it to divide from.
+    let showsRule: Bool
+
     var body: some View {
-        Rectangle()
-            .fill(Color.buoyOverlayStroke)
-            .frame(height: 1)
-            .padding(.horizontal, 10)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-            .accessibilityHidden(true)
+        VStack(alignment: .leading, spacing: 0) {
+            if showsRule {
+                Rectangle()
+                    .fill(Color.buoyOverlayStroke)
+                    .frame(height: 1)
+                    .padding(.bottom, 6)
+            }
+            Text(title.uppercased())
+                .font(BuoyFont.caption.weight(.semibold))
+                .kerning(0.5)
+                .foregroundStyle(.tertiary)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 10)
+        .padding(.top, showsRule ? 4 : 2)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(title) section")
     }
 }
 
