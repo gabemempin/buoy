@@ -76,14 +76,14 @@ GRDB migrations are defined in `NoteStore.swift` (`v1_initial`, `v2_contentRTF`,
 
 ### Auto-Title New Notes
 
-**Currently shipped inert.** `NoteAutoTitler.featureEnabled` is `false`, so
-`isSupported` is `false` on every Mac and the feature is invisible: no Settings
-row, no extra `settingsOverrideHeight`, and `NoteStore` never calls in. It was
-held back from a release because it shares commit `c651597` (and three source
-files) with the link popover, so there was no clean commit to omit. Flip
-`featureEnabled` to `true` to release it. The migrations stay in either way —
-additive, harmless while off, and they keep the schema identical across both
-builds.
+**Now live.** `NoteAutoTitler.featureEnabled` is `true`, so `isSupported`
+answers on real capability again (macOS 26 + Apple Silicon + Apple Intelligence)
+and the Settings row, the extra `settingsOverrideHeight`, and the `NoteStore`
+call-in are all back. It shipped inert for one release because it shares commit
+`c651597` (and three source files) with the link popover, so there was no clean
+commit to omit; flipping this one constant is the whole switch in either
+direction. The migrations stay in either way — additive, harmless while off, and
+they keep the schema identical across both builds.
 
 On-device AI naming for brand-new notes, via Apple's `FoundationModels`
 framework (macOS 26+, Apple Silicon, Apple Intelligence on). Everything that

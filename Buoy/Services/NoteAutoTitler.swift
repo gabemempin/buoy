@@ -84,7 +84,7 @@ final class NoteAutoTitler {
     /// The GRDB migrations stay in either way. They are additive and harmless
     /// with the feature off, and keeping them means users on this build have
     /// the same schema as users on the build that finally enables it.
-    private static let featureEnabled = false
+    private static let featureEnabled = true
 
     /// Whether this Mac can run the on-device model right now: Apple Silicon,
     /// macOS 26+, Apple Intelligence enabled, model ready. Anything else
