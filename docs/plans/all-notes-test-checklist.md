@@ -42,6 +42,8 @@ is broken they are *silently* dead, so click every one.
 - [x] Hover a note row → a folder button sits between pin and x. It opens a
       native menu, not a second panel.
 - [x] The menu ticks the folder the note is already in.
+- [x] The folder glyph is the same size and colour as the pin and delete glyphs.
+- [x] Hovering the **active** note does not change its highlight's height.
 - [x] "Remove from Folder" unfiles the note and leaves the folder alone.
 - [ ] "New Folder…" creates a folder, files the note, and opens the name for
       editing.

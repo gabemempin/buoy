@@ -185,10 +185,18 @@ struct AllNotesSectionHeader: View {
 /// button. Without a press state, a button can feel unresponsive." The hit
 /// region is deliberately larger than the glyph for the same reason the HIG
 /// gives for generous hit targets.
+enum RowControlMetrics {
+    /// Every row control is exactly this tall, and so is the row's content
+    /// line. A control taller than the title would make the row grow the
+    /// moment its hover buttons appeared, stretching the active note's pill.
+    static let size: CGFloat = 20
+    static let glyphSize: CGFloat = 10
+}
+
 struct RowActionButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .frame(width: 22, height: 22)
+            .frame(width: RowControlMetrics.size, height: RowControlMetrics.size)
             .background(
                 Circle()
                     .fill(Color.buoyControlFill)
@@ -211,7 +219,7 @@ struct RowActionButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(.system(size: 10, weight: .medium))
+                .font(.system(size: RowControlMetrics.glyphSize, weight: .medium))
                 .foregroundStyle(tint)
         }
         .buttonStyle(RowActionButtonStyle())
@@ -277,12 +285,17 @@ struct RowFolderMenu: View {
             }
         } label: {
             Image(systemName: currentFolderID == nil ? "folder" : "folder.fill")
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(.secondary)
+                .font(.system(size: RowControlMetrics.glyphSize, weight: .medium))
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
-        .frame(width: 22, height: 22)
+        // `Menu` restyles its own label, so size and colour have to be
+        // re-applied outside `menuStyle` — otherwise the folder glyph renders
+        // larger and brighter than the pin and delete glyphs beside it.
+        .font(.system(size: RowControlMetrics.glyphSize, weight: .medium))
+        .foregroundStyle(.secondary)
+        .tint(.secondary)
+        .frame(width: RowControlMetrics.size, height: RowControlMetrics.size)
         .contentShape(Circle())
         .help("Move to folder")
         .accessibilityLabel("Move to folder")
@@ -345,6 +358,10 @@ struct NoteRow: View {
                 )
             }
         }
+        // Fixed height, so hover buttons appearing cannot make the pill grow
+        // taller than it is at rest — which read as the highlight stretching
+        // the moment the pointer touched the active note.
+        .frame(height: RowControlMetrics.size)
         // Text sits 10pt from the panel edge, level with the section headers.
         // The pill it sits in stops 4pt short of that edge so the fill never
         // runs into the panel's rounded corner.
@@ -353,7 +370,7 @@ struct NoteRow: View {
         // The pill needs to sit *inside* the row with air above and below, or
         // consecutive rows read as one block and the rounding has nothing to
         // round against.
-        .padding(.vertical, 6)
+        .padding(.vertical, 5)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(isActive ? Color.buoySelectionFill : Color.clear)
@@ -443,9 +460,10 @@ struct FolderRow: View {
                 )
             }
         }
+        .frame(height: RowControlMetrics.size)
         .padding(.leading, 6)
         .padding(.trailing, 2)
-        .padding(.vertical, 5)
+        .padding(.vertical, 4)
         .padding(.leading, 4)
         .padding(.trailing, 4)
         .animation(BuoyMotion.easeInOut(0.1), value: isHovering)
