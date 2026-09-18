@@ -159,11 +159,60 @@ struct AllNotesSectionHeader: View {
                 .foregroundStyle(.tertiary)
                 .lineLimit(1)
         }
-        .padding(.horizontal, 10)
+        .padding(.horizontal, 8)
         .padding(.top, showsRule ? 4 : 2)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(title) section")
+    }
+}
+
+// MARK: - Row action button
+
+/// A symbol-only button for a list row: pin, delete, rename.
+///
+/// The resting state is a bare glyph — Apple's own lists (Finder, Mail) do not
+/// sit a filled chip behind every row action, and at this row height the chips
+/// read as heavier than the row itself. The fill is the *press* state instead,
+/// which the HIG asks for outright: "Always include a press state for a custom
+/// button. Without a press state, a button can feel unresponsive." The hit
+/// region is deliberately larger than the glyph for the same reason the HIG
+/// gives for generous hit targets.
+struct RowActionButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .frame(width: 22, height: 22)
+            .background(
+                Circle()
+                    .fill(Color.buoyControlFill)
+                    .opacity(configuration.isPressed ? 1 : 0)
+            )
+            .scaleEffect(configuration.isPressed ? 0.9 : 1)
+            .contentShape(Circle())
+            .animation(BuoyMotion.easeOut(0.1), value: configuration.isPressed)
+    }
+}
+
+struct RowActionButton: View {
+    let systemName: String
+    let label: String
+    var tint: Color = .secondary
+    let action: () -> Void
+
+    private var space: String { NotesOutlineViewWrapper.rowCoordinateSpace }
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(tint)
+        }
+        .buttonStyle(RowActionButtonStyle())
+        .help(label)
+        .accessibilityLabel(label)
+        .pointingHandCursor()
+        .interactiveRegion(in: space)
+        .transition(.opacity)
     }
 }
 
@@ -184,7 +233,7 @@ struct NoteRow: View {
     private var space: String { NotesOutlineViewWrapper.rowCoordinateSpace }
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 2) {
             Text(note.title.isEmpty ? "Untitled" : note.title)
                 .font(isActive ? BuoyFont.sectionTitle : BuoyFont.control)
                 .foregroundStyle(isActive ? Color.primary : Color.secondary)
@@ -192,45 +241,30 @@ struct NoteRow: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             if isHovering || note.isPinned {
-                Button(action: onTogglePin) {
-                    Image(systemName: note.isPinned ? "pin.fill" : "pin")
-                        .font(.system(size: 9))
-                        .foregroundStyle(note.isPinned ? Color.accentColor : Color.secondary)
-                        .frame(width: 18, height: 18)
-                        .background(Circle().fill(Color.buoyControlFill))
-                }
-                .buttonStyle(.plain)
-                .help(note.isPinned ? "Unpin note" : "Pin note")
-                .accessibilityLabel(note.isPinned ? "Unpin note" : "Pin note")
-                .pointingHandCursor()
-                .interactiveRegion(in: space)
-                .transition(.opacity)
+                RowActionButton(
+                    systemName: note.isPinned ? "pin.fill" : "pin",
+                    label: note.isPinned ? "Unpin note" : "Pin note",
+                    tint: note.isPinned ? Color.accentColor : Color.secondary,
+                    action: onTogglePin
+                )
             }
 
             if isHovering {
-                Button(action: onDelete) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 9))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 18, height: 18)
-                        .background(Circle().fill(Color.buoyControlFill))
-                }
-                .buttonStyle(.plain)
-                .help("Delete note")
-                .accessibilityLabel("Delete note")
-                .pointingHandCursor()
-                .interactiveRegion(in: space)
-                .transition(.opacity)
+                RowActionButton(
+                    systemName: "xmark",
+                    label: "Delete note",
+                    action: onDelete
+                )
             }
         }
-        .padding(.leading, isIndented ? 10 + PanelLayoutMetrics.allNotesChildIndent : 10)
-        .padding(.trailing, 10)
-        .padding(.vertical, 7)
+        .padding(.leading, 8)
+        .padding(.trailing, 4)
+        .padding(.vertical, 4)
         .background(
-            RoundedRectangle(cornerRadius: 7)
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .fill(isActive ? Color.buoySelectionFill : Color.clear)
-                .padding(.leading, isIndented ? PanelLayoutMetrics.allNotesChildIndent : 0)
         )
+        .padding(.leading, isIndented ? PanelLayoutMetrics.allNotesChildIndent : 0)
         .animation(BuoyMotion.easeInOut(0.1), value: isHovering)
         .accessibilityElement(children: .contain)
         .accessibilityAddTraits(isActive ? [.isButton, .isSelected] : .isButton)
@@ -298,37 +332,21 @@ struct FolderRow: View {
             Spacer(minLength: 4)
 
             if isHovering && !isRenaming {
-                Button(action: onBeginRename) {
-                    Image(systemName: "pencil")
-                        .font(.system(size: 9))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 18, height: 18)
-                        .background(Circle().fill(Color.buoyControlFill))
-                }
-                .buttonStyle(.plain)
-                .help("Rename folder")
-                .accessibilityLabel("Rename folder")
-                .pointingHandCursor()
-                .interactiveRegion(in: space)
-                .transition(.opacity)
-
-                Button(action: onDelete) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 9))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 18, height: 18)
-                        .background(Circle().fill(Color.buoyControlFill))
-                }
-                .buttonStyle(.plain)
-                .help("Delete folder")
-                .accessibilityLabel("Delete folder")
-                .pointingHandCursor()
-                .interactiveRegion(in: space)
-                .transition(.opacity)
+                RowActionButton(
+                    systemName: "pencil",
+                    label: "Rename folder",
+                    action: onBeginRename
+                )
+                RowActionButton(
+                    systemName: "xmark",
+                    label: "Delete folder",
+                    action: onDelete
+                )
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
+        .padding(.leading, 8)
+        .padding(.trailing, 4)
+        .padding(.vertical, 3)
         .animation(BuoyMotion.easeInOut(0.1), value: isHovering)
         .animation(BuoyMotion.easeOut(0.18), value: isExpanded)
         .accessibilityElement(children: .contain)

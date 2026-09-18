@@ -260,9 +260,30 @@ without a drag session as a click. The delegate sets
 `didStartDragDuringTracking`. A click on a folder row toggles its disclosure —
 the chevron is a drawn affordance, not a button, so there is no double-fire.
 
-**Row heights are per-item** (`heightOfRowByItem`): note 30, folder 28, divider
-9. There is no global `rowHeight`. `indentationPerLevel` is 0 and folder
+**Row heights are per-item** (`heightOfRowByItem`): note 30, folder 28, header
+26. There is no global `rowHeight`. `indentationPerLevel` is 0 and folder
 children indent themselves in SwiftUI via `allNotesChildIndent`.
+
+**Sections are labelled, not just ruled.** `AllNotesSectionHeader` draws
+PINNED / FOLDERS / ALL NOTES with the hairline above all but the first. Bare
+rules said the list was grouped but never why. Headers appear only when there
+is more than one section, and a drop on one means the start of the section it
+names.
+
+**The outline view uses `NSTableView.Style.inset`, not `.plain`.** That is
+where the row's horizontal margin comes from — AppKit insets the row frames, so
+the selection fill stops short of the panel's rounded edge instead of bleeding
+into it. Do not reintroduce a hand-picked inset constant; the system's number is
+the one that matches every other macOS list.
+
+**Row action buttons are bare glyphs with a press state.** `RowActionButton` /
+`RowActionButtonStyle` in `AllNotesPanel.swift`. A filled chip behind every
+resting row action reads heavier than the row itself, and Apple's own lists
+don't do it — so the fill is the *press* state instead. The HIG is explicit:
+"Always include a press state for a custom button. Without a press state, a
+button can feel unresponsive." The 22pt hit region is deliberately larger than
+the 10pt glyph. Use this style for any new row control rather than hand-rolling
+a button.
 
 **Search flattens everything**: sections, folders and all dragging are off while
 `searchText` is non-empty (`searchMatches != nil`).
