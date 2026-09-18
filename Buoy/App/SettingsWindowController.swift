@@ -17,7 +17,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let store: SettingsStore
     private let model = SettingsWindowModel()
 
-    private let onShortcutChanged: (String) -> Void
     private let onReportBug: () -> Void
     private let onQuit: () -> Void
     /// Reads the note panel's current level and appearance. A closure rather
@@ -28,13 +27,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     init(
         store: SettingsStore,
         panelWindowProperties: @escaping () -> (level: NSWindow.Level, appearance: NSAppearance?),
-        onShortcutChanged: @escaping (String) -> Void,
         onReportBug: @escaping () -> Void,
         onQuit: @escaping () -> Void
     ) {
         self.store = store
         self.panelWindowProperties = panelWindowProperties
-        self.onShortcutChanged = onShortcutChanged
         self.onReportBug = onReportBug
         self.onQuit = onQuit
         super.init(window: nil)
@@ -82,7 +79,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
                 store: store,
                 model: model,
                 onPageChange: { [weak self] page in self?.window?.title = page.title },
-                onShortcutChanged: onShortcutChanged,
                 onReportBug: { [weak self] in
                     self?.onReportBug()
                 },
@@ -163,10 +159,10 @@ private final class SettingsWindow: NSWindow {
             return true
         }
 
-        // ⌘, and ⌘M belong to the note panel. Swallowed rather than forwarded:
-        // re-opening Settings while Settings is key is a no-op, and Harbor Mode
-        // would resize a panel the user cannot currently see.
-        if modifiers == .command, key == "," || key == "m" {
+        // Keep panel commands from firing while the Settings window is key.
+        // Read the registry so their old keys become available after a rebind.
+        if ShortcutRegistry.combo(for: .openSettings).matches(event)
+            || ShortcutRegistry.combo(for: .harborMode).matches(event) {
             return true
         }
 

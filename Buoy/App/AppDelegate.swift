@@ -17,7 +17,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         panelWindowProperties: { [weak self] in
             (self?.panel?.level ?? .normal, self?.panel?.appearance)
         },
-        onShortcutChanged: { HotkeyService.shared.register(shortcut: $0) },
         onReportBug: { [weak self] in self?.startBugReport() },
         onQuit: { NSApp.terminate(nil) }
     )
@@ -270,6 +269,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         appliedSettings = settingsStore.value
         BuoyTheme.setCurrent(BuoyTheme(settings: settingsStore.value))
+        ShortcutRegistry.update(from: settingsStore.value)
         noteStore.restoreSelection(noteID: settingsStore.value.lastSelectedNoteID)
         setupPanel()
         installOutsideClickMonitor()
@@ -466,8 +466,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func showContextMenu() {
         let menu = NSMenu()
 
-        let newNote = menu.addItem(withTitle: "New Note", action: #selector(newNoteFromMenu), keyEquivalent: "n")
+        let newNote = menu.addItem(withTitle: "New Note", action: #selector(newNoteFromMenu), keyEquivalent: "")
         newNote.target = self
+        if let equivalent = ShortcutRegistry.combo(for: .newNote).menuKeyEquivalent {
+            newNote.keyEquivalent = equivalent.key
+            newNote.keyEquivalentModifierMask = equivalent.modifiers
+        }
 
         let shortcuts = menu.addItem(
             withTitle: "Keyboard Shortcuts",
@@ -478,8 +482,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         menu.addItem(.separator())
 
-        let settingsItem = menu.addItem(withTitle: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
+        let settingsItem = menu.addItem(withTitle: "Settings…", action: #selector(openSettings), keyEquivalent: "")
         settingsItem.target = self
+        if let equivalent = ShortcutRegistry.combo(for: .openSettings).menuKeyEquivalent {
+            settingsItem.keyEquivalent = equivalent.key
+            settingsItem.keyEquivalentModifierMask = equivalent.modifiers
+        }
 
         menu.addItem(
             withTitle: "About Buoy",
@@ -781,6 +789,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         // arcs) reads the theme from this static rather than the environment.
         BuoyTheme.setCurrent(BuoyTheme(settings: settings))
         applyTheme(settings.theme)
+
+        if settings.shortcuts != appliedSettings.shortcuts {
+            ShortcutRegistry.update(from: settings)
+            // The menu bar holds its key equivalents as literal characters, so
+            // a rebind has to rewrite the items rather than being looked up.
+            buildMainMenu()
+        }
         panel?.level = settings.alwaysOnTop ? .statusBar : .normal
         cornerResizeOverlayController.syncWindowProperties()
 

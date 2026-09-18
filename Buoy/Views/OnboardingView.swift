@@ -41,8 +41,7 @@ struct OnboardingView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
             cmdMMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-                let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-                if mods == .command && event.keyCode == 46 {
+                if ShortcutRegistry.combo(for: .harborMode).matches(event) {
                     NotificationCenter.default.post(name: .onboardingCmdM, object: nil)
                     return nil
                 }
@@ -219,10 +218,6 @@ private struct WelcomeSlide: View {
     @State private var shortcutMonitor: Any?
     @State private var shortcutFlashTask: Task<Void, Never>?
 
-    private let reservedShortcuts = [
-        "Cmd+Space", "Cmd+Tab", "Cmd+Shift+3", "Cmd+Shift+4", "Cmd+Shift+5"
-    ]
-
     var body: some View {
         VStack(spacing: 10) {
             Spacer(minLength: 0)
@@ -365,38 +360,26 @@ private struct WelcomeSlide: View {
     }
 
     private func handleShortcutKeyEvent(_ event: NSEvent) {
-        let mods = event.modifierFlags
-        guard let chars = event.charactersIgnoringModifiers?.lowercased(), !chars.isEmpty else {
-            return
-        }
-
         if event.keyCode == 53 {
             stopShortcutEditing()
             return
         }
 
-        let hasModifier = mods.contains(.command) || mods.contains(.control) || mods.contains(.option)
-        guard hasModifier else {
+        guard let combo = KeyCombo(event: event) else {
             flashShortcutMessage("Needs ⌘/⌃/⌥")
             return
         }
-
-        var parts: [String] = []
-        if mods.contains(.control) { parts.append("Ctrl") }
-        if mods.contains(.option) { parts.append("Option") }
-        if mods.contains(.shift) { parts.append("Shift") }
-        if mods.contains(.command) { parts.append("Cmd") }
-        parts.append(chars.uppercased())
-        let newShortcut = parts.joined(separator: "+")
-
-        if reservedShortcuts.contains(newShortcut) {
-            flashShortcutMessage("Reserved!")
+        guard combo.isSupported else {
+            flashShortcutMessage("Unsupported key")
+            return
+        }
+        if let owner = ShortcutRegistry.conflict(for: combo, excluding: nil, isGlobal: true, settings: settings) {
+            flashShortcutMessage("Used by \(owner)")
             return
         }
 
-        settings.globalShortcut = newShortcut
-        onShortcutChanged(newShortcut)
-        settings.save()
+        settings.globalShortcut = combo.electronString
+        onShortcutChanged(combo.electronString)
         stopShortcutEditing()
     }
 
@@ -598,6 +581,9 @@ private struct DemoToolbarView: View {
 // MARK: - Slide 3: Harbor Mode
 
 private struct HarborModeSlide: View {
+    private var harborShortcut: String {
+        ShortcutStrings.symbols(ShortcutRegistry.combo(for: .harborMode).electronString)
+    }
     var isDemoMinimized: Bool
     var onToggleDemo: () -> Void
     @State private var hasTriggeredOnce = false
@@ -628,9 +614,9 @@ private struct HarborModeSlide: View {
 
             Group {
                 if hasTriggeredOnce || isDemoMinimized {
-                    Text(isDemoMinimized ? "Press ⌘M again to restore" : "Press ⌘M to try it")
+                    Text(isDemoMinimized ? "Press \(harborShortcut) again to restore" : "Press \(harborShortcut) to try it")
                 } else {
-                    let hintText = "Press ⌘M to try it"
+                    let hintText = "Press \(harborShortcut) to try it"
                     TimelineView(.animation(minimumInterval: 1.0 / 20.0)) { timeline in
                         let t = timeline.date.timeIntervalSinceReferenceDate
                         let cycle = t.truncatingRemainder(dividingBy: 1.6) / 1.6
@@ -648,7 +634,7 @@ private struct HarborModeSlide: View {
             }
 
             slideSubheading(
-                "Click the minimize button or press ⌘M\nto tuck Buoy away without closing."
+                "Click the minimize button or press \(harborShortcut)\nto tuck Buoy away without closing."
             )
             .padding(.bottom, 2)
 

@@ -13,7 +13,6 @@ struct SettingsWindowView: View {
     /// opens Shortcuts) without reaching into SwiftUI state.
     @Bindable var model: SettingsWindowModel
     var onPageChange: (SettingsPage) -> Void
-    var onShortcutChanged: (String) -> Void
     var onReportBug: () -> Void
     var onQuit: () -> Void
 
@@ -26,6 +25,7 @@ struct SettingsWindowView: View {
                     .tag(item)
             }
             .listStyle(.sidebar)
+            .frame(width: SettingsWindowMetrics.sidebarWidth)
             // Pinned rather than given as an ideal: `.balanced` otherwise
             // picks its own width and lands well under the rows' needs.
             .navigationSplitViewColumnWidth(
@@ -89,10 +89,7 @@ struct SettingsWindowView: View {
         case .appearance:
             AppearanceSettingsPage(settings: $store.value)
         case .shortcuts:
-            ShortcutsSettingsPage(
-                settings: $store.value,
-                onShortcutChanged: onShortcutChanged
-            )
+            ShortcutsSettingsPage(settings: $store.value)
         case .about:
             AboutSettingsPage(onReportBug: onReportBug, onQuit: onQuit)
         }

@@ -197,7 +197,7 @@ struct FooterView: View {
                             HStack(spacing: 3) {
                                 Text("Copy")
                                     .font(metrics.footerActionFont)
-                                Text("⌘⏎")
+                                Text(ShortcutStrings.symbols(ShortcutRegistry.combo(for: .copyNote).electronString))
                                     .font(metrics.footerHintFont)
                                     .opacity(0.8)
                             }
@@ -207,7 +207,7 @@ struct FooterView: View {
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-                        .help("Copy to clipboard (⌘Return)")
+                        .help("Copy to clipboard (\(ShortcutStrings.symbols(ShortcutRegistry.combo(for: .copyNote).electronString)))")
                         .accessibilityLabel("Copy note to clipboard")
                         .onHover { isCopyHovering = $0 }
                     }

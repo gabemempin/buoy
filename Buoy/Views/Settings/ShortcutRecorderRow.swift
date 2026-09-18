@@ -12,8 +12,10 @@ struct ShortcutRecorderRow: View {
     @Binding var shortcut: String
     /// Returns a human phrase naming whatever already owns a combo, or `nil`
     /// when it is free. Buoy's own commands, and macOS's reserved set.
-    var conflict: (String) -> String?
-    var onChanged: (String) -> Void
+    var conflict: (KeyCombo) -> String?
+    var onChanged: (String) -> Void = { _ in }
+    var onRecorded: ((KeyCombo) -> Void)? = nil
+    @Binding var activeRecording: String?
     /// Marks a row the user has moved off its default.
     var isCustomised: Bool = false
 
@@ -26,13 +28,13 @@ struct ShortcutRecorderRow: View {
         LabeledContent(label) {
             VStack(alignment: .trailing, spacing: 3) {
                 HStack(spacing: 10) {
-                    if isCustomised && !isRecording {
-                        Circle()
-                            .fill(BuoyTheme.current.accent)
-                            .frame(width: 6, height: 6)
-                            .accessibilityHidden(true)
-                    }
+                    Circle()
+                        .fill(BuoyTheme.current.accent)
+                        .frame(width: 6, height: 6)
+                        .opacity(isCustomised && !isRecording ? 1 : 0)
+                        .accessibilityHidden(true)
                     display
+                        .frame(width: 140, alignment: .trailing)
                     Button(isRecording ? "Cancel" : "Edit") {
                         isRecording ? stopRecording() : startRecording()
                     }
@@ -41,6 +43,7 @@ struct ShortcutRecorderRow: View {
                     .frame(width: 64)
                     .accessibilityLabel(isRecording ? "Cancel recording \(label)" : "Change shortcut for \(label)")
                 }
+                .frame(width: 230, alignment: .trailing)
                 if let flash, isRecording {
                     Text(flash)
                         .font(BuoyFont.caption)
@@ -52,13 +55,15 @@ struct ShortcutRecorderRow: View {
         }
         .accessibilityValue(ShortcutStrings.symbols(shortcut))
         .onDisappear { stopRecording() }
+        .onChange(of: activeRecording) { _, owner in
+            if isRecording && owner != label { stopRecording() }
+        }
     }
 
     @ViewBuilder
     private var display: some View {
         if isRecording {
             ShimmeringShortcutPromptView(text: "Type shortcut…", fontSize: 11, minHeight: 24)
-                .frame(width: 110)
         } else {
             ShortcutKeyCapsView(shortcut: shortcut, keySize: 24, spacing: 4, fontSize: 11)
         }
@@ -67,6 +72,7 @@ struct ShortcutRecorderRow: View {
     private func startRecording() {
         stopRecording()
         isRecording = true
+        activeRecording = label
         // Swallow every key while recording (`return nil`), or the combo the
         // user is typing also fires whatever it is currently bound to.
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
@@ -77,6 +83,7 @@ struct ShortcutRecorderRow: View {
 
     private func stopRecording() {
         isRecording = false
+        if activeRecording == label { activeRecording = nil }
         flash = nil
         flashTask?.cancel()
         flashTask = nil
@@ -89,17 +96,25 @@ struct ShortcutRecorderRow: View {
     private func handle(_ event: NSEvent) {
         if event.keyCode == 53 { stopRecording(); return }
 
-        guard let candidate = ShortcutStrings.electronString(for: event) else {
+        guard let candidate = KeyCombo(event: event) else {
             showFlash("Needs ⌘, ⌃ or ⌥")
             return
         }
-        if candidate == shortcut { stopRecording(); return }
+        guard candidate.isSupported else {
+            showFlash("Unsupported key")
+            return
+        }
+        if candidate.electronString == shortcut { stopRecording(); return }
         if let owner = conflict(candidate) {
             showFlash("Used by \(owner)")
             return
         }
-        shortcut = candidate
-        onChanged(candidate)
+        if let onRecorded {
+            onRecorded(candidate)
+        } else {
+            shortcut = candidate.electronString
+            onChanged(candidate.electronString)
+        }
         stopRecording()
     }
 

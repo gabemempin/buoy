@@ -9,85 +9,27 @@ extension KeyboardShortcuts.Name {
 final class HotkeyService {
     static let shared = HotkeyService()
     var onToggle: (() -> Void)?
+    private var registeredShortcut: String?
+    private var isListening = false
 
     private init() {}
 
     func register(shortcut: String? = nil) {
-        if let shortcut, !shortcut.isEmpty {
+        if let shortcut, !shortcut.isEmpty, shortcut != registeredShortcut {
             updateShortcut(from: shortcut)
+            registeredShortcut = shortcut
         }
 
+        guard !isListening else { return }
+        isListening = true
         KeyboardShortcuts.onKeyDown(for: .togglePanel) { [weak self] in
             self?.onToggle?()
         }
     }
 
     private func updateShortcut(from string: String) {
-        var mods: NSEvent.ModifierFlags = []
-        var key: KeyboardShortcuts.Key?
-
-        let parts = string.components(separatedBy: "+")
-        for part in parts {
-            switch part.lowercased() {
-            case "cmd", "command": mods.insert(.command)
-            case "ctrl", "control": mods.insert(.control)
-            case "option", "alt": mods.insert(.option)
-            case "shift": mods.insert(.shift)
-            default:
-                key = KeyboardShortcuts.Key(string: part.lowercased())
-            }
-        }
-
-        if let key {
-            KeyboardShortcuts.setShortcut(.init(key, modifiers: mods), for: .togglePanel)
-        }
-    }
-}
-
-private extension KeyboardShortcuts.Key {
-    init?(string: String) {
-        switch string {
-        case "a": self = .a
-        case "b": self = .b
-        case "c": self = .c
-        case "d": self = .d
-        case "e": self = .e
-        case "f": self = .f
-        case "g": self = .g
-        case "h": self = .h
-        case "i": self = .i
-        case "j": self = .j
-        case "k": self = .k
-        case "l": self = .l
-        case "m": self = .m
-        case "n": self = .n
-        case "o": self = .o
-        case "p": self = .p
-        case "q": self = .q
-        case "r": self = .r
-        case "s": self = .s
-        case "t": self = .t
-        case "u": self = .u
-        case "v": self = .v
-        case "w": self = .w
-        case "x": self = .x
-        case "y": self = .y
-        case "z": self = .z
-        case "0": self = .zero
-        case "1": self = .one
-        case "2": self = .two
-        case "3": self = .three
-        case "4": self = .four
-        case "5": self = .five
-        case "6": self = .six
-        case "7": self = .seven
-        case "8": self = .eight
-        case "9": self = .nine
-        case "return", "enter": self = .return
-        case "space": self = .space
-        case "delete", "backspace": self = .delete
-        case "escape": self = .escape
-        default: return nil
-        }
+        guard let combo = KeyCombo(electronString: string) else { return }
+        let key = KeyboardShortcuts.Key(rawValue: Int(combo.keyCode))
+        KeyboardShortcuts.setShortcut(.init(key, modifiers: combo.modifierFlags), for: .togglePanel)
     }
 }

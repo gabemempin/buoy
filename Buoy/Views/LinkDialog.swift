@@ -132,7 +132,8 @@ struct LinkDialog: View {
             }
         }
         .padding(12)
-        .frame(width: 264)
+        .frame(maxWidth: 264)
+        .padding(.horizontal, 8)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(title)
         .onAppear {

@@ -173,11 +173,13 @@ struct WhatsNewView: View {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
 
+            if ShortcutRegistry.combo(for: .harborMode).matches(event) {
+                return nil
+            }
+
             switch event.keyCode {
             case 36, 76, 53: // Return, keypad Enter, Escape
                 continueNow()
-                return nil
-            case 46 where modifiers.contains(.command): // ⌘M
                 return nil
             case 48: // Tab — keyboard focus movement
                 return event

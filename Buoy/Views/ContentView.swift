@@ -163,6 +163,8 @@ struct ContentView: View {
             .buoyCopyToClipboard: { copyToClipboard() },
             .buoyPreviousNote:    { navigateNote(forward: false) },
             .buoyNextNote:        { navigateNote(forward: true) },
+            .buoyToggleAllNotes:  { toggleAllNotes() },
+            .buoyInsertLink:      { showLinkDialogFromToolbar() },
             .buoyStartBugReport:  { createBugReportNote() },
             .buoyAutoTitleFailed: { toastState.show("Couldn't name this note", style: .warning) },
             .buoyAutoTitleUnsupportedLanguage: { toastState.show("Auto-naming isn't available for this note", style: .warning) }

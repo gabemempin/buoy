@@ -56,7 +56,7 @@ struct ToolbarView: View {
             ToolbarPillButton(
                 systemImage: "link",
                 label: "Insert Link",
-                shortcut: "⌘K",
+                shortcut: ShortcutStrings.symbols(ShortcutRegistry.combo(for: .insertLink).electronString),
                 action: onLink
             )
             .popover(
@@ -70,7 +70,7 @@ struct ToolbarView: View {
             ToolbarPillButton(
                 systemImage: "link",
                 label: "Insert Link",
-                shortcut: "⌘K",
+                shortcut: ShortcutStrings.symbols(ShortcutRegistry.combo(for: .insertLink).electronString),
                 action: onLink
             )
         }

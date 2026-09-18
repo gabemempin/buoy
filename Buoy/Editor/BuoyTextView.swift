@@ -664,16 +664,10 @@ final class BuoyTextView: NSTextView {
         default:   break
         }
 
-        switch event.keyCode {
-        case 123: // ⌘←
-            NotificationCenter.default.post(name: .buoyPreviousNote, object: nil)
-            return true
-        case 124: // ⌘→
-            NotificationCenter.default.post(name: .buoyNextNote, object: nil)
-            return true
-        default:
-            return super.performKeyEquivalent(with: event)
-        }
+        // Previous/next note used to be matched here too. The panel claims
+        // every rebindable command before the responder chain sees the event,
+        // so there is nothing left for this view to intercept.
+        return super.performKeyEquivalent(with: event)
     }
 
     // MARK: - Key Down Handling
@@ -681,27 +675,11 @@ final class BuoyTextView: NSTextView {
     override func keyDown(with event: NSEvent) {
         let chars = event.characters ?? ""
         let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        let onlyCmd = mods == .command
 
-        if chars == "n" && onlyCmd {
-            NotificationCenter.default.post(name: .buoyNewNote, object: nil)
-            return
-        }
-
-        if event.keyCode == 51 && onlyCmd {
-            NotificationCenter.default.post(name: .buoyDeleteNote, object: nil)
-            return
-        }
-
-        if (chars == "\r" || chars == "\n") && onlyCmd {
-            NotificationCenter.default.post(name: .buoyCopyToClipboard, object: nil)
-            return
-        }
-
-        if chars == "k" && onlyCmd {
-            buoyDelegate?.textViewRequestShowLinkDialog(context: linkEditingContext())
-            return
-        }
+        // New note, delete, copy and Insert Link used to be matched here as
+        // well as in `BuoyPanel.performKeyEquivalent`. They are the user's to
+        // rebind now, so the panel's registry lookup owns them outright — a
+        // second copy here would keep firing on the old keys.
 
         if chars == " " && handleAutoComplete() { return }
 

@@ -48,7 +48,7 @@ extension AppDelegate {
         menu.addItem(
             title: "Settings…",
             action: #selector(openSettings),
-            keyEquivalent: ",",
+            command: .openSettings,
             target: self
         )
         menu.addItem(.separator())
@@ -191,7 +191,11 @@ extension AppDelegate {
         menu.addItem(title: "Bulleted List", action: #selector(BuoyTextView.bulletListAction(_:)))
         menu.addItem(title: "To-Do List", action: #selector(BuoyTextView.todoListAction(_:)))
         menu.addItem(.separator())
-        menu.addItem(title: "Add Link…", action: #selector(BuoyTextView.linkAction(_:)), keyEquivalent: "k")
+        menu.addItem(
+            title: "Add Link…",
+            action: #selector(BuoyTextView.linkAction(_:)),
+            command: .insertLink
+        )
         return menu
     }
 
@@ -202,7 +206,7 @@ extension AppDelegate {
         minimizeRestoreMenuItem = menu.addItem(
             title: "Minimize",
             action: #selector(toggleMinimizedMode(_:)),
-            keyEquivalent: "m",
+            command: .harborMode,
             target: self
         )
         menu.addItem(title: "Zoom", action: #selector(NSWindow.zoom(_:)))
@@ -250,6 +254,30 @@ private extension NSMenu {
         if let modifiers { item.keyEquivalentModifierMask = modifiers }
         item.target = target
         return item
+    }
+
+    /// Adds an item whose key equivalent follows a rebindable Buoy command.
+    ///
+    /// The menu bar stores key equivalents as literal characters, so it cannot
+    /// consult `ShortcutRegistry` at match time — the menu has to be rebuilt
+    /// when a binding changes, which `AppDelegate.handleSettingsUpdate` does.
+    /// A combo whose key has no menu character (an arrow, say) leaves the item
+    /// with no key equivalent rather than a wrong one.
+    @discardableResult
+    func addItem(
+        title: String,
+        action: Selector?,
+        command: BuoyCommand,
+        target: AnyObject? = nil
+    ) -> NSMenuItem {
+        let equivalent = ShortcutRegistry.combo(for: command).menuKeyEquivalent
+        return addItem(
+            title: title,
+            action: action,
+            keyEquivalent: equivalent?.key ?? "",
+            modifiers: equivalent?.modifiers,
+            target: target
+        )
     }
 
     /// Adds a top-level item whose only job is to carry `submenu`.

@@ -33,68 +33,23 @@ final class BuoyPanel: NSPanel {
             .subtracting([.numericPad, .function, .help, .capsLock])
         let commandCharacter = event.charactersIgnoringModifiers?.lowercased()
 
-        if modifiers == .command, commandCharacter == "n" {
-            NotificationCenter.default.post(name: .buoyNewNote, object: nil)
-            return true
-        }
-
-        if modifiers == .command, event.keyCode == 51 {
-            NotificationCenter.default.post(name: .buoyDeleteNote, object: nil)
-            return true
-        }
-
-        // Non-activating panels do not reliably participate in the normal Window
-        // menu key-equivalent routing, so handle ⌘M at the panel level.
-        if modifiers == .command, commandCharacter == "m" {
-            return NSApp.sendAction(
-                #selector(AppDelegate.toggleMinimizedMode(_:)),
-                to: NSApp.delegate,
-                from: self
-            )
-        }
-
-        // ⌘, — open Buoy's Settings window. Intercepted here because the panel
-        // is non-activating and does not reliably fire main-menu key
-        // equivalents, and because SwiftUI's own placeholder `Settings` scene
-        // would otherwise open an empty window on this key.
-        if modifiers == .command, event.charactersIgnoringModifiers == "," {
-            return NSApp.sendAction(
-                #selector(AppDelegate.openSettings),
-                to: NSApp.delegate,
-                from: self
-            )
-        }
-
-        //Handler for Cmd+W at the panel level
-        if modifiers == .command, commandCharacter == "w" {
-            return NSApp.sendAction(
-                #selector(AppDelegate.hidePanel(_:)),
-                to: NSApp.delegate,
-                from: self
-            )
+        // Every rebindable command, in one place and before the responder
+        // chain gets a look.
+        //
+        // Ahead of `super` on purpose: these have to fire the same way whether
+        // the editor, the title field or nothing at all has focus, and the
+        // panel is non-activating so `NSApp.mainMenu`'s key equivalents cannot
+        // be relied on to do it. The recorder refuses a combo without ⌘, ⌃ or
+        // ⌥, which is what guarantees every binding arrives here as a key
+        // equivalent rather than as ordinary typing.
+        if let command = ShortcutRegistry.command(for: event) {
+            return ShortcutRegistry.perform(command, from: self)
         }
 
         // Try the normal view-hierarchy dispatch first. If BuoyTextView is the
         // first responder it will claim the event there.
         if super.performKeyEquivalent(with: event) {
             return true
-        }
-
-        // ⌘← / ⌘→ — switch notes regardless of which view has focus.
-        // BuoyTextView handles this when it's first responder (above), but when
-        // focus is elsewhere (e.g. title field, settings panel) the event falls
-        // through to here.
-        if modifiers == .command {
-            switch event.keyCode {
-            case 123: // ←
-                NotificationCenter.default.post(name: .buoyPreviousNote, object: nil)
-                return true
-            case 124: // →
-                NotificationCenter.default.post(name: .buoyNextNote, object: nil)
-                return true
-            default:
-                break
-            }
         }
 
         // Non-activating panels don't reliably trigger main-menu key equivalents,

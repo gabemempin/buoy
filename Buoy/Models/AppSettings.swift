@@ -28,6 +28,9 @@ struct AppSettings: Codable {
     var windowTintIntensity: Double = 0.35
     /// Replaces the macOS accent throughout the app. `nil` follows the system.
     var accentColor: HSBColor? = nil
+    /// Rebound in-app shortcuts, keyed by `BuoyCommand.rawValue`. Only the ones
+    /// the user actually changed; everything else follows `defaultCombo`.
+    var shortcuts: [String: KeyCombo] = [:]
 
     /// Decodes leniently: any key missing from the file keeps this struct's
     /// default rather than failing the whole decode.
@@ -66,6 +69,8 @@ struct AppSettings: Codable {
         windowTint = try? container.decodeIfPresent(HSBColor.self, forKey: .windowTint) ?? nil
         accentColor = try? container.decodeIfPresent(HSBColor.self, forKey: .accentColor) ?? nil
         windowTintIntensity = (try? container.decodeIfPresent(Double.self, forKey: .windowTintIntensity)) ?? nil ?? fallback.windowTintIntensity
+
+        shortcuts = (try? container.decodeIfPresent([String: KeyCombo].self, forKey: .shortcuts)) ?? nil ?? fallback.shortcuts
 
         lastSelectedNoteID = text(.lastSelectedNoteID)
         dismissedUpdateVersion = text(.dismissedUpdateVersion)
