@@ -38,7 +38,7 @@ final class NoteStore {
     @ObservationIgnored private lazy var autoTitler = NoteAutoTitler(store: self)
     /// Mirrors `AppSettings.autoTitleEnabled`. NoteStore has no settings
     /// reference of its own, so it tracks the flag via the same
-    /// `.settingsDidChange` broadcast `SettingsPanel` triggers on every save.
+    /// `.settingsDidChange` broadcast that every settings write triggers.
     @ObservationIgnored private var autoTitleEnabled = AppSettings.load().autoTitleEnabled
     @ObservationIgnored private var settingsObserver: NSObjectProtocol?
 
@@ -56,7 +56,9 @@ final class NoteStore {
             queue: .main
         ) { [weak self] _ in
             guard let self else { return }
-            let enabled = AppSettings.load().autoTitleEnabled
+            // `current`, not `load()`: the disk write is debounced, so the
+            // file can still hold the old value when this fires.
+            let enabled = AppSettings.current.autoTitleEnabled
             self.autoTitleEnabled = enabled
             if !enabled {
                 // A pending debounce or an in-flight request must not land

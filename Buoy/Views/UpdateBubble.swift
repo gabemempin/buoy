@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 
 /// Floating pill that surfaces an available update at the bottom edge of the
-/// main panel. Modeled on the SettingsPanel glass + the NotificationToast
+/// main panel. Modeled on the overlay-panel glass + the NotificationToast
 /// slide-up transition. Floats over the editor without affecting panel height.
 struct UpdateBubble: View {
     let version: String

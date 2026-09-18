@@ -53,7 +53,10 @@ final class BuoyPanel: NSPanel {
             )
         }
 
-        // ⌘, — open Buoy's SettingsPanel (intercept before macOS routes it to an empty Settings window)
+        // ⌘, — open Buoy's Settings window. Intercepted here because the panel
+        // is non-activating and does not reliably fire main-menu key
+        // equivalents, and because SwiftUI's own placeholder `Settings` scene
+        // would otherwise open an empty window on this key.
         if modifiers == .command, event.charactersIgnoringModifiers == "," {
             return NSApp.sendAction(
                 #selector(AppDelegate.openSettings),

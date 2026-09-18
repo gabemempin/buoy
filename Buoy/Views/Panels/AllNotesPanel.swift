@@ -84,7 +84,7 @@ struct AllNotesPanel: View {
     private var header: some View {
         HStack(spacing: 6) {
             Text("All Notes")
-                // Matches SettingsPanel's title exactly; the two panels sit in
+                // Matches the other overlay titles exactly; the panels sit in
                 // the same corner and a size mismatch between them shows.
                 .font(.system(size: 14, weight: .semibold))
 

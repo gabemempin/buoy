@@ -54,16 +54,18 @@ enum PanelLayoutMetrics {
 
     private static let headerControlsMinimumWidth: CGFloat = 12 + 60 + 74 + 8
     private static let titleRowMinimumWidth: CGFloat = 24 + 180
-    private static let toolbarMinimumWidth: CGFloat = 16 + (6 * 30) + 5
+    /// Seven pill buttons at 30pt, six 1pt dividers, and the capsule's own
+    /// horizontal padding. This was written for six buttons and under-counted
+    /// by a whole pill; the error was masked while the Settings overlay set a
+    /// wider floor, and became load-bearing the moment Settings left the panel.
+    private static let toolbarMinimumWidth: CGFloat = 16 + (7 * 30) + 6
     private static let footerMinimumWidth: CGFloat = 16 + 62 + 104
-    private static let settingsOverlayMinimumWidth: CGFloat = 260 + 8 + 24
 
     static let minimumContentWidth: CGFloat = max(
         headerControlsMinimumWidth,
         titleRowMinimumWidth,
         toolbarMinimumWidth,
-        footerMinimumWidth,
-        settingsOverlayMinimumWidth
+        footerMinimumWidth
     )
 
     // Minimum size of the glass surface itself — what the SwiftUI content is
@@ -86,19 +88,10 @@ enum PanelLayoutMetrics {
 
     static let maximumAutoHeight: CGFloat = 700 + (glassEdgeInset * 2)
 
-    // Minimum window heights when overlay panels are open. Expressed as glass
-    // heights plus the margin so the visible panel keeps its intended size.
-    //
-    // "Auto-name New Notes" only appears in Settings on Macs that support it
-    // (see `NoteAutoTitler.isSupported`), so the override height grows by one
-    // toggle row only there — a fixed constant would leave dead space on
-    // unsupported Macs.
-    private static let settingsToggleRowHeight: CGFloat = 28
-    static var settingsOverrideHeight: CGFloat {
-        let autoTitleRow = NoteAutoTitler.isSupported ? settingsToggleRowHeight : 0
-        return 470 + autoTitleRow + (glassEdgeInset * 2)
-    }
-    static let shortcutsOverrideHeight: CGFloat = 468 + (glassEdgeInset * 2)
+    // Minimum window heights for the two full-panel takeovers. Expressed as
+    // glass heights plus the margin so the visible panel keeps its intended
+    // size. Settings and Shortcuts used to be here too; they are a separate
+    // window now and no longer resize the panel at all.
     static let onboardingOverrideHeight: CGFloat = 450 + (glassEdgeInset * 2)
     /// The What's New splash. Its content scrolls, so a long release never grows
     /// the window past this and a short one just leaves air above the button.

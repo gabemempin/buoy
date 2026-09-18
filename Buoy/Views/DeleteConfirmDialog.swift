@@ -89,7 +89,12 @@ struct DeleteConfirmDialog: View {
         // Wide enough for the longest confirm label ("Delete Folder") beside
         // Cancel. At 220 that button wrapped to two lines and the whole dialog
         // went lopsided.
-        .frame(width: 244)
+        //
+        // A ceiling rather than a fixed width: the panel's minimum is narrower
+        // than 244 now that the Settings overlay no longer props it open, and a
+        // fixed width would hang the dialog over both edges of the glass.
+        .frame(maxWidth: 244)
+        .padding(.horizontal, 8)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Delete “\(displayTitle)”?")
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))

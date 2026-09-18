@@ -36,6 +36,8 @@ struct ContentView: View {
     var onOverrideHeight: ((CGFloat?) -> Void)?
     var onMinimizedWidthChange: ((CGFloat) -> Void)?
     var onCornerResizeAvailabilityChange: ((Bool) -> Void)?
+    var onOpenSettings: () -> Void
+    var onOpenShortcuts: () -> Void
     var onClose: () -> Void
     var onMinimize: () -> Void
     var onExpand: () -> Void
@@ -43,8 +45,6 @@ struct ContentView: View {
 
     // Panel visibility
     @State private var showAllNotes = false
-    @State private var showSettings = false
-    @State private var showShortcuts = false
 
     // Bug report mode — tracks the ID of the ephemeral bug report note
     @State private var bugReportNoteID: Note.ID? = nil
@@ -92,6 +92,8 @@ struct ContentView: View {
         onOverrideHeight: ((CGFloat?) -> Void)? = nil,
         onMinimizedWidthChange: ((CGFloat) -> Void)? = nil,
         onCornerResizeAvailabilityChange: ((Bool) -> Void)? = nil,
+        onOpenSettings: @escaping () -> Void,
+        onOpenShortcuts: @escaping () -> Void,
         onClose: @escaping () -> Void,
         onMinimize: @escaping () -> Void,
         onExpand: @escaping () -> Void,
@@ -104,6 +106,8 @@ struct ContentView: View {
         self.onOverrideHeight = onOverrideHeight
         self.onMinimizedWidthChange = onMinimizedWidthChange
         self.onCornerResizeAvailabilityChange = onCornerResizeAvailabilityChange
+        self.onOpenSettings = onOpenSettings
+        self.onOpenShortcuts = onOpenShortcuts
         self.onClose = onClose
         self.onMinimize = onMinimize
         self.onExpand = onExpand
@@ -149,8 +153,7 @@ struct ContentView: View {
             .buoyCopyToClipboard: { copyToClipboard() },
             .buoyPreviousNote:    { navigateNote(forward: false) },
             .buoyNextNote:        { navigateNote(forward: true) },
-            .openShortcuts:       { toggleShortcuts() },
-            .openSettings:        { toggleSettings() },
+            .buoyStartBugReport:  { createBugReportNote() },
             .buoyAutoTitleFailed: { toastState.show("Couldn't name this note", style: .warning) },
             .buoyAutoTitleUnsupportedLanguage: { toastState.show("Auto-naming isn't available for this note", style: .warning) }
         ]))
@@ -285,7 +288,7 @@ struct ContentView: View {
                     onAllNotes: toggleAllNotes,
                     onNewNote: createNote,
                     focusEditor: focusEditor,
-                    dragEnabled: !showSettings && !showShortcuts && !showAllNotes && !isLinkDialogPresented,
+                    dragEnabled: !showAllNotes && !isLinkDialogPresented,
                     isBugReport: isBugReport,
                     titleReveal: noteStore.titleReveal,
                     onRevealFinished: { noteStore.titleReveal = nil },
@@ -335,8 +338,8 @@ struct ContentView: View {
                     updatedAt: noteStore.currentNote?.updatedAt ?? 0,
                     plainText: noteStore.currentNote.map(NotePlainText.of) ?? "",
                     selectedText: editorSelectedText,
-                    onShortcuts: toggleShortcuts,
-                    onSettings:  toggleSettings,
+                    onShortcuts: onOpenShortcuts,
+                    onSettings:  onOpenSettings,
                     onTransferToAppleNotes: transferToAppleNotes,
                     onCopy: copyToClipboard,
                     isBugReport: isBugReport,
@@ -351,15 +354,11 @@ struct ContentView: View {
 
             ToastContainer(state: toastState)
 
-            if showAllNotes || showSettings || showShortcuts {
+            if showAllNotes {
                 Color.clear
                     .contentShape(Rectangle())
                     .onTapGesture {
-                        withAnimation(BuoyMotion.easeOut(0.16)) {
-                            showAllNotes = false
-                            showSettings = false
-                            showShortcuts = false
-                        }
+                        withAnimation(BuoyMotion.easeOut(0.16)) { showAllNotes = false }
                         focusEditor()
                     }
             }
@@ -372,34 +371,6 @@ struct ContentView: View {
                 onDeleteFolder: { folder in requestDeleteFolder(folder) },
                 onFocusEditor: { focusEditor() }
             )
-
-            ZStack(alignment: .bottomLeading) {
-                if showSettings {
-                    SettingsPanel(
-                        isShowing: $showSettings,
-                        settings: $settings,
-                        onQuit: { NSApp.terminate(nil) },
-                        onShortcutChanged: { s in HotkeyService.shared.register(shortcut: s) },
-                        onReportBug: { createBugReportNote() }
-                    )
-                    .padding(.bottom, PanelLayoutMetrics.footerOverlayBottomInset)
-                    .padding(.leading, PanelLayoutMetrics.overlayHorizontalInset)
-                    .onDisappear { focusEditor() }
-                }
-                if showShortcuts {
-                    ShortcutsPanel(
-                        isShowing: $showShortcuts,
-                        globalShortcut: electronToSymbols(settings.globalShortcut)
-                    )
-                    .padding(.bottom, PanelLayoutMetrics.footerOverlayBottomInset)
-                    .padding(.leading, PanelLayoutMetrics.overlayHorizontalInset)
-                    .onDisappear { focusEditor() }
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
-            .animation(BuoyMotion.easeOut(0.16), value: showSettings)
-            .animation(BuoyMotion.easeOut(0.16), value: showShortcuts)
-            .allowsHitTesting(showSettings || showShortcuts)
 
             UpdateBubbleOverlay(settings: $settings, isSuppressed: !canShowUpdateBubble)
 
@@ -510,7 +481,7 @@ struct ContentView: View {
 
     /// Any overlay panel that covers the editor and should block window drags.
     private var isEditorCoveredByPanel: Bool {
-        showSettings || showShortcuts || showAllNotes || isLinkDialogPresented || isConfirmingDelete
+        showAllNotes || isLinkDialogPresented || isConfirmingDelete
     }
 
     /// The editor's I-beam tracking area bleeds through SwiftUI overlays, so it
@@ -524,8 +495,6 @@ struct ContentView: View {
         // the splash, and that must not take over the panel height.
         if showWhatsNew || isDismissingWhatsNew { return PanelLayoutMetrics.whatsNewOverrideHeight }
         if showOnboarding { return PanelLayoutMetrics.onboardingOverrideHeight }
-        if showSettings   { return PanelLayoutMetrics.settingsOverrideHeight }
-        if showShortcuts  { return PanelLayoutMetrics.shortcutsOverrideHeight }
         return nil
     }
 
@@ -544,7 +513,6 @@ struct ContentView: View {
             && showMainContent
             && !showOnboarding
             && !showWhatsNew
-            && !showShortcuts
             && !isLinkDialogPresented
             && !isConfirmingDelete
     }
@@ -563,7 +531,7 @@ struct ContentView: View {
     /// Suppress the update bubble whenever another overlay or transient mode owns
     /// the bottom edge, so it never stacks on top of them.
     private var canShowUpdateBubble: Bool {
-        !showOnboarding && !showWhatsNew && !showSettings && !showShortcuts && !showAllNotes
+        !showOnboarding && !showWhatsNew && !showAllNotes
             && !isLinkDialogPresented && !isBugReport && !isConfirmingDelete
     }
 
@@ -639,38 +607,13 @@ struct ContentView: View {
         selectionLinkPopoverController.dismiss()
         showSelectionLinkDialog = false
         showLinkDialog = false
-        withAnimation(BuoyMotion.easeOut(0.16)) {
-            showAllNotes = false
-            showSettings = false
-            showShortcuts = false
-        }
+        withAnimation(BuoyMotion.easeOut(0.16)) { showAllNotes = false }
     }
 
     private func toggleAllNotes() {
         guard !showWhatsNew else { return }
-        withAnimation(BuoyMotion.easeOut(0.16)) {
-            showAllNotes.toggle()
-            if showAllNotes { showSettings = false; showShortcuts = false }
-        }
+        withAnimation(BuoyMotion.easeOut(0.16)) { showAllNotes.toggle() }
         if !showAllNotes { focusEditor() }
-    }
-
-    private func toggleSettings() {
-        guard !showWhatsNew else { return }
-        withAnimation(BuoyMotion.easeOut(0.16)) {
-            showSettings.toggle()
-            if showSettings { showAllNotes = false; showShortcuts = false }
-        }
-        if !showSettings { focusEditor() }
-    }
-
-    private func toggleShortcuts() {
-        guard !showWhatsNew else { return }
-        withAnimation(BuoyMotion.easeOut(0.16)) {
-            showShortcuts.toggle()
-            if showShortcuts { showAllNotes = false; showSettings = false }
-        }
-        if !showShortcuts { focusEditor() }
     }
 
     private func deleteCurrentNote() {
@@ -810,7 +753,7 @@ struct ContentView: View {
     }
 
     private func createBugReportNote() {
-        withAnimation(BuoyMotion.easeOut(0.16)) { showSettings = false }
+        guard !showWhatsNew else { return }
         // Titled at insert rather than through the debounced saveTitle path: the
         // note is discarded on Cancel or Send, and a title still in flight then
         // is a write aimed at a deleted row. It also keeps the scratch note from
@@ -844,11 +787,4 @@ struct ContentView: View {
         }
     }
 
-    private func electronToSymbols(_ s: String) -> String {
-        s.replacingOccurrences(of: "Cmd",    with: "⌘")
-         .replacingOccurrences(of: "Ctrl",   with: "⌃")
-         .replacingOccurrences(of: "Option", with: "⌥")
-         .replacingOccurrences(of: "Shift",  with: "⇧")
-         .replacingOccurrences(of: "+",      with: "")
-    }
 }

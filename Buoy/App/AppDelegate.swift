@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import KeyboardShortcuts
+import LaunchAtLogin
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var panel: BuoyPanel?
@@ -11,6 +12,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var globalMouseMonitor: Any?
     private var localMouseMonitor: Any?
     private let cornerResizeOverlayController = CornerResizeOverlayController()
+    private lazy var settingsWindowController = SettingsWindowController(
+        store: settingsStore,
+        panelWindowProperties: { [weak self] in
+            (self?.panel?.level ?? .normal, self?.panel?.appearance)
+        },
+        onShortcutChanged: { HotkeyService.shared.register(shortcut: $0) },
+        onReportBug: { [weak self] in self?.startBugReport() },
+        onQuit: { NSApp.terminate(nil) }
+    )
+    /// The last settings values whose side effects were applied. `.settingsDidChange`
+    /// fires for every field, but activation policy, the login item and the global
+    /// hotkey must only be touched when their own value actually moved.
+    private var appliedSettings = AppSettings()
 
     let noteStore = NoteStore()
     var settingsStore = SettingsStore()
@@ -251,6 +265,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             NSApp.setActivationPolicy(showInDock ? .regular : .accessory)
             if showInDock { NSApp.activate(ignoringOtherApps: true) }
         }
+        appliedSettings = settingsStore.value
         noteStore.restoreSelection(noteID: settingsStore.value.lastSelectedNoteID)
         setupPanel()
         installOutsideClickMonitor()
@@ -277,6 +292,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         noteStore.flushPendingSaves()
+        settingsStore.flush()
         removeOutsideClickMonitor()
         cornerResizeOverlayController.detach()
     }
@@ -314,6 +330,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             onCornerResizeAvailabilityChange: { [weak self] isAvailable in
                 self?.cornerResizeOverlayController.setEnabled(isAvailable)
             },
+            onOpenSettings: { [weak self] in self?.openSettings() },
+            onOpenShortcuts: { [weak self] in self?.openShortcutsSettings() },
             onClose: { [weak self] in self?.hidePanel() },
             onMinimize: { [weak self] in self?.enterMinimizedMode() },
             onExpand: { [weak self] in self?.toggleExpand() },
@@ -480,9 +498,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     @objc private func openShortcutsFromMenu() {
-        showPanel()
-        if panelPresentation.isMinimized { exitMinimizedMode() }
-        NotificationCenter.default.post(name: .openShortcuts, object: nil)
+        openShortcutsSettings()
     }
 
     // MARK: - Panel Show/Hide
@@ -733,18 +749,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     // MARK: - Menu Actions
 
+    /// Opens the Settings window. Deliberately does *not* show or restore the
+    /// note panel: Settings is its own window now, and yanking the panel out of
+    /// Harbor Mode to open a window somewhere else would be a non sequitur.
     @objc func openSettings() {
+        settingsWindowController.show(page: .general)
+    }
+
+    @objc func openShortcutsSettings() {
+        settingsWindowController.show(page: .shortcuts)
+    }
+
+    /// Creates the ephemeral bug-report note. Called from the About page, which
+    /// lives in another window, so the panel has to be brought back first.
+    private func startBugReport() {
         showPanel()
-        if panelPresentation.isMinimized {
-            exitMinimizedMode()
-        }
-        NotificationCenter.default.post(name: .openSettings, object: nil)
+        if panelPresentation.isMinimized { exitMinimizedMode() }
+        NotificationCenter.default.post(name: .buoyStartBugReport, object: nil)
     }
 
     @objc private func handleSettingsUpdate() {
-        applyTheme(settingsStore.value.theme)
-        panel?.level = settingsStore.value.alwaysOnTop ? .statusBar : .normal
+        let settings = settingsStore.value
+        defer { appliedSettings = settings }
+
+        applyTheme(settings.theme)
+        panel?.level = settings.alwaysOnTop ? .statusBar : .normal
         cornerResizeOverlayController.syncWindowProperties()
+
+        settingsWindowController.syncWindowProperties()
+
+        // The three below used to be applied inline by the settings overlay's
+        // own `onChange` handlers. They belong here now that the view is in a
+        // separate window, and each is guarded because this runs for every
+        // settings write, not just its own.
+        if settings.showInDock != appliedSettings.showInDock {
+            NSApp.setActivationPolicy(settings.showInDock ? .regular : .accessory)
+            if settings.showInDock { NSApp.activate(ignoringOtherApps: true) }
+        }
+        if settings.launchAtLogin != appliedSettings.launchAtLogin {
+            LaunchAtLogin.isEnabled = settings.launchAtLogin
+        }
+        if settings.globalShortcut != appliedSettings.globalShortcut {
+            HotkeyService.shared.register(shortcut: settings.globalShortcut)
+        }
     }
 
     // MARK: - Theme
@@ -815,6 +862,7 @@ extension AppDelegate {
 }
 
 extension Notification.Name {
-    static let openSettings = Notification.Name("Buoy2OpenSettings")
-    static let openShortcuts = Notification.Name("Buoy2OpenShortcuts")
+    /// Posted by the Settings window's About page. The bug-report note lives in
+    /// the panel, so the request has to cross windows.
+    static let buoyStartBugReport = Notification.Name("BuoyStartBugReport")
 }
