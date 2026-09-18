@@ -223,6 +223,75 @@ struct RowActionButton: View {
     }
 }
 
+// MARK: - Row folder menu
+
+/// The "move to folder" control in a note row.
+///
+/// A real `Menu` — so it opens a system popup at the button rather than a
+/// second Buoy panel floating over the first one. It styles its own label
+/// because a `ButtonStyle` does not apply to a `Menu`.
+struct RowFolderMenu: View {
+    let currentFolderID: String?
+    let folders: [Folder]
+    let onMoveToFolder: (String) -> Void
+    let onMoveToNewFolder: () -> Void
+    let onRemoveFromFolder: () -> Void
+
+    private var space: String { NotesOutlineViewWrapper.rowCoordinateSpace }
+
+    /// Empty string stands for "no folder", so the picker always has a tag it
+    /// can match even when the note is unfiled.
+    private var folderSelection: Binding<String> {
+        Binding(
+            get: { currentFolderID ?? "" },
+            set: { selected in
+                guard !selected.isEmpty, selected != currentFolderID else { return }
+                onMoveToFolder(selected)
+            }
+        )
+    }
+
+    var body: some View {
+        Menu {
+            if !folders.isEmpty {
+                // An inline `Picker` rather than a list of buttons: it is what
+                // draws the native checkmark against the folder the note is
+                // already in. A `Label(_:systemImage: "checkmark")` does not
+                // render one in a macOS menu.
+                Picker("Folder", selection: folderSelection) {
+                    ForEach(folders) { folder in
+                        Text(folder.displayName).tag(folder.id)
+                    }
+                }
+                .pickerStyle(.inline)
+                .labelsHidden()
+
+                Divider()
+            }
+
+            Button("New Folder…") { onMoveToNewFolder() }
+
+            if currentFolderID != nil {
+                Divider()
+                Button("Remove from Folder") { onRemoveFromFolder() }
+            }
+        } label: {
+            Image(systemName: currentFolderID == nil ? "folder" : "folder.fill")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(.secondary)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .frame(width: 22, height: 22)
+        .contentShape(Circle())
+        .help("Move to folder")
+        .accessibilityLabel("Move to folder")
+        .pointingHandCursor()
+        .interactiveRegion(in: space)
+        .transition(.opacity)
+    }
+}
+
 // MARK: - NoteRow
 
 struct NoteRow: View {
@@ -233,8 +302,12 @@ struct NoteRow: View {
     let isHovering: Bool
     /// True for a note shown inside a folder.
     let isIndented: Bool
+    let folders: [Folder]
     let onSelect: () -> Void
     let onTogglePin: () -> Void
+    let onMoveToFolder: (String) -> Void
+    let onMoveToNewFolder: () -> Void
+    let onRemoveFromFolder: () -> Void
     let onDelete: () -> Void
 
     private var space: String { NotesOutlineViewWrapper.rowCoordinateSpace }
@@ -257,6 +330,14 @@ struct NoteRow: View {
             }
 
             if isHovering {
+                RowFolderMenu(
+                    currentFolderID: note.folderID,
+                    folders: folders,
+                    onMoveToFolder: onMoveToFolder,
+                    onMoveToNewFolder: onMoveToNewFolder,
+                    onRemoveFromFolder: onRemoveFromFolder
+                )
+
                 RowActionButton(
                     systemName: "xmark",
                     label: "Delete note",

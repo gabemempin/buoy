@@ -99,6 +99,14 @@ struct AllNotesOverlay: View {
                 noteStore.fileNote(noteID, inFolder: folderID, at: index)
             },
             unfileNote: { noteStore.unfileNote($0) },
+            fileNoteInNewFolder: { noteID in
+                guard let folder = noteStore.createFolder() else { return }
+                noteStore.fileNote(noteID, inFolder: folder.id, at: nil)
+                // Deliberately not marked `freshFolderID`: abandoning the
+                // rename must not delete a folder the user has just filed a
+                // note into, which would silently undo the move.
+                renamingFolderID = folder.id
+            },
             reorderInFolder: { folderID, orderedIDs in
                 noteStore.reorderNotes(inFolder: folderID, orderedIDs: orderedIDs)
             },

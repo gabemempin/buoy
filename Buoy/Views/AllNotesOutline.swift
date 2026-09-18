@@ -16,6 +16,9 @@ struct AllNotesActions {
     /// `(noteID, folderID, index)` — `nil` index appends.
     var fileNote: (String, String, Int?) -> Void
     var unfileNote: (String) -> Void
+    /// Creates a folder, files the note into it, and opens the new folder's
+    /// name for editing — the "New Folder…" item in a row's folder menu.
+    var fileNoteInNewFolder: (String) -> Void
     var reorderInFolder: (String, [String]) -> Void
     var renameFolder: (String, String) -> Void
     /// Rename abandoned. Takes the id so a folder that was created purely to
@@ -620,6 +623,11 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
             return isFolderExpanded(folderID) ? node.children.count : 0
         }
 
+        /// Changes whenever the set of folders or their names change.
+        private var foldersFingerprint: String {
+            folders.map { "\($0.id):\($0.name)" }.joined(separator: ",")
+        }
+
         private func isFolderExpanded(_ folderID: String) -> Bool {
             folder(for: folderID)?.isExpanded ?? false
         }
@@ -757,8 +765,18 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
                         isActive: note.id == currentNoteID,
                         isHovering: hoveredKey == node.key,
                         isIndented: node.parentFolderID != nil,
+                        folders: folders,
                         onSelect: { [weak self] in self?.actions.selectNote(note) },
                         onTogglePin: { [weak self] in self?.actions.togglePin(note) },
+                        onMoveToFolder: { [weak self] folderID in
+                            self?.actions.fileNote(note.id, folderID, nil)
+                        },
+                        onMoveToNewFolder: { [weak self] in
+                            self?.actions.fileNoteInNewFolder(note.id)
+                        },
+                        onRemoveFromFolder: { [weak self] in
+                            self?.actions.unfileNote(note.id)
+                        },
                         onDelete: { [weak self] in self?.actions.deleteNote(note) }
                     )
                     .coordinateSpace(name: space)
@@ -809,7 +827,11 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
                     note.isPinned ? "1" : "0",
                     note.id == currentNoteID ? "1" : "0",
                     hoveredKey == node.key ? "1" : "0",
-                    node.parentFolderID ?? "-"
+                    node.parentFolderID ?? "-",
+                    // The row carries a menu listing every folder, so a rename
+                    // or a new folder has to repaint it.
+                    note.folderID ?? "-",
+                    foldersFingerprint
                 ].joined(separator: "|")
             case .folder(let folderID):
                 guard let folder = folder(for: folderID) else { return "missing" }

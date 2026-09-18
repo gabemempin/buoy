@@ -39,6 +39,12 @@ is broken they are *silently* dead, so click every one.
 - [x] Click the pin again on the pinned row → unpins.
 - [ ] Click the x → delete confirm appears, Return deletes.
 - [ ] Hover a folder row → pencil and x appear, both clickable.
+- [x] Hover a note row → a folder button sits between pin and x. It opens a
+      native menu, not a second panel.
+- [x] The menu ticks the folder the note is already in.
+- [x] "Remove from Folder" unfiles the note and leaves the folder alone.
+- [ ] "New Folder…" creates a folder, files the note, and opens the name for
+      editing.
 - [x] Move between two adjacent rows quickly → buttons follow the pointer, never stick on the row you left.
 - [ ] After a drag and drop, move the mouse away → no row keeps its hover buttons.
 
