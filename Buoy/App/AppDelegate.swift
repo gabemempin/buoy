@@ -336,9 +336,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             },
             onOpenSettings: { [weak self] in self?.openSettings() },
             onOpenShortcuts: { [weak self] in self?.openShortcutsSettings() },
-            onRestorePanelSize: { [weak self] size in
-                self?.restorePanelSize(size)
-            },
             onClose: { [weak self] in self?.hidePanel() },
             onMinimize: { [weak self] in self?.enterMinimizedMode() },
             onExpand: { [weak self] in self?.toggleExpand() },
@@ -731,34 +728,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             centerHorizontally: false
         )
         animatePanel(to: targetFrame, duration: duration, timingName: timingName)
-        if overlayOverrideHeight == 0 {
-            lastFullSizeFrame = targetFrame
-        }
-    }
-
-    /// Grows the panel back to a size that clears the compact thresholds on
-    /// both axes. Behind the Undo on the compact-mode toast.
-    ///
-    /// Only ever grows: the user asked to take back a shrink, and an Undo that
-    /// could also make the panel smaller than they left it would be a second
-    /// surprise on top of the first.
-    func restorePanelSize(_ size: CGSize) {
-        guard let p = panel else { return }
-        guard !panelPresentation.isMinimized, !isMinimizeAnimating else { return }
-        let live = panelContentSize(p)
-        let target = NSSize(
-            width: max(live.width, size.width),
-            height: max(live.height, min(PanelLayoutMetrics.maximumAutoHeight, size.height))
-        )
-        guard abs(target.width - live.width) > 0.5 || abs(target.height - live.height) > 0.5 else { return }
-        currentHeight = target.height
-        let targetFrame = resizedFrame(
-            contentSize: target,
-            currentFrame: p.frame,
-            in: p,
-            centerHorizontally: false
-        )
-        animatePanel(to: targetFrame, duration: 0.22, timingName: .easeInEaseOut)
         if overlayOverrideHeight == 0 {
             lastFullSizeFrame = targetFrame
         }

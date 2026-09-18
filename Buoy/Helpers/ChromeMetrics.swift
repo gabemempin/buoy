@@ -195,25 +195,6 @@ struct ChromeDensityReader: View {
     /// size; a density recomputed from those intermediate heights would be
     /// meaningless and would land just as the panel is restoring.
     var isSuspended: Bool
-    /// Called only when a *resize* turned compact chrome on, never when the
-    /// Settings toggle did — the toggle is a deliberate choice and does not
-    /// need announcing or undoing. The value is the window height to go back
-    /// to, already raised past the hysteresis exit point so that undoing
-    /// really does restore regular chrome rather than landing inside the band
-    /// and appearing to do nothing.
-    var onAutomaticCompact: ((CGSize) -> Void)? = nil
-    /// Called when a resize took the panel back to regular chrome, so anything
-    /// said about going compact can stop being said.
-    var onAutomaticRegular: (() -> Void)? = nil
-
-    /// The size the panel was last seen at while drawing regular chrome.
-    @State private var lastRegularWindowSize = CGSize(
-        width: PanelLayoutMetrics.regularChromeWindowWidth,
-        height: PanelLayoutMetrics.regularChromeWindowHeight
-    )
-    /// The first reading establishes the starting density; it is not a change
-    /// the user made and must not announce itself.
-    @State private var hasReadInitialHeight = false
 
     var body: some View {
         GeometryReader { proxy in
@@ -229,37 +210,9 @@ struct ChromeDensityReader: View {
         guard !isSuspended else { return }
         let inset = PanelLayoutMetrics.glassEdgeInset * 2
         let windowSize = CGSize(width: glassSize.width + inset, height: glassSize.height + inset)
-        if density == .regular {
-            lastRegularWindowSize = windowSize
-        }
-
         let next = Self.density(forWindowSize: windowSize, isForced: isForced, current: density)
-        defer { hasReadInitialHeight = true }
         guard next != density else { return }
-
-        let isFirstReading = !hasReadInitialHeight
-        // Per axis: an axis that already has room keeps whatever it is now, so
-        // undoing a shrink in one direction does not quietly grow the other.
-        // The axis that *is* short goes past its exit threshold rather than
-        // merely back to its old value — a size inside the hysteresis band
-        // leaves the chrome compact, so undoing would visibly do nothing.
-        let restoreSize = CGSize(
-            width: windowSize.width < PanelLayoutMetrics.compactChromeExitWidth
-                ? max(lastRegularWindowSize.width, PanelLayoutMetrics.compactChromeExitWidth)
-                : windowSize.width,
-            height: windowSize.height < PanelLayoutMetrics.compactChromeExitHeight
-                ? max(lastRegularWindowSize.height, PanelLayoutMetrics.compactChromeExitHeight)
-                : windowSize.height
-        )
-
         withAnimation(BuoyMotion.easeOut(0.15)) { density = next }
-
-        guard !isFirstReading, !isForced else { return }
-        if next == .compact {
-            onAutomaticCompact?(restoreSize)
-        } else {
-            onAutomaticRegular?()
-        }
     }
 
     /// Hysteresis: compact engages the moment regular chrome no longer fits,

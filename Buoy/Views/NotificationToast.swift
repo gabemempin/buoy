@@ -45,18 +45,6 @@ enum ToastStyle {
     }
 }
 
-// MARK: - Toast Action
-
-/// An offer attached to a toast — "we did this, press here to take it back".
-///
-/// Deliberately not a filled button. The pill is already a floating object
-/// over the note, and a second solid shape inside it reads as a dialog. A
-/// hairline and accent-coloured text carry it.
-struct ToastAction {
-    let title: String
-    let handler: () -> Void
-}
-
 // MARK: - Toast
 
 /// Floating glass pill anchored at the lower center of the note panel.
@@ -69,10 +57,6 @@ struct ToastAction {
 struct NotificationToast: View {
     let message: String
     var style: ToastStyle = .neutral
-    var action: ToastAction? = nil
-
-    @Environment(\.buoyTheme) private var theme
-    @State private var isActionHovering = false
 
     var body: some View {
         HStack(spacing: 6) {
@@ -86,28 +70,6 @@ struct NotificationToast: View {
                 .foregroundStyle(.primary)
                 .lineLimit(1)
                 .fixedSize()
-
-            if let action {
-                Rectangle()
-                    .fill(Color.buoyOverlayStroke)
-                    .frame(width: 1, height: 12)
-                    .padding(.leading, 3)
-                    .accessibilityHidden(true)
-
-                Button(action: action.handler) {
-                    Text(action.title)
-                        .font(BuoyFont.secondaryProminent)
-                        .foregroundStyle(theme.accent)
-                        .opacity(isActionHovering ? 0.7 : 1)
-                        .lineLimit(1)
-                        .fixedSize()
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .onHover { isActionHovering = $0 }
-                .pointingHandCursor()
-                .accessibilityLabel(action.title)
-            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
@@ -123,64 +85,24 @@ struct NotificationToast: View {
 final class ToastState {
     var message: String = ""
     var style: ToastStyle = .neutral
-    var action: ToastAction? = nil
     var isShowing: Bool = false
-    /// Tags a toast so a later event can retract that specific one without
-    /// clearing whatever has since taken its place.
-    @ObservationIgnored private(set) var identity: String? = nil
 
     @ObservationIgnored private var hideTask: Task<Void, Never>?
 
-    /// A plain toast is gone in two seconds; one carrying an action stays for
-    /// six, because a button nobody can reach in time is worse than no button.
-    private static let plainDuration: TimeInterval = 2
-    private static let actionableDuration: TimeInterval = 6
-
-    func show(
-        _ message: String,
-        style: ToastStyle = .neutral,
-        identity: String? = nil,
-        actionTitle: String? = nil,
-        action: (() -> Void)? = nil
-    ) {
+    func show(_ message: String, style: ToastStyle = .neutral) {
         hideTask?.cancel()
         self.message = message
         self.style = style
-        self.identity = identity
-        if let actionTitle, let action {
-            // Wrapped so pressing it dismisses the toast as well; leaving the
-            // pill up after its offer has been taken reads as a no-op.
-            self.action = ToastAction(title: actionTitle) { [weak self] in
-                action()
-                self?.dismiss()
-            }
-        } else {
-            self.action = nil
-        }
         withAnimation(BuoyMotion.easeIn(0.15)) {
             isShowing = true
         }
-        let duration = self.action == nil ? Self.plainDuration : Self.actionableDuration
         hideTask = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(duration))
+            try? await Task.sleep(for: .seconds(2))
             guard !Task.isCancelled else { return }
             withAnimation(BuoyMotion.easeOut(0.3)) {
                 isShowing = false
             }
         }
-    }
-
-    func dismiss() {
-        hideTask?.cancel()
-        hideTask = nil
-        identity = nil
-        withAnimation(BuoyMotion.easeOut(0.2)) { isShowing = false }
-    }
-
-    /// Retracts a toast only if it is still the one on screen.
-    func dismiss(ifShowing identity: String) {
-        guard isShowing, self.identity == identity else { return }
-        dismiss()
     }
 }
 
@@ -192,7 +114,7 @@ struct ToastContainer: View {
     var body: some View {
         ZStack(alignment: .bottom) {
             if state.isShowing {
-                NotificationToast(message: state.message, style: state.style, action: state.action)
+                NotificationToast(message: state.message, style: state.style)
                     // `buoyGlassCapsule` pads the pill by `glassEdgeInset` for
                     // its shadow ring; subtract it so the visible capsule sits
                     // on the same line as the update bubble, just above the footer.
@@ -200,15 +122,12 @@ struct ToastContainer: View {
                     .transition(BuoyMotion.transition(.opacity.combined(with: .move(edge: .bottom))))
                     // Spoken as soon as it appears; it is the only feedback
                     // for actions like Copy and Transfer.
-                    .accessibilityAddTraits(state.action == nil ? .isStaticText : .isSummaryElement)
+                    .accessibilityAddTraits(.isStaticText)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-        // An informational pill must never swallow a click meant for the
-        // editor or footer beneath it. One carrying an action has to be
-        // clickable, so hit testing follows the action rather than being off
-        // outright — and the pill is only ever a few points tall at the very
-        // bottom of the panel.
-        .allowsHitTesting(state.isShowing && state.action != nil)
+        // Purely informational: never let a two-second pill swallow a click
+        // meant for the editor or footer beneath it.
+        .allowsHitTesting(false)
     }
 }
