@@ -101,9 +101,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         )
         window.contentViewController = hosting
         window.title = model.page.title
-        window.titlebarAppearsTransparent = false
-        window.toolbarStyle = .unified
-        window.toolbar = NSToolbar()
+        // The page picker *is* the title bar: the content runs underneath it,
+        // the title itself would only repeat what the selected tab already
+        // says, and there is no toolbar because nothing else belongs up there.
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
         window.isReleasedWhenClosed = false
         window.hidesOnDeactivate = false
         window.delegate = self

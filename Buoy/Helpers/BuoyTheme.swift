@@ -100,16 +100,3 @@ extension EnvironmentValues {
         set { self[BuoyThemeKey.self] = newValue }
     }
 }
-
-@available(macOS 26, *)
-extension BuoyTheme {
-    /// Liquid Glass, tinted when the user has chosen a window colour.
-    ///
-    /// `.regular` untinted is the default and stays pixel-identical to what
-    /// shipped before the tint existed, so nobody who never opens the colour
-    /// picker sees their panel change.
-    func glassStyle() -> Glass {
-        guard let tint else { return .regular }
-        return .regular.tint(tint.opacity(tintOpacity))
-    }
-}

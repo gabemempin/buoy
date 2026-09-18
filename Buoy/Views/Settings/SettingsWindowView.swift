@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Root of the Settings window: sidebar on the left, one page on the right.
+/// Root of the Settings window: a page picker across the top, the page below.
 ///
 /// Deliberately built from native controls and `Form`. Buoy's glass belongs to
 /// the note panel; a settings window that tried to wear it would read as a
@@ -19,35 +19,15 @@ struct SettingsWindowView: View {
     private var page: SettingsPage { model.page }
 
     var body: some View {
-        NavigationSplitView {
-            List(SettingsPage.allCases, selection: selection) { item in
-                SettingsSidebarLabel(page: item)
-                    .tag(item)
-            }
-            .listStyle(.sidebar)
-            .frame(width: SettingsWindowMetrics.sidebarWidth)
-            // Pinned rather than given as an ideal: `.balanced` otherwise
-            // picks its own width and lands well under the rows' needs.
-            .navigationSplitViewColumnWidth(
-                min: SettingsWindowMetrics.sidebarWidth,
-                ideal: SettingsWindowMetrics.sidebarWidth,
-                max: SettingsWindowMetrics.sidebarWidth
-            )
-            // The sidebar is the window's only navigation and every page is
-            // one click away, so a collapse control would only ever hide it by
-            // mistake. Applied to the sidebar's own content, which is where
-            // SwiftUI looks for it — on the split view itself it is ignored.
-            .toolbar(removing: .sidebarToggle)
-        } detail: {
+        VStack(spacing: 0) {
+            SettingsTopBar(selection: selection, onSelect: onPageChange)
+
+            Divider()
+
             detail
-                .frame(
-                    maxWidth: .infinity,
-                    maxHeight: .infinity,
-                    alignment: .top
-                )
-                .background(detailBackground)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
-        .navigationSplitViewStyle(.balanced)
+        .background(windowBackground)
         .environment(\.buoyTheme, theme)
         .tint(theme.accent)
         .onAppear { onPageChange(page) }
@@ -61,7 +41,7 @@ struct SettingsWindowView: View {
     /// The window background, plus the user's tint if they picked one — kept
     /// far weaker than on the panel. This is a settings window full of text and
     /// system controls, and it only needs to read as the same app.
-    private var detailBackground: some View {
+    private var windowBackground: some View {
         Color(nsColor: .windowBackgroundColor)
             .overlay {
                 if let tint = theme.tint {
@@ -74,10 +54,7 @@ struct SettingsWindowView: View {
     private var selection: Binding<SettingsPage> {
         Binding(
             get: { page },
-            set: { newValue in
-                model.page = newValue
-                onPageChange(newValue)
-            }
+            set: { model.page = $0 }
         )
     }
 
@@ -102,9 +79,9 @@ final class SettingsWindowModel {
 }
 
 enum SettingsWindowMetrics {
-    static let sidebarWidth: CGFloat = 190
-    static let contentWidth: CGFloat = 720
-    static let contentHeight: CGFloat = 500
+    static let topBarHeight: CGFloat = 52
+    static let contentWidth: CGFloat = 660
+    static let contentHeight: CGFloat = 540
 }
 
 /// Shared page shell: a grouped `Form` with the window background showing

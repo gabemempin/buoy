@@ -40,25 +40,78 @@ enum SettingsPage: String, CaseIterable, Identifiable, Hashable {
     }
 }
 
-/// A sidebar row: coloured tile, white glyph, title.
-struct SettingsSidebarLabel: View {
-    let page: SettingsPage
+/// The window's page picker, across the top.
+///
+/// A sidebar was tried first and gave the pages a permanent 190pt column to
+/// live beside, which the content then had to squeeze into — the colour rows
+/// in particular. Across the top it costs 52pt once and every page gets the
+/// full width.
+struct SettingsTopBar: View {
+    @Binding var selection: SettingsPage
+    var onSelect: (SettingsPage) -> Void
 
     var body: some View {
-        HStack(spacing: 8) {
-            RoundedRectangle(cornerRadius: 5.5, style: .continuous)
-                .fill(page.tileColor)
-                .frame(width: 22, height: 22)
-                .overlay {
-                    Image(systemName: page.symbolName)
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.white)
+        HStack(spacing: 2) {
+            ForEach(SettingsPage.allCases) { page in
+                SettingsTopBarItem(page: page, isSelected: selection == page) {
+                    selection = page
+                    onSelect(page)
                 }
-            Text(page.title)
-                .font(BuoyFont.control)
+            }
+            Spacer(minLength: 0)
         }
-        .padding(.vertical, 1)
-        .accessibilityElement(children: .ignore)
+        // Clears the traffic lights, which sit in this same strip because the
+        // window draws its content under the title bar.
+        .padding(.leading, 78)
+        .padding(.trailing, 12)
+        .frame(height: SettingsWindowMetrics.topBarHeight)
+        // The strip is the window's only grab handle now that the title bar is
+        // behind it.
+        .background(WindowDragHandle())
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Settings sections")
+    }
+}
+
+private struct SettingsTopBarItem: View {
+    let page: SettingsPage
+    let isSelected: Bool
+    let action: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 7) {
+                RoundedRectangle(cornerRadius: 5.5, style: .continuous)
+                    .fill(page.tileColor)
+                    .frame(width: 20, height: 20)
+                    .overlay {
+                        Image(systemName: page.symbolName)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.white)
+                    }
+                Text(page.title)
+                    .font(BuoyFont.control)
+                    .foregroundStyle(isSelected ? Color.primary : Color.secondary)
+            }
+            .padding(.horizontal, 9)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(fill)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+        .pointingHandCursor()
         .accessibilityLabel(page.title)
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+    }
+
+    private var fill: Color {
+        if isSelected { return .buoySelectionFill }
+        return isHovering ? .buoyControlFill : .clear
     }
 }

@@ -249,7 +249,12 @@ private struct BuoyPanelGlassModifier: ViewModifier {
                 .clipShape(shape)
         } else if #available(macOS 26, *) {
             content
-                .glassEffect(theme.glassStyle(), in: shape)
+                .background {
+                    if let tint = theme.tint {
+                        shape.fill(tint.opacity(theme.tintOpacity))
+                    }
+                }
+                .glassEffect(in: shape)
                 .clipShape(shape)
                 .overlay(shape.strokeBorder(.white.opacity(0.18), lineWidth: 0.5))
         } else {
@@ -476,6 +481,13 @@ private struct BuoyRegularGlassModifier<S: InsettableShape>: ViewModifier {
     }
 
     @ViewBuilder
+    private func tintLayer<S: Shape>(_ shape: S) -> some View {
+        if let tint = theme.tint {
+            shape.fill(tint.opacity(theme.tintOpacity))
+        }
+    }
+
+    @ViewBuilder
     private func glassSurface(_ content: Content) -> some View {
         if reduceTransparency {
             // No backdrop sampling at all — neither Liquid Glass nor the pre-26
@@ -485,10 +497,18 @@ private struct BuoyRegularGlassModifier<S: InsettableShape>: ViewModifier {
                 .clipShape(shape)
         } else if #available(macOS 26, *) {
             content
+                // The tint is its own layer between the material and the
+                // content, rather than `Glass.tint()`. The system desaturates
+                // a glass material while its window is not key, which took the
+                // window colour with it — the panel looked tinted only while
+                // it had focus, so the one thing you cannot do is judge the
+                // colour you are picking in the Settings window next to it.
+                // A plain fill is not the system's to wash out.
+                .background { tintLayer(shape) }
                 // The clip is load-bearing: `in: shape` shapes the visible
                 // material, but the backdrop layer behind it is not bounded by
                 // that shape and will spill to the layout rect as a square haze.
-                .glassEffect(theme.glassStyle(), in: shape)
+                .glassEffect(.regular, in: shape)
                 .clipShape(shape)
                 .overlay {
                     if BuoyGlassMetrics.enableWindowFocusPolish && !isWindowFocused {
@@ -566,29 +586,34 @@ private final class ObserverView: NSView {
         removeObservers()
         observedWindow = window
 
-        guard let window else { return }
+        guard window != nil else { return }
 
         DispatchQueue.main.async { [weak self] in
-            self?.onChange?(window.isKeyWindow)
+            self?.report()
         }
 
+        // Observed across *every* window rather than just this one, because
+        // what counts is whether Buoy holds focus at all. Opening Settings
+        // moves key away from the panel, and treating that as "inactive" frosts
+        // the panel over exactly while the user is next door choosing its
+        // colour.
         let center = NotificationCenter.default
         observers = [
-            center.addObserver(
-                forName: NSWindow.didBecomeKeyNotification,
-                object: window,
-                queue: .main
-            ) { [weak self] _ in
-                self?.onChange?(true)
+            center.addObserver(forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main) { [weak self] _ in
+                self?.report()
             },
-            center.addObserver(
-                forName: NSWindow.didResignKeyNotification,
-                object: window,
-                queue: .main
-            ) { [weak self] _ in
-                self?.onChange?(false)
+            center.addObserver(forName: NSWindow.didResignKeyNotification, object: nil, queue: .main) { [weak self] _ in
+                // Key moves between two of our own windows as a resign
+                // followed by a become, so settle on the next turn of the loop
+                // rather than flashing inactive in between.
+                DispatchQueue.main.async { self?.report() }
             }
         ]
+    }
+
+    private func report() {
+        guard let window else { return }
+        onChange?(window.isKeyWindow || NSApp.keyWindow != nil)
     }
 
     private func removeObservers() {
