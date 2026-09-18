@@ -252,6 +252,14 @@ final class NotesOutlineView: NSOutlineView {
     var onRowClicked: ((Int) -> Void)?
     var didStartDragDuringTracking = false
 
+    /// When the last drag session finished. A press that lands while the
+    /// previous drag is still unwinding can return from tracking with the
+    /// button already up and no movement recorded, which looks exactly like a
+    /// click — so reordering one note straight after another would open the
+    /// note being dragged and close the panel.
+    var lastDragEndedAt: Date = .distantPast
+    private static let postDragClickSuppression: TimeInterval = 0.35
+
     /// How far the pointer may travel during a press and still count as a
     /// click rather than a drag.
     private static let clickSlop: CGFloat = 4
@@ -273,8 +281,18 @@ final class NotesOutlineView: NSOutlineView {
             released.x - pressLocation.x,
             released.y - pressLocation.y
         )
+        // If the button is *still* down when tracking returns, AppKit has
+        // handed the press off to a drag session that runs asynchronously.
+        // `willBeginAt` has not fired yet and the pointer has not moved yet,
+        // so both other checks still look like a click — which selected the
+        // note being dragged and closed the panel mid-reorder.
+        let buttonStillDown = NSEvent.pressedMouseButtons & 1 != 0
+
+        let sinceLastDrag = Date().timeIntervalSince(lastDragEndedAt)
 
         guard !didStartDragDuringTracking,
+              !buttonStillDown,
+              sinceLastDrag > Self.postDragClickSuppression,
               travelled < Self.clickSlop,
               clickedRow >= 0
         else { return }
@@ -1052,6 +1070,7 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
             endedAt screenPoint: NSPoint,
             operation: NSDragOperation
         ) {
+            (outlineView as? NotesOutlineView)?.lastDragEndedAt = Date()
             setSourceRowAlpha(1)
             dimmedRowKeys = []
             // No mouseExited arrives while a session is running, so the source
@@ -1266,8 +1285,22 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
                 outlineView.setDropItem(targetItem, dropChildIndex: targetIndex)
             }
 
-            guard resolvePlan(info: info, item: targetItem, index: targetIndex) != nil else {
-                return []
+            guard let plan = resolvePlan(
+                info: info,
+                item: targetItem,
+                index: targetIndex
+            ) else { return [] }
+
+            // Retarget a filing drop onto the folder row itself, so AppKit
+            // draws its drop-on highlight around the folder rather than an
+            // insertion line near it. `acceptDrop` re-resolves from whatever
+            // is set here and reaches the same plan.
+            if case .fileIntoFolder(_, let folderID, _) = plan,
+               let destination = folderNode(for: folderID) {
+                outlineView.setDropItem(
+                    destination,
+                    dropChildIndex: NSOutlineViewDropOnItemIndex
+                )
             }
             return .move
         }
