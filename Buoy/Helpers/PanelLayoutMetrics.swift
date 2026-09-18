@@ -37,6 +37,11 @@ enum PanelLayoutMetrics {
     /// A labelled section header ("Pinned", "Folders", "All Notes"). A bare
     /// rule told the user the list was grouped but never why.
     static let allNotesHeaderRowHeight: CGFloat = 26
+    /// Leading gutter reserved for the drag handle. A drag can only start
+    /// inside this strip, so it has to be a shared constant: the row draws the
+    /// grip against it and `NotesOutlineView` hit-tests the press against it.
+    static let allNotesDragHandleWidth: CGFloat = 18
+
     /// Extra leading inset for a note shown inside a folder.
     static let allNotesChildIndent: CGFloat = 18
     static let footerOverlayBottomInset: CGFloat = 43

@@ -27,13 +27,16 @@ struct Note: Identifiable, Codable, FetchableRecord, PersistableRecord {
     var folderID: String?
     /// Manual position inside `folderID`. Contiguous from 0 after any reorder.
     var folderOrder: Int64?
+    /// Manual position in the All Notes list. Seeded from `createdAt` so the
+    /// order looks unchanged until someone drags something.
+    var sortOrder: Int64?
 
     static let databaseTableName = "notes"
 
     enum Columns: String, ColumnExpression {
         case id, title, contentRTF, createdAt, updatedAt, isPinned, pinnedOrder
         case autoTitleStage, autoTitleLocked, autoTitleDefaultTitle
-        case folderID, folderOrder
+        case folderID, folderOrder, sortOrder
     }
 
     static func nowMs() -> Int64 { Int64(Date().timeIntervalSince1970 * 1000) }

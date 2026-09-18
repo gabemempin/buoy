@@ -159,7 +159,8 @@ struct AllNotesSectionHeader: View {
                 .foregroundStyle(.tertiary)
                 .lineLimit(1)
         }
-        .padding(.horizontal, 10)
+        .padding(.leading, 4 + PanelLayoutMetrics.allNotesDragHandleWidth)
+        .padding(.trailing, 10)
         .padding(.top, showsRule ? 4 : 2)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
         .accessibilityElement(children: .ignore)
@@ -216,6 +217,34 @@ struct RowActionButton: View {
     }
 }
 
+// MARK: - Drag handle
+
+/// The reorder grip in a row's leading gutter.
+///
+/// Deliberately *not* an `.interactiveRegion`: the whole point is that the
+/// press falls through to the outline view, which is the one and only thing
+/// that starts a drag. `NotesOutlineView` decides a press is a drag by testing
+/// it against `allNotesDragHandleWidth`, so this draws against the same
+/// constant and the visible dots are exactly the draggable strip.
+struct RowDragHandle: View {
+    let isVisible: Bool
+
+    var body: some View {
+        VStack(spacing: 2) {
+            ForEach(0..<3, id: \.self) { _ in
+                HStack(spacing: 2) {
+                    Circle().frame(width: 2, height: 2)
+                    Circle().frame(width: 2, height: 2)
+                }
+            }
+        }
+        .foregroundStyle(.tertiary)
+        .frame(width: PanelLayoutMetrics.allNotesDragHandleWidth)
+        .opacity(isVisible ? 1 : 0)
+        .accessibilityHidden(true)
+    }
+}
+
 // MARK: - NoteRow
 
 struct NoteRow: View {
@@ -234,6 +263,8 @@ struct NoteRow: View {
 
     var body: some View {
         HStack(spacing: 2) {
+            RowDragHandle(isVisible: isHovering)
+
             Text(note.title.isEmpty ? "Untitled" : note.title)
                 .font(isActive ? BuoyFont.sectionTitle : BuoyFont.control)
                 .foregroundStyle(isActive ? Color.primary : Color.secondary)
@@ -257,10 +288,8 @@ struct NoteRow: View {
                 )
             }
         }
-        // Text sits 10pt from the panel edge, level with the section headers.
-        // The pill it sits in stops 4pt short of that edge so the fill never
-        // runs into the panel's rounded corner.
-        .padding(.leading, 6)
+        // The grip occupies the leading gutter, so the row's own leading
+        // padding is 0 — the handle's fixed width is the inset.
         .padding(.trailing, 2)
         .padding(.vertical, 4)
         .background(
@@ -299,6 +328,8 @@ struct FolderRow: View {
 
     var body: some View {
         HStack(spacing: 5) {
+            RowDragHandle(isVisible: isHovering && !isRenaming)
+
             // Affordance only — the whole row toggles, so this is not a button
             // and never competes with the row's own click handling.
             Image(systemName: "chevron.right")
@@ -348,7 +379,6 @@ struct FolderRow: View {
                 )
             }
         }
-        .padding(.leading, 6)
         .padding(.trailing, 2)
         .padding(.vertical, 3)
         .padding(.leading, 4)

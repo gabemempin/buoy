@@ -93,6 +93,7 @@ struct AllNotesOverlay: View {
             deleteNote: onDeleteNote,
             togglePin: { noteStore.togglePin($0) },
             reorderPinned: { noteStore.reorderPinnedNotes($0) },
+            reorderNotes: { noteStore.reorderNotes($0) },
             reorderFolders: { noteStore.reorderFolders($0) },
             fileNote: { noteID, folderID, index in
                 noteStore.fileNote(noteID, inFolder: folderID, at: index)

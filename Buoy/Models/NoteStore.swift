@@ -229,6 +229,27 @@ final class NoteStore {
             }
         }
 
+        // Manual order for the All Notes list. Seeded from the existing
+        // createdAt order, so the list looks identical until the first drag.
+        migrator.registerMigration("v9_noteSortOrder") { db in
+            let columns = try db.columns(in: "notes").map { $0.name }
+            if !columns.contains("sortOrder") {
+                try db.alter(table: "notes") { t in
+                    t.add(column: "sortOrder", .integer)
+                }
+            }
+            let ordered = try String.fetchAll(
+                db,
+                sql: "SELECT id FROM notes ORDER BY createdAt ASC, id ASC"
+            )
+            for (index, id) in ordered.enumerated() {
+                try db.execute(
+                    sql: "UPDATE notes SET sortOrder = ? WHERE id = ?",
+                    arguments: [Int64(index), id]
+                )
+            }
+        }
+
         try? migrator.migrate(db)
     }
 
@@ -238,7 +259,11 @@ final class NoteStore {
         guard let db else { return }
         notes = (try? db.read { db in
             try Note
-                .order(Note.Columns.createdAt.asc)
+                .order(
+                    Note.Columns.sortOrder.asc,
+                    Note.Columns.createdAt.asc,
+                    Note.Columns.id.asc
+                )
                 .fetchAll(db)
         }) ?? []
         folders = (try? db.read { db in
@@ -298,13 +323,45 @@ final class NoteStore {
             autoTitleLocked: title != nil,
             autoTitleDefaultTitle: defaultTitle,
             folderID: nil,
-            folderOrder: nil
+            folderOrder: nil,
+            sortOrder: nextNoteSortOrder()
         )
         _ = try? db.write { db in
             try newNote.insert(db)
         }
         loadNoteList()
         currentNote = newNote
+    }
+
+    private func nextNoteSortOrder() -> Int64 {
+        guard let db else { return 0 }
+        let maximum = (try? db.read { db in
+            try Int64.fetchOne(db, sql: "SELECT MAX(sortOrder) FROM notes")
+        }) ?? nil
+        return (maximum ?? -1) + 1
+    }
+
+    /// Manual order for the All Notes list.
+    func reorderNotes(_ orderedIDs: [String]) {
+        let currentIDs = notes.map(\.id)
+        guard orderedIDs.count == currentIDs.count,
+              Set(orderedIDs) == Set(currentIDs),
+              let db
+        else { return }
+
+        do {
+            try db.write { db in
+                for (index, id) in orderedIDs.enumerated() {
+                    try db.execute(
+                        sql: "UPDATE notes SET sortOrder = ? WHERE id = ?",
+                        arguments: [Int64(index), id]
+                    )
+                }
+            }
+            loadNoteList()
+        } catch {
+            print("[NoteStore] Failed to reorder notes: \(error)")
+        }
     }
 
     func togglePin(_ note: Note) {

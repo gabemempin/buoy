@@ -66,7 +66,7 @@ manually and reports any failures. Static inspection is the default verification
 | Notes | `~/.buoy/notes.db` | GRDB SQLite (RTF binary) |
 | Settings | `~/.buoy/settings.json` | JSON (Codable) |
 
-GRDB migrations are defined in `NoteStore.swift` (`v1_initial`, `v2_contentRTF`, `v3_isPinned`, `v4_pinnedOrder`, `v5_autoTitlePending`, `v6_autoTitleStages`, `v7_autoTitleRestage`, `v8_folders`).
+GRDB migrations are defined in `NoteStore.swift` (`v1_initial`, `v2_contentRTF`, `v3_isPinned`, `v4_pinnedOrder`, `v5_autoTitlePending`, `v6_autoTitleStages`, `v7_autoTitleRestage`, `v8_folders`, `v9_noteSortOrder`).
 
 ### Key Services
 
@@ -215,15 +215,29 @@ as everywhere else, see `BuoyMotion.swift`.
 ### All Notes Panel & Folders
 
 The list is an **`NSOutlineView`** (`Views/AllNotesOutline.swift`), not a table.
-Three sections separated by hairline dividers: **Pinned** (manual order via
-`pinnedOrder`), **Folders** (manual order via `Folder.sortOrder`, children via
-`Note.folderOrder`), **All Notes** (`createdAt` asc, never reorderable).
+Three labelled sections: **Pinned** (manual order via `pinnedOrder`),
+**Folders** (manual order via `Folder.sortOrder`, children via
+`Note.folderOrder`), **All Notes** (manual order via `Note.sortOrder`).
+
+All Notes was chronological-and-fixed at first. That shipped as "reordering
+doesn't work": with one pinned note and one folder there was nothing in the
+whole list a drag could legally land on. `v9_noteSortOrder` adds the column and
+seeds it from `createdAt`, so the order looks unchanged until the first drag.
 
 **Folders group, they do not move.** A note with a `folderID` still appears in
 the All Notes section, and a pinned + filed note appears in all three sections
 at once. One note belongs to at most one folder. `Folder` rows carry no foreign
 key to `notes` on purpose — deleting a folder is one `UPDATE ... SET folderID =
 NULL` and never deletes a note.
+
+**Dragging is confined to the grip.** A drag can only begin inside the leading
+`allNotesDragHandleWidth` gutter, where `RowDragHandle` draws its dots on hover.
+`NotesOutlineView.mouseDown` records whether the press landed there and
+`pasteboardWriterForItem` refuses otherwise, so the row keeps the whole of its
+width for clicking, scrolling and its buttons. The grip is deliberately **not**
+an `.interactiveRegion` — the press has to fall through to the outline view,
+which is the only thing that starts drags. A press on the grip that never
+becomes a drag opens nothing.
 
 **One drag source, always.** Every drag starts from
 `outlineView(_:pasteboardWriterForItem:)` and nothing else. The previous
@@ -285,6 +299,11 @@ don't do it — so the fill is the *press* state instead. The HIG is explicit:
 button can feel unresponsive." The 22pt hit region is deliberately larger than
 the 10pt glyph. Use this style for any new row control rather than hand-rolling
 a button.
+
+**A drop *onto* a row means "put it in that row's slot",** not "insert above
+it" — `draggedTopLevelIndex` decides which side. Inserting above is a no-op
+when the dragged row is the one directly above the target, which made a
+two-item swap look broken.
 
 **Search flattens everything**: sections, folders and all dragging are off while
 `searchText` is non-empty (`searchMatches != nil`).

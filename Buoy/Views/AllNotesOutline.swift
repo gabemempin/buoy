@@ -10,6 +10,8 @@ struct AllNotesActions {
     var deleteNote: (Note) -> Void
     var togglePin: (Note) -> Void
     var reorderPinned: ([String]) -> Void
+    /// Manual order for the All Notes section.
+    var reorderNotes: ([String]) -> Void
     var reorderFolders: ([String]) -> Void
     /// `(noteID, folderID, index)` — `nil` index appends.
     var fileNote: (String, String, Int?) -> Void
@@ -251,10 +253,18 @@ final class NotesOutlineView: NSOutlineView {
     /// click rather than a drag.
     private static let clickSlop: CGFloat = 4
 
+    /// True while the press that started this tracking loop began inside a
+    /// row's drag-handle gutter. `pasteboardWriterForItem` refuses to start a
+    /// drag otherwise, which is what confines dragging to the grip.
+    private(set) var pressBeganInDragHandle = false
+
     override func mouseDown(with event: NSEvent) {
-        let clickedRow = row(at: convert(event.locationInWindow, from: nil))
+        let point = convert(event.locationInWindow, from: nil)
+        let clickedRow = row(at: point)
         let pressLocation = NSEvent.mouseLocation
         didStartDragDuringTracking = false
+        pressBeganInDragHandle = clickedRow >= 0
+            && point.x <= PanelLayoutMetrics.allNotesDragHandleWidth
         super.mouseDown(with: event)
 
         // `didStartDragDuringTracking` alone is not enough. AppKit can begin
@@ -269,9 +279,15 @@ final class NotesOutlineView: NSOutlineView {
             released.y - pressLocation.y
         )
 
+        let startedOnHandle = pressBeganInDragHandle
+        pressBeganInDragHandle = false
+
         guard !didStartDragDuringTracking,
               travelled < Self.clickSlop,
-              clickedRow >= 0
+              clickedRow >= 0,
+              // A press on the grip that never became a drag is a no-op, not a
+              // request to open the note.
+              !startedOnHandle
         else { return }
         onRowClicked?(clickedRow)
     }
@@ -886,6 +902,11 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
             pasteboardWriterForItem item: Any
         ) -> NSPasteboardWriting? {
             guard !isSearching, let node = item as? AllNotesNode else { return nil }
+            // Dragging is confined to the grip in the row's leading gutter, so
+            // a press anywhere else can still scroll, select or hit a button
+            // without the list second-guessing whether it was a drag.
+            guard (outlineView as? NotesOutlineView)?.pressBeganInDragHandle == true
+            else { return nil }
             // Called synchronously the moment AppKit decides this press is a
             // drag — earlier and more reliably than the session's `willBeginAt`
             // — so it is the signal that stops `mouseDown` reporting a click.
@@ -1110,6 +1131,7 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
             case fileIntoFolder(noteID: String, folderID: String, index: Int?)
             case reorderInFolder(folderID: String, noteID: String, to: Int)
             case unfile(noteID: String, folderID: String)
+            case reorderNotes(noteID: String, to: Int)
         }
 
         func outlineView(
@@ -1147,7 +1169,14 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
                     targetIndex = childIndex
                 } else if let topIndex = tree.topLevel.firstIndex(of: node) {
                     targetItem = nil
-                    targetIndex = topIndex
+                    // Dropping *onto* a row means "put it where that row is".
+                    // Inserting above it is a no-op when the dragged row is the
+                    // one directly above, which made a two-item swap look
+                    // broken.
+                    let sourceIndex = draggedTopLevelIndex(from: info)
+                    targetIndex = (sourceIndex.map { $0 < topIndex } ?? false)
+                        ? topIndex + 1
+                        : topIndex
                 }
                 outlineView.setDropItem(targetItem, dropChildIndex: targetIndex)
             }
@@ -1169,6 +1198,19 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
             }
             apply(plan, in: outlineView)
             return true
+        }
+
+        /// Where the dragged row currently sits at top level, if it is a
+        /// top-level row at all.
+        private func draggedTopLevelIndex(from info: NSDraggingInfo) -> Int? {
+            guard let sourceKey = info.draggingPasteboard.string(
+                    forType: NotesOutlineViewWrapper.noteSourcePasteboardType
+                  ) ?? info.draggingPasteboard.string(
+                    forType: NotesOutlineViewWrapper.folderPasteboardType
+                  ).map({ AllNotesNode.folderKey($0) }),
+                  let node = nodeCache[sourceKey]
+            else { return nil }
+            return tree.topLevel.firstIndex(of: node)
         }
 
         private func resolvePlan(
@@ -1250,15 +1292,24 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
                 return .reorderPinned(noteID: noteID, to: destination)
             }
 
-            // All Notes band: the only thing a drop here means is "take this
-            // out of its folder". All Notes itself is chronological.
-            if let sourceFolderID,
-               index >= tree.allNotesRange.lowerBound,
-               index <= tree.allNotesRange.upperBound {
+            guard index >= tree.allNotesRange.lowerBound,
+                  index <= tree.allNotesRange.upperBound
+            else { return nil }
+
+            // A row dragged out of a folder means "unfile"; a row dragged from
+            // All Notes itself means "reorder". Same landing zone, told apart
+            // by where the drag started.
+            if let sourceFolderID {
                 return .unfile(noteID: noteID, folderID: sourceFolderID)
             }
 
-            return nil
+            guard sourcePlacement == .allNotes else { return nil }
+            let ordered = notes.map(\.id)
+            guard let source = ordered.firstIndex(of: noteID) else { return nil }
+            var destination = index - tree.allNotesRange.lowerBound
+            if source < destination { destination -= 1 }
+            guard destination != source else { return nil }
+            return .reorderNotes(noteID: noteID, to: destination)
         }
 
         private func apply(_ plan: DropPlan, in outlineView: NSOutlineView) {
@@ -1358,6 +1409,26 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
                 actions.fileNote(noteID, folderID, insertIndex)
                 // The row's count label changed.
                 refreshRow(parent)
+
+            case .reorderNotes(let noteID, let destination):
+                var ordered = notes.map(\.id)
+                guard let source = ordered.firstIndex(of: noteID) else { return }
+                let moved = ordered.remove(at: source)
+                ordered.insert(moved, at: min(destination, ordered.count))
+
+                let from = tree.allNotesRange.lowerBound + source
+                let to = tree.allNotesRange.lowerBound
+                    + min(destination, ordered.count - 1)
+                NSAnimationContext.beginGrouping()
+                NSAnimationContext.current.duration = BuoyMotion.duration(0.22)
+                outlineView.beginUpdates()
+                let node = tree.topLevel.remove(at: from)
+                tree.topLevel.insert(node, at: to)
+                outlineView.moveItem(at: from, inParent: nil, to: to, inParent: nil)
+                outlineView.endUpdates()
+                NSAnimationContext.endGrouping()
+                tree.signature = Self.signature(of: tree.topLevel)
+                actions.reorderNotes(ordered)
 
             case .unfile(let noteID, let folderID):
                 guard let parent = folderNode(for: folderID),
