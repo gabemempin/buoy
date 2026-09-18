@@ -194,6 +194,31 @@ final class NotesRowView: NSTableRowView {
 
     override func drawSeparator(in dirtyRect: NSRect) {}
 
+    /// Draws the "drop into this folder" highlight.
+    ///
+    /// AppKit's own drop-on highlight is drawn through the *selection*
+    /// machinery, and this list sets `selectionHighlightStyle = .none` so it
+    /// can draw its own active-row pill — which suppressed the drop highlight
+    /// along with it. Retargeting the drop to the folder row was therefore
+    /// correct but invisible. Drawn here so it sits behind the row's SwiftUI
+    /// content, the same way the active pill does.
+    override func drawDraggingDestinationFeedback(in dirtyRect: NSRect) {
+        guard isTargetForDropOperation else { return }
+        // Same grey, shape and inset as the active row's pill, just a little
+        // stronger — a folder being dropped into should read as the same
+        // vocabulary as the rest of the list, not as a system accent box.
+        let rect = NSRect(
+            x: 0,
+            y: 2,
+            width: max(0, bounds.width - 4),
+            height: max(0, bounds.height - 4)
+        )
+        NSColor.labelColor
+            .withAlphaComponent(BuoyContrast.isIncreased ? 0.28 : 0.14)
+            .setFill()
+        NSBezierPath(roundedRect: rect, xRadius: 8, yRadius: 8).fill()
+    }
+
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         if let hoverTrackingArea { removeTrackingArea(hoverTrackingArea) }
@@ -972,15 +997,37 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
                 folders[index].isExpanded = shouldExpand
             }
 
-            // Rebuild rather than calling `collapseItem`, which does not
-            // register on this outline view — the chevron would flip while the
-            // children stayed on screen. `reloadData` leaves every item
-            // collapsed, and `applyExpansionState` then re-opens exactly the
-            // folders the store says are open, so the list always matches
-            // `Folder.isExpanded` whichever way the toggle went.
-            outlineView.reloadData()
-            applyExpansionState()
-            refreshRenderSignatures()
+            // Insert or remove the child rows directly rather than reloading.
+            // `numberOfChildrenOfItem` has already flipped to match the store,
+            // so the counts line up either way and the rows can slide instead
+            // of appearing. (`collapseItem` is not an option — it does not
+            // register on this outline view at all.)
+            let childCount = node.children.count
+            guard childCount > 0 else {
+                refreshRow(node)
+                return
+            }
+
+            NSAnimationContext.beginGrouping()
+            NSAnimationContext.current.duration = BuoyMotion.duration(0.22)
+            outlineView.beginUpdates()
+            let rows = IndexSet(integersIn: 0..<childCount)
+            if shouldExpand {
+                outlineView.insertItems(
+                    at: rows,
+                    inParent: node,
+                    withAnimation: .slideDown
+                )
+            } else {
+                outlineView.removeItems(
+                    at: rows,
+                    inParent: node,
+                    withAnimation: .slideUp
+                )
+            }
+            outlineView.endUpdates()
+            NSAnimationContext.endGrouping()
+            refreshRow(node)
         }
 
         // MARK: Drag source
