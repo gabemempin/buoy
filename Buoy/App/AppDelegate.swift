@@ -552,6 +552,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
     }
 
+    /// Whether a click landed in something the panel put on screen rather than
+    /// somewhere else entirely.
+    ///
+    /// Popovers — Settings, the link editor, Transfer to Apple Notes — are
+    /// their own windows, and every one of them sits outside the panel's frame
+    /// by definition. Treating that as an outside click made the panel resign
+    /// key on the way down, which closed the popover before the control under
+    /// the pointer ever saw the event: the Settings popover could be opened but
+    /// nothing inside it could be clicked.
+    private func isInsideAttachedWindow(_ screenPoint: NSPoint) -> Bool {
+        NSApp.windows.contains { window in
+            guard window !== panel, window.isVisible else { return false }
+            return window.frame.contains(screenPoint)
+        }
+    }
+
     private func handleMonitoredMouseDown(screenPoint: NSPoint) {
         if Thread.isMainThread {
             handleOutsideMouseDownOnMainThread(screenPoint: screenPoint)
@@ -565,7 +581,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func handleOutsideMouseDownOnMainThread(screenPoint: NSPoint) {
         guard let p = panel, p.isVisible else { return }
         guard !p.frame.contains(screenPoint),
-              !cornerResizeOverlayController.containsInteractiveControl(at: screenPoint)
+              !cornerResizeOverlayController.containsInteractiveControl(at: screenPoint),
+              !isInsideAttachedWindow(screenPoint)
         else { return }
 
         p.allowsKeyFocus = false

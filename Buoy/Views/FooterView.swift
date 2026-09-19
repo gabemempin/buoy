@@ -124,7 +124,12 @@ struct FooterView: View {
                     // while and every behaviour it needed — pointing at its
                     // button, moving with the panel, closing on a click away —
                     // had to be built by hand. A popover has all of it.
-                    .popover(isPresented: $isSettingsPresented, arrowEdge: .top) {
+                    // Opens to the side, not upward. The gear is at the foot
+                    // of the panel and a popover above it covers the note the
+                    // settings are being changed for — including the window
+                    // colour, which is the one thing you need to see while
+                    // picking it.
+                    .popover(isPresented: $isSettingsPresented, arrowEdge: .leading) {
                         SettingsPopover(
                             settings: $settings,
                             onReportBug: onReportBug,

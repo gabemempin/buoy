@@ -60,10 +60,10 @@ struct SettingsPopover: View {
 }
 
 enum SettingsPopoverMetrics {
-    static let width: CGFloat = 420
-    static let height: CGFloat = 430
+    static let width: CGFloat = 360
+    static let height: CGFloat = 420
     /// One lane for every slider in here.
-    static let sliderWidth: CGFloat = 150
+    static let sliderWidth: CGFloat = 120
 }
 
 /// Shared page shell.
