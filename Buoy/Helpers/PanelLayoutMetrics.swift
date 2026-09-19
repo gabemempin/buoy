@@ -85,6 +85,16 @@ enum PanelLayoutMetrics {
 
     static let compactChromeEnterWidth: CGFloat = regularChromeWindowWidth
 
+    /// How much narrower the panel becomes when it goes compact.
+    ///
+    /// Compact chrome shrinks in both directions, so the window has to as
+    /// well. Without this the controls got smaller while the panel kept the
+    /// width it was dragged to, which left compact mode looking like regular
+    /// mode with undersized buttons rattling around in it.
+    static var compactWidthScale: CGFloat {
+        minimumWindowWidth(for: .compact) / minimumWindowWidth(for: .regular)
+    }
+
     static func minimumGlassHeight(for metrics: ChromeMetrics) -> CGFloat {
         (windowPadding * 2)
         + metrics.headerMinimumHeight
@@ -121,7 +131,7 @@ enum PanelLayoutMetrics {
     /// something that happens in passing. It also means the panel can never
     /// come to rest near the threshold, which is what lets the density switch
     /// drop its own hysteresis and follow the size exactly.
-    static let compactChromeDetentResistance: CGFloat = 22
+    static let compactChromeDetentResistance: CGFloat = 60
 
     /// Applies that detent to one axis of a live resize.
     ///

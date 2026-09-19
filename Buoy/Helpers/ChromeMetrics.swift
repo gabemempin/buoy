@@ -192,10 +192,18 @@ struct ChromeDensityReader: View {
     /// size; a density recomputed from those intermediate heights would be
     /// meaningless and would land just as the panel is restoring.
     var isSuspended: Bool
+    /// The panel's real size, published by `AppDelegate`.
+    var windowSize: CGSize
     /// Fired when a resize crossed into compact chrome, carrying the window
     /// size to go back to. Not called for the first reading, which only
     /// establishes where the panel started.
     var onEnteredCompact: ((CGSize) -> Void)? = nil
+    /// Fired when a resize took the panel back to regular chrome, so anything
+    /// said about going compact can stop being said.
+    var onExitedCompact: (() -> Void)? = nil
+    /// Called on every density change so the window's *width* can follow.
+    /// Compact chrome is narrower as well as shorter.
+    var onDensityChanged: ((ChromeDensity) -> Void)? = nil
 
     /// The size the panel was last seen at while drawing regular chrome.
     @State private var lastRegularWindowSize = CGSize(
@@ -206,18 +214,14 @@ struct ChromeDensityReader: View {
     @State private var hasRead = false
 
     var body: some View {
-        GeometryReader { proxy in
-            Color.clear
-                .onAppear { update(glassSize: proxy.size) }
-                .onChange(of: proxy.size) { _, size in update(glassSize: size) }
-        }
-        .allowsHitTesting(false)
+        Color.clear
+            .onAppear { update(windowSize: windowSize) }
+            .onChange(of: windowSize) { _, size in update(windowSize: size) }
+            .allowsHitTesting(false)
     }
 
-    private func update(glassSize: CGSize) {
+    private func update(windowSize: CGSize) {
         guard !isSuspended else { return }
-        let inset = PanelLayoutMetrics.glassEdgeInset * 2
-        let windowSize = CGSize(width: glassSize.width + inset, height: glassSize.height + inset)
         if density == .regular { lastRegularWindowSize = windowSize }
 
         let next = Self.density(forWindowSize: windowSize)
@@ -225,16 +229,19 @@ struct ChromeDensityReader: View {
         hasRead = true
         guard next != density else { return }
 
-        // A spring rather than an ease. The window itself jumps across the
-        // detent, and chrome that merely slides to its new size beside that
-        // jump reads as lag; a little overshoot makes the two one movement.
-        withAnimation(BuoyMotion.spring(response: 0.28, dampingFraction: 0.62)) {
+        // Short and barely under-damped. The window crosses the detent in one
+        // frame, so the chrome has to arrive with it — a long, loose spring
+        // beside an instant jump reads as two separate things happening.
+        withAnimation(BuoyMotion.spring(response: 0.2, dampingFraction: 0.78)) {
             density = next
         }
 
-        // The first reading only establishes where the panel started; it is
-        // not something the user just did and must not announce itself.
-        guard next == .compact, !wasFirstReading else { return }
+        guard !wasFirstReading else { return }
+        onDensityChanged?(next)
+        guard next == .compact else {
+            onExitedCompact?()
+            return
+        }
         // Past the thresholds, not merely back to the old size: a size inside
         // the detent's band would leave the chrome compact and make Undo look
         // like it did nothing.

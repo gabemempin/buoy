@@ -6,7 +6,7 @@ struct ShortcutsSettingsPage: View {
 
     var body: some View {
         SettingsForm {
-            Section("Show Buoy") {
+            SettingsSection("Show Buoy") {
                 ShortcutRecorderRow(
                     label: "Show or hide Buoy",
                     shortcut: $settings.globalShortcut,
@@ -19,7 +19,7 @@ struct ShortcutsSettingsPage: View {
             }
 
             ForEach(BuoyCommand.Group.allCases, id: \.self) { group in
-                Section(group.rawValue) {
+                SettingsSection(group.rawValue) {
                     ForEach(BuoyCommand.allCases.filter { $0.group == group }, id: \.self) { command in
                         commandRow(command)
                     }
@@ -34,10 +34,16 @@ struct ShortcutsSettingsPage: View {
             } header: {
                 HStack(spacing: 5) {
                     Image(systemName: "lock.fill")
-                        .font(.system(size: 9))
+                        .font(.system(size: 10))
                         .accessibilityHidden(true)
                     Text("Formatting and Editing")
                 }
+                // Matches `SettingsSection`, which this one cannot use because
+                // its header carries a glyph as well as a title.
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.primary)
+                .textCase(nil)
+                .padding(.bottom, 1)
             } footer: {
                 // Every row above this section carries an Edit button, so
                 // without saying otherwise these read as ones nobody has got

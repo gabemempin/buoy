@@ -18,7 +18,7 @@ struct GeneralSettingsPage: View {
 
     var body: some View {
         SettingsForm {
-            Section(BuoyWording.behavior) {
+            SettingsSection(BuoyWording.behavior) {
                 Toggle("Show in Dock", isOn: $settings.showInDock)
                 Toggle("Always on Top", isOn: $settings.alwaysOnTop)
                 Toggle("Launch at Login", isOn: $settings.launchAtLogin)
@@ -27,7 +27,7 @@ struct GeneralSettingsPage: View {
             // Shown disabled rather than hidden on a Mac that cannot run it.
             // Hiding the row left anyone who had read about the feature with
             // nowhere to find out why they did not have it; the reason says so.
-            Section("Notes") {
+            SettingsSection("Notes") {
                 Toggle(isOn: $settings.autoTitleEnabled) {
                     Text("Auto-name New Notes")
                     if let reason = NoteAutoTitler.unsupportedReason {

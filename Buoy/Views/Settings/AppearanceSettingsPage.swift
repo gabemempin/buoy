@@ -7,7 +7,7 @@ struct AppearanceSettingsPage: View {
 
     var body: some View {
         SettingsForm {
-            Section("Theme") {
+            SettingsSection("Theme") {
                 // Centred rather than pinned to the trailing edge. It is the
                 // only control in its section and the widest thing on the
                 // page; hard against the right it read as an afterthought.
@@ -24,7 +24,7 @@ struct AppearanceSettingsPage: View {
                 .padding(.vertical, 2)
             }
 
-            Section(BuoyWording.colors) {
+            SettingsSection(BuoyWording.colors) {
                 HStack(alignment: .top, spacing: 16) {
                     ColorPickerColumn(
                         title: "Window \(BuoyWording.colorLowercased)",
@@ -52,7 +52,7 @@ struct AppearanceSettingsPage: View {
                 }
             }
 
-            Section("Text") {
+            SettingsSection("Text") {
                 LabeledContent("Editor text size") {
                     EditorFontSizeSlider(
                         value: $settings.fontSize,

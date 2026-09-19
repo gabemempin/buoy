@@ -78,6 +78,34 @@ enum SettingsPopoverMetrics {
     static let sliderWidth: CGFloat = 120
 }
 
+/// A form section whose heading actually reads as one.
+///
+/// A grouped `Form` on macOS draws its section headers *smaller* than the row
+/// labels underneath them, which leaves the heading looking like a caption on
+/// the section above it. This sets the header a size up and a weight heavier
+/// than the rows, so the hierarchy runs the way it looks like it should.
+struct SettingsSection<Content: View>: View {
+    let title: String
+    @ViewBuilder var content: () -> Content
+
+    init(_ title: String, @ViewBuilder content: @escaping () -> Content) {
+        self.title = title
+        self.content = content
+    }
+
+    var body: some View {
+        Section {
+            content()
+        } header: {
+            Text(title)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.primary)
+                .textCase(nil)
+                .padding(.bottom, 1)
+        }
+    }
+}
+
 /// Shared page shell.
 ///
 /// `.grouped` rather than the popover's plain default, so sections read as
@@ -92,11 +120,10 @@ struct SettingsForm<Content: View>: View {
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
-        // Rows sit at the chrome size the rest of the app uses. A grouped
-        // form's default body size is set for a settings *window*, and in a
-        // 360pt popover it left row labels reading larger than the section
-        // headings above them — the hierarchy upside down.
-        .font(BuoyFont.control)
+        // Only the control size. A blanket `.font` here also lands on the
+        // section headers and flattens them to the weight of a row label,
+        // which is the hierarchy it was meant to fix. Rows that need a smaller
+        // label set it themselves.
         .controlSize(.small)
     }
 }

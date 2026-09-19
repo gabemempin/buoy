@@ -39,6 +39,8 @@ struct ContentView: View {
     /// Grows the panel back past the compact thresholds. Behind the toast's
     /// Undo.
     var onRestorePanelSize: ((CGSize) -> Void)?
+    /// Narrows or widens the panel to match the chrome density.
+    var onChromeDensityChanged: ((ChromeDensity) -> Void)?
     var onClose: () -> Void
     var onMinimize: () -> Void
     var onExpand: () -> Void
@@ -106,6 +108,7 @@ struct ContentView: View {
         onMinimizedWidthChange: ((CGFloat) -> Void)? = nil,
         onCornerResizeAvailabilityChange: ((Bool) -> Void)? = nil,
         onRestorePanelSize: ((CGSize) -> Void)? = nil,
+        onChromeDensityChanged: ((ChromeDensity) -> Void)? = nil,
         onClose: @escaping () -> Void,
         onMinimize: @escaping () -> Void,
         onExpand: @escaping () -> Void,
@@ -119,6 +122,7 @@ struct ContentView: View {
         self.onMinimizedWidthChange = onMinimizedWidthChange
         self.onCornerResizeAvailabilityChange = onCornerResizeAvailabilityChange
         self.onRestorePanelSize = onRestorePanelSize
+        self.onChromeDensityChanged = onChromeDensityChanged
         self.onClose = onClose
         self.onMinimize = onMinimize
         self.onExpand = onExpand
@@ -223,6 +227,13 @@ struct ContentView: View {
             .blur(radius: isConfirmingDelete ? 9 : 0)
             .animation(BuoyMotion.easeOut(0.16), value: isConfirmingDelete)
             .padding(PanelLayoutMetrics.windowPadding)
+            // Minimums *and* maximums. With only a minimum, SwiftUI hands the
+            // content its ideal size — the widest bar, about 244pt — and then
+            // merely refuses to go below the floor. That looked correct only
+            // while the floor happened to equal the window's own minimum; the
+            // moment compact chrome lowered the floor, the content sat at 244
+            // inside a 316pt panel with the difference showing as dead space
+            // down the right and along the bottom.
             .frame(
                 // Always the compact floor, for the same reason as the height
                 // below: AppKit already refuses to go narrower, and pinning
@@ -234,12 +245,15 @@ struct ContentView: View {
                 // the SwiftUI minimum to the live density would clip the content
                 // for the one frame between the window shrinking and the density
                 // catching up.
-                minHeight: PanelLayoutMetrics.minimumGlassHeight(for: .compact)
+                maxWidth: .infinity,
+                minHeight: PanelLayoutMetrics.minimumGlassHeight(for: .compact),
+                maxHeight: .infinity
             )
             .background(
                 ChromeDensityReader(
                     density: $chromeDensity,
                     isSuspended: panelPresentation.isMinimized || isRestoringFromHarbor,
+                    windowSize: panelPresentation.windowSize,
                     onEnteredCompact: { restoreSize in
                         guard !showOnboarding, !showWhatsNew, !isBugReport else { return }
                         toastState.show(
@@ -249,7 +263,9 @@ struct ContentView: View {
                         ) {
                             onRestorePanelSize?(restoreSize)
                         }
-                    }
+                    },
+                    onExitedCompact: { toastState.dismiss() },
+                    onDensityChanged: { onChromeDensityChanged?($0) }
                 )
             )
             .background(WindowDragBlocker())

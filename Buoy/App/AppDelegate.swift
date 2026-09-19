@@ -246,7 +246,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             ctx.duration = BuoyMotion.duration(duration)
             ctx.timingFunction = CAMediaTimingFunction(name: timingName)
             p.animator().setFrame(frame, display: true)
-        }, completionHandler: {
+        }, completionHandler: { [weak self] in
+            self?.publishPanelSize()
             completion?()
         })
     }
@@ -329,6 +330,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             onRestorePanelSize: { [weak self] size in
                 self?.restorePanelSize(size)
             },
+            onChromeDensityChanged: { [weak self] density in
+                self?.applyDensityWidth(density)
+            },
             onClose: { [weak self] in self?.hidePanel() },
             onMinimize: { [weak self] in self?.enterMinimizedMode() },
             onExpand: { [weak self] in self?.toggleExpand() },
@@ -397,6 +401,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             overlayOverrideHeight = PanelLayoutMetrics.whatsNewOverrideHeight
         }
         panelPresentation.minimizedContentWidth = minimizedContentWidth()
+        publishPanelSize()
     }
 
     private func animateOnboardingDismiss() {
@@ -758,6 +763,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
     }
 
+    /// Narrows the panel when the chrome goes compact, and widens it back.
+    ///
+    /// The height is the user's gesture — they dragged it — but the width has
+    /// to follow it, or compact mode is regular mode with undersized buttons
+    /// rattling around in a full-width panel. Scaled rather than snapped to a
+    /// fixed width, so a panel the user had made wide stays proportionally
+    /// wide on the other side.
+    func applyDensityWidth(_ density: ChromeDensity) {
+        guard let p = panel else { return }
+        guard !panelPresentation.isMinimized, !isMinimizeAnimating else { return }
+        let live = panelContentSize(p)
+        let scale = PanelLayoutMetrics.compactWidthScale
+        let target = density == .compact ? live.width * scale : live.width / scale
+        let floor = PanelLayoutMetrics.minimumWindowWidth(for: ChromeMetrics(density: density))
+        let width = max(floor, target.rounded())
+        guard abs(width - live.width) > 0.5 else { return }
+
+        let targetFrame = resizedFrame(
+            contentSize: NSSize(width: width, height: live.height),
+            currentFrame: p.frame,
+            in: p,
+            centerHorizontally: false
+        )
+        animatePanel(to: targetFrame, duration: 0.2, timingName: .easeOut)
+        if overlayOverrideHeight == 0 {
+            lastFullSizeFrame = targetFrame
+        }
+    }
+
     func applyOverrideHeight(_ height: CGFloat?) {
         guard let p = panel else { return }
         let liveHeight = panelContentHeight(p)
@@ -912,7 +946,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func windowDidResize(_ notification: Notification) {
         recordCurrentFullSizeFrame()
+        publishPanelSize()
         cornerResizeOverlayController.updateFrames()
+    }
+
+    /// Hands the panel's real size to SwiftUI, which is what decides the chrome
+    /// density. Read-only and one-way: the danger `hosting.sizingOptions = []`
+    /// guards against is SwiftUI pushing a size *up* into AppKit, not AppKit
+    /// reporting one down.
+    func publishPanelSize() {
+        guard let p = panel else { return }
+        let size = panelContentSize(p)
+        guard size != panelPresentation.windowSize else { return }
+        panelPresentation.windowSize = size
     }
 }
 
