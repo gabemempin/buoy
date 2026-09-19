@@ -812,6 +812,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func handleCornerDragChange(_ dragging: Bool) {
         isResizingByDrag = dragging
+        panelPresentation.isResizingByDrag = dragging
         guard !dragging, let pending = pendingDensityWidth else { return }
         pendingDensityWidth = nil
         applyDensityWidth(pending)

@@ -704,6 +704,10 @@ struct ContentView: View {
     /// Squashes the panel a touch and lets it spring back, so crossing the
     /// detent registers as something that happened.
     private func bounceAfterDensityChange() {
+        // Not while a corner is held. A squash-and-spring on top of a live
+        // drag is one more thing moving against the pointer, and the snap
+        // across the detent is feedback enough on its own.
+        guard !panelPresentation.isResizingByDrag else { return }
         densitySettle = 0.965
         withAnimation(BuoyMotion.spring(response: 0.32, dampingFraction: 0.55)) {
             densitySettle = 1

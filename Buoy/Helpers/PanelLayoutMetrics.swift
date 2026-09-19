@@ -143,6 +143,13 @@ enum PanelLayoutMetrics {
         current: CGFloat,
         threshold: CGFloat
     ) -> CGFloat {
+        // An axis that is not moving is left alone. Both axes go through here
+        // on every resize event, so without this a panel whose *width* merely
+        // happened to sit inside the band was yanked to the far side of it the
+        // moment the user dragged the *height* — the panel changing shape in a
+        // direction nobody was dragging.
+        guard abs(proposed - current) > 0.5 else { return proposed }
+
         let floor = threshold - compactChromeDetentResistance
         guard proposed > floor, proposed < threshold else { return proposed }
         return current >= threshold ? threshold : floor

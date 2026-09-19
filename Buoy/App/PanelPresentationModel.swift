@@ -11,6 +11,9 @@ final class PanelPresentationModel {
     var isMinimized = false
     var fullSizeMode: PanelFullSizeMode = .compact
     var minimizedContentWidth: CGFloat = PanelLayoutMetrics.minimizedWindowMinimumWidth
+    /// True while a corner is held. Nothing should animate the panel during
+    /// that; the drag is the animation.
+    var isResizingByDrag = false
     /// The panel window's content size, published by `AppDelegate`.
     ///
     /// The chrome density used to be worked out from a `GeometryReader` on the
