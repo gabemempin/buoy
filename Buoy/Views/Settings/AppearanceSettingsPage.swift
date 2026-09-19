@@ -18,22 +18,22 @@ struct AppearanceSettingsPage: View {
             }
 
             Section(BuoyWording.colors) {
-                HStack(alignment: .top, spacing: 24) {
+                HStack(alignment: .top, spacing: 20) {
                     ColorPickerColumn(
                         title: "Window \(BuoyWording.colorLowercased)",
                         selection: $settings.windowTint,
-                        intensity: $settings.windowTintIntensity,
+                        opacity: $settings.windowTintOpacity,
                         defaultName: "None",
-                        brightness: 1
+                        lightness: 0.5
                     )
                     ColorPickerColumn(
                         title: "Accent \(BuoyWording.colorLowercased)",
                         selection: $settings.accentColor,
-                        intensity: nil,
+                        opacity: nil,
                         defaultName: "System accent",
-                        // Held just short of full so an accent never blows out
-                        // the text sitting on it.
-                        brightness: 0.92
+                        // A shade below mid, so an accent is deep enough for
+                        // white glyphs to sit on without going muddy.
+                        lightness: 0.46
                     )
                 }
                 .padding(.vertical, 4)

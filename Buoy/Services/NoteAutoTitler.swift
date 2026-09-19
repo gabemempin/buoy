@@ -101,6 +101,34 @@ final class NoteAutoTitler {
         #endif
     }
 
+    /// Why this Mac cannot run it, for the Settings row to explain itself.
+    ///
+    /// The row used to be hidden outright on an unsupported Mac, which left
+    /// anyone who had read about the feature with nowhere to find out why they
+    /// did not have it. It is shown disabled with this underneath instead.
+    static var unsupportedReason: String? {
+        guard featureEnabled else { return "Not available in this build." }
+        guard #available(macOS 26, *) else {
+            return "Needs macOS 26 or later."
+        }
+        #if canImport(FoundationModels)
+        switch SystemLanguageModel.default.availability {
+        case .available:
+            return nil
+        case .unavailable(.deviceNotEligible):
+            return "Needs a Mac with Apple Silicon."
+        case .unavailable(.appleIntelligenceNotEnabled):
+            return "Turn on Apple Intelligence in System Settings."
+        case .unavailable(.modelNotReady):
+            return "The on-device model is still downloading."
+        case .unavailable:
+            return "Not available on this Mac."
+        }
+        #else
+        return "Needs a Mac with Apple Silicon."
+        #endif
+    }
+
     /// Called by `NoteStore.saveContent` whenever the current note is still
     /// unlocked. Cheap to call on every keystroke — it only resets a short
     /// coalescing timer. Everything that needs the note's plain text (the

@@ -1,11 +1,11 @@
 import SwiftUI
 
-/// Root of the Settings window: a page picker across the top, the page below.
+/// Root of the Settings window: a floating page picker over one glass surface.
 ///
-/// Deliberately built from native controls and `Form`. Buoy's glass belongs to
-/// the note panel; a settings window that tried to wear it would read as a
-/// second, competing surface — and it is the one place in the app where users
-/// arrive expecting System Settings' conventions, not Buoy's.
+/// Built from native controls and `Form`, because this is where users arrive
+/// expecting System Settings' conventions. The surface itself is Buoy's own
+/// glass, so the window belongs to the app rather than being the one flat
+/// rectangle in it.
 struct SettingsWindowView: View {
     @Bindable var store: SettingsStore
     /// Holds the selected page outside the view so the window controller can
@@ -19,36 +19,29 @@ struct SettingsWindowView: View {
     private var page: SettingsPage { model.page }
 
     var body: some View {
-        VStack(spacing: 0) {
-            SettingsTopBar(selection: selection, onSelect: onPageChange)
-
-            Divider()
-
-            detail
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        }
-        .background(windowBackground)
-        .environment(\.buoyTheme, theme)
-        .tint(theme.accent)
-        .onAppear { onPageChange(page) }
-        .onChange(of: model.page) { _, newValue in onPageChange(newValue) }
+        // The bar floats over the page rather than sitting above it, so the
+        // window is one surface. The form's own top inset keeps the first row
+        // clear of it.
+        detail
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                SettingsTopBar(selection: selection, onSelect: onPageChange)
+                    .padding(.top, 10)
+                    .padding(.bottom, 8)
+                    // The strip around the capsule is the window's grab
+                    // handle, since the title bar is behind the content.
+                    .frame(maxWidth: .infinity)
+                    .background(WindowDragHandle())
+            }
+            .background(SettingsWindowSurface(theme: theme))
+            .environment(\.buoyTheme, theme)
+            .tint(theme.accent)
+            .onAppear { onPageChange(page) }
+            .onChange(of: model.page) { _, newValue in onPageChange(newValue) }
     }
 
     private var theme: BuoyTheme {
         BuoyTheme(settings: store.value)
-    }
-
-    /// The window background, plus the user's tint if they picked one — kept
-    /// far weaker than on the panel. This is a settings window full of text and
-    /// system controls, and it only needs to read as the same app.
-    private var windowBackground: some View {
-        Color(nsColor: .windowBackgroundColor)
-            .overlay {
-                if let tint = theme.tint {
-                    tint.opacity(min(0.10, theme.tintIntensity * 0.10))
-                }
-            }
-            .ignoresSafeArea()
     }
 
     private var selection: Binding<SettingsPage> {
@@ -81,13 +74,48 @@ final class SettingsWindowModel {
 }
 
 enum SettingsWindowMetrics {
-    static let topBarHeight: CGFloat = 52
-    static let contentWidth: CGFloat = 580
-    static let contentHeight: CGFloat = 470
+    static let contentWidth: CGFloat = 480
+    static let contentHeight: CGFloat = 430
+    /// Resizable, but not to a width where the two colour columns collide or
+    /// a shortcut row's keycaps meet its label.
+    static let minimumContentWidth: CGFloat = 440
+    static let minimumContentHeight: CGFloat = 360
     /// Forms stop here and centre in whatever is left. A grouped form that
-    /// fills the whole window leaves its controls stranded at the far right,
-    /// a long way from the labels they belong to.
-    static let formMaxWidth: CGFloat = 500
+    /// fills a wide window leaves its controls stranded at the far right, a
+    /// long way from the labels they belong to.
+    static let formMaxWidth: CGFloat = 440
+}
+
+/// The window's own surface.
+///
+/// Liquid Glass on macOS 26, so Settings is made of the same material as the
+/// note panel instead of being the one flat rectangle in the app. The window
+/// is transparent underneath this; see `SettingsWindowController`.
+private struct SettingsWindowSurface: View {
+    let theme: BuoyTheme
+
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    var body: some View {
+        Group {
+            if reduceTransparency {
+                Color(nsColor: .windowBackgroundColor)
+            } else if #available(macOS 26, *) {
+                Color.clear.glassEffect(.regular, in: Rectangle())
+            } else {
+                Color(nsColor: .windowBackgroundColor)
+            }
+        }
+        .overlay {
+            // The same tint as the panel, at a fraction of the strength. This
+            // is a window full of text and system controls; it only needs to
+            // read as the same app.
+            if let tint = theme.tint {
+                tint.opacity(min(0.10, theme.tintOpacityFraction * 0.10))
+            }
+        }
+        .ignoresSafeArea()
+    }
 }
 
 /// Shared page shell: a grouped `Form` with the window background showing

@@ -16,39 +16,44 @@ enum SettingsPage: String, CaseIterable, Identifiable, Hashable {
         }
     }
 
+    var symbolName: String {
+        switch self {
+        case .general:    return "gearshape"
+        case .appearance: return "paintpalette"
+        case .shortcuts:  return "keyboard"
+        }
+    }
 }
 
-/// The window's page picker: one segmented control across the top.
+/// The window's page picker: one glass capsule floating over the content.
 ///
-/// Tried as a sidebar first, then as a row of coloured tiles. Both were more
-/// furniture than three pages need — a settings window with this little in it
-/// should not open with a navigation column. A segmented control says "these
-/// are the three views" in one object, and it is the control macOS already
-/// uses for exactly this.
+/// It sits *on* the page rather than in a bar of its own. A full-width strip
+/// with a divider under it gave three short words the weight of a toolbar, and
+/// left a band of empty space either side of them for no reason.
 struct SettingsTopBar: View {
     @Binding var selection: SettingsPage
     var onSelect: (SettingsPage) -> Void
 
+    @Namespace private var selectionNamespace
+
     var body: some View {
-        HStack(spacing: 0) {
+        HStack(spacing: 2) {
             ForEach(SettingsPage.allCases) { page in
-                SettingsTopBarItem(page: page, isSelected: selection == page) {
+                SettingsTopBarItem(
+                    page: page,
+                    isSelected: selection == page,
+                    namespace: selectionNamespace
+                ) {
                     guard selection != page else { return }
-                    selection = page
+                    withAnimation(BuoyMotion.spring(response: 0.3, dampingFraction: 0.82)) {
+                        selection = page
+                    }
                     onSelect(page)
                 }
             }
         }
-        .padding(3)
-        .background(Capsule().fill(Color.buoySegmentTrack))
-        .animation(BuoyMotion.easeInOut(0.15), value: selection)
-        // Centred in the window rather than inset past the traffic lights: the
-        // pill is far narrower than the window, so the lights never reach it.
-        .frame(maxWidth: .infinity)
-        .frame(height: SettingsWindowMetrics.topBarHeight)
-        // The strip doubles as the window's grab handle, since the title bar
-        // is behind it.
-        .background(WindowDragHandle())
+        .padding(4)
+        .buoyGlassCapsule()
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Settings sections")
     }
@@ -57,23 +62,37 @@ struct SettingsTopBar: View {
 private struct SettingsTopBarItem: View {
     let page: SettingsPage
     let isSelected: Bool
+    let namespace: Namespace.ID
     let action: () -> Void
+
+    @State private var isHovering = false
 
     var body: some View {
         Button(action: action) {
-            Text(page.title)
-                .font(BuoyFont.control)
-                .foregroundStyle(isSelected ? Color.primary : Color.secondary)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 5)
-                .background {
-                    if isSelected {
-                        Capsule().fill(Color.buoySegmentSelection)
-                    }
+            HStack(spacing: 5) {
+                Image(systemName: page.symbolName)
+                    .font(.system(size: 11, weight: .medium))
+                Text(page.title)
+                    .font(BuoyFont.control)
+            }
+            .foregroundStyle(isSelected ? Color.primary : Color.secondary)
+            .padding(.horizontal, 11)
+            .padding(.vertical, 5)
+            .background {
+                if isSelected {
+                    // Matched so the pill slides between tabs instead of
+                    // blinking out of one and into the next.
+                    Capsule()
+                        .fill(Color.buoySegmentSelection)
+                        .matchedGeometryEffect(id: "selection", in: namespace)
+                } else if isHovering {
+                    Capsule().fill(Color.buoyControlFill)
                 }
-                .contentShape(Capsule())
+            }
+            .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
         .pointingHandCursor()
         .accessibilityLabel(page.title)
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)

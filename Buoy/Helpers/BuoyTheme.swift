@@ -10,23 +10,23 @@ import AppKit
 /// is independent of Light/Dark, so the same hue reads pale on a light panel
 /// and deep on a dark one rather than deciding the appearance for you.
 struct BuoyTheme: Equatable {
-    var accentChoice: HSBColor?
-    var tintChoice: HSBColor?
-    var tintIntensity: Double
+    var accentChoice: HSLColor?
+    var tintChoice: HSLColor?
+    var tintOpacityFraction: Double
 
-    static let system = BuoyTheme(accentChoice: nil, tintChoice: nil, tintIntensity: 0)
+    static let system = BuoyTheme(accentChoice: nil, tintChoice: nil, tintOpacityFraction: 0)
 
-    init(accentChoice: HSBColor?, tintChoice: HSBColor?, tintIntensity: Double) {
+    init(accentChoice: HSLColor?, tintChoice: HSLColor?, tintOpacityFraction: Double) {
         self.accentChoice = accentChoice
         self.tintChoice = tintChoice
-        self.tintIntensity = tintIntensity.clampedToUnitRange
+        self.tintOpacityFraction = tintOpacityFraction.clampedToUnitRange
     }
 
     init(settings: AppSettings) {
         self.init(
             accentChoice: settings.accentColor,
             tintChoice: settings.windowTint,
-            tintIntensity: settings.windowTintIntensity
+            tintOpacityFraction: settings.windowTintOpacity
         )
     }
 
@@ -60,7 +60,7 @@ struct BuoyTheme: Equatable {
     /// below "coloured".
     var tintOpacity: Double {
         guard tintChoice != nil else { return 0 }
-        return 0.06 + tintIntensity * 0.30
+        return 0.06 + tintOpacityFraction * 0.30
     }
 
     /// The same wash on an opaque surface, where there is no blur to soften it.

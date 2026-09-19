@@ -93,9 +93,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
                 width: SettingsWindowMetrics.contentWidth,
                 height: SettingsWindowMetrics.contentHeight
             ),
-            // No `.resizable`: every page fits, and a resizable settings window
-            // only ever gets dragged to a size that makes the sidebar look wrong.
-            styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
@@ -106,6 +104,15 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         // says, and there is no toolbar because nothing else belongs up there.
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
+        // The surface is drawn in SwiftUI so the window can wear Liquid Glass
+        // like the note panel. An opaque window would put a flat rectangle
+        // behind the material and there would be nothing for it to sample.
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.contentMinSize = NSSize(
+            width: SettingsWindowMetrics.minimumContentWidth,
+            height: SettingsWindowMetrics.minimumContentHeight
+        )
         window.isReleasedWhenClosed = false
         window.hidesOnDeactivate = false
         window.delegate = self

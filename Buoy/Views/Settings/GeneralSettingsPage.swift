@@ -24,43 +24,67 @@ struct GeneralSettingsPage: View {
                 Toggle("Launch at Login", isOn: $settings.launchAtLogin)
             }
 
-            // Hidden outright rather than shown-disabled: auto-naming only ever
-            // applies on Apple Silicon Macs with Apple Intelligence on, and a
-            // permanently greyed row is a worse answer than no row.
-            if NoteAutoTitler.isSupported {
-                Section("Notes") {
-                    Toggle(isOn: $settings.autoTitleEnabled) {
-                        Text("Auto-name New Notes")
+            // Shown disabled rather than hidden on a Mac that cannot run it.
+            // Hiding the row left anyone who had read about the feature with
+            // nowhere to find out why they did not have it; the reason says so.
+            Section("Notes") {
+                Toggle(isOn: $settings.autoTitleEnabled) {
+                    Text("Auto-name New Notes")
+                    if let reason = NoteAutoTitler.unsupportedReason {
+                        Text(reason)
+                    } else {
                         Text("Names a new note on-device once you have written a few lines.")
                     }
                 }
+                .disabled(!NoteAutoTitler.isSupported)
             }
 
             // About lived on its own page while there was a sidebar to hang it
             // from. It is four lines; with three tabs across the top it reads
             // better as the last section here than as a tab of its own.
-            Section("About") {
-                LabeledContent("Buoy") {
-                    Text(versionLine)
-                        .monospacedDigit()
-                        .foregroundStyle(.secondary)
-                }
+            // About lived on its own page while there was a sidebar to hang it
+            // from. It is the app's name and three buttons; with three tabs
+            // across the top it reads better as the last section here.
+            Section {
+                HStack(alignment: .center, spacing: 12) {
+                    Image(nsImage: NSApp.applicationIconImage)
+                        .resizable()
+                        .frame(width: 52, height: 52)
+                        .accessibilityHidden(true)
 
-                HStack(spacing: 8) {
-                    Spacer()
-                    Button(action: checkForUpdates) {
-                        // Fixed so the row does not jump when the label swaps
-                        // to a status line and back.
-                        Text(updateStatus ?? "Check for Updates").frame(width: 152)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Buoy")
+                            // The note title's face. It is the app's name in
+                            // the app's own lettering, not a form label.
+                            .font(Font(PanelLayoutMetrics.minimizedTitleFont))
+                        Text(versionLine)
+                            .font(BuoyFont.secondary)
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
                     }
-                    .accessibilityLabel("Check for Updates")
-                    .accessibilityValue(updateStatus ?? "")
 
-                    Button("Report a Bug", action: onReportBug)
-                    Button("Quit Buoy", role: .destructive, action: onQuit)
+                    Spacer(minLength: 8)
+
+                    VStack(alignment: .trailing, spacing: 5) {
+                        Button(action: checkForUpdates) {
+                            // Fixed so the column does not jump when the label
+                            // swaps to a status line and back.
+                            Text(updateStatus ?? "Check for Updates").frame(width: 128)
+                        }
+                        .accessibilityLabel("Check for Updates")
+                        .accessibilityValue(updateStatus ?? "")
+
+                        Button("Report a Bug", action: onReportBug)
+                            .frame(width: 128)
+                        Button("Quit Buoy", role: .destructive, action: onQuit)
+                            .frame(width: 128)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.regular)
+                .padding(.vertical, 2)
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel("About Buoy")
             }
         }
         .onDisappear { updateStatusTask?.cancel() }
