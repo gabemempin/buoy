@@ -786,7 +786,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             in: p,
             centerHorizontally: false
         )
-        animatePanel(to: targetFrame, duration: 0.2, timingName: .easeOut)
+        // Set, not animated. The height has already jumped — the detent
+        // releases in one frame — so a width that slides in over 0.2s arrives
+        // late and reads as a stutter rather than one movement.
+        p.setFrame(targetFrame, display: true)
+        publishPanelSize()
         if overlayOverrideHeight == 0 {
             lastFullSizeFrame = targetFrame
         }

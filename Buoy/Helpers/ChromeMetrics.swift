@@ -229,12 +229,12 @@ struct ChromeDensityReader: View {
         hasRead = true
         guard next != density else { return }
 
-        // Short and barely under-damped. The window crosses the detent in one
-        // frame, so the chrome has to arrive with it — a long, loose spring
-        // beside an instant jump reads as two separate things happening.
-        withAnimation(BuoyMotion.spring(response: 0.2, dampingFraction: 0.78)) {
-            density = next
-        }
+        // No animation on the swap itself. The window crosses the detent in a
+        // single frame, so anything that eases the chrome into place is a
+        // second timeline running against that jump — which is what the
+        // stutter was. The bounce lives on one property in `ContentView`,
+        // applied after everything has already landed.
+        density = next
 
         guard !wasFirstReading else { return }
         onDensityChanged?(next)

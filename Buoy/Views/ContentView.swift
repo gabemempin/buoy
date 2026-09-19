@@ -54,6 +54,13 @@ struct ContentView: View {
     /// How tightly the chrome is drawn. Driven by the panel's height and by
     /// the Settings toggle; see `ChromeDensityReader`.
     @State private var chromeDensity: ChromeDensity = .regular
+    /// The settle after a density change.
+    ///
+    /// One spring on one number, run once everything else has already landed.
+    /// The bounce used to be spread across three things moving at once — the
+    /// window's height jumping, its width easing, and the chrome springing —
+    /// which is why it stuttered instead of bouncing.
+    @State private var densitySettle: CGFloat = 1
     /// True from the moment Harbor Mode is left until its frame animation has
     /// finished. The full panel remounts at the *pill's* height and the window
     /// then grows under it, so the heights the density reader would see during
@@ -265,11 +272,15 @@ struct ContentView: View {
                         }
                     },
                     onExitedCompact: { toastState.dismiss() },
-                    onDensityChanged: { onChromeDensityChanged?($0) }
+                    onDensityChanged: { density in
+                        onChromeDensityChanged?(density)
+                        bounceAfterDensityChange()
+                    }
                 )
             )
             .background(WindowDragBlocker())
             .overlay { deleteConfirmOverlay }
+            .scaleEffect(densitySettle)
             .buoyGlass()
             // Applied outermost on purpose. `.environment` reaches the modified
             // view and everything *inside* it, so setting it above `.buoyGlass`
@@ -688,6 +699,15 @@ struct ContentView: View {
     private func toggleSettings() {
         guard !showWhatsNew, !showOnboarding else { return }
         showSettings.toggle()
+    }
+
+    /// Squashes the panel a touch and lets it spring back, so crossing the
+    /// detent registers as something that happened.
+    private func bounceAfterDensityChange() {
+        densitySettle = 0.965
+        withAnimation(BuoyMotion.spring(response: 0.32, dampingFraction: 0.55)) {
+            densitySettle = 1
+        }
     }
 
     private func toggleAllNotes() {
