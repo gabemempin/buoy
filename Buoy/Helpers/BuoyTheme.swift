@@ -74,61 +74,44 @@ struct BuoyTheme: Equatable {
         return clampedAccent(accentChoice).luminance
     }
 
-    /// The accent as *text*, kept readable against whatever the panel is
-    /// tinted.
+    /// The accent as *text*, or the plain title colour when the accent cannot
+    /// be read against the panel.
     ///
-    /// Three attempts at this, and the first two are why the rule is shaped
-    /// the way it is. Forcing a fixed lightness made every accent arrive at
-    /// the same brightness whatever its hue: bright yellow buttons, olive
-    /// title. Using the accent untouched left a green title invisible on a
-    /// green panel. A hue-aware colour distance — the obvious middle
-    /// ground — called green-on-yellow "different enough", which it is for a
-    /// filled shape and is not for 19pt letterforms.
+    /// The accent is used exactly as chosen whenever it stands apart from the
+    /// panel — either in luminance, or by being far enough round the hue wheel
+    /// from the tint that the hue alone carries it. A yellow title on a blue
+    /// panel has almost no luminance contrast and is perfectly legible, so it
+    /// is left alone.
     ///
-    /// So the test is luminance contrast, the thing type actually needs. What
-    /// keeps it from flattening every hue is the *direction*: the title moves
-    /// away from the panel on the side it is already on. A yellow accent on a
-    /// blue panel is the lighter of the two, so it gets lighter still and
-    /// stays yellow; a green accent on a pale panel is the darker, so it
-    /// deepens. Hue and saturation are never touched.
+    /// When neither holds, the title falls back to the ordinary text colour
+    /// rather than to a nudged accent. Three earlier versions tried to walk the
+    /// accent's lightness until it cleared the background, and every one of
+    /// them produced something worse than plain text: a fixed target turned
+    /// every accent olive, moving down turned a bright yellow into mud, moving
+    /// up turned it white. A pale accent on a pale panel simply has no readable
+    /// version of itself — near-black reads as a decision, olive reads as a
+    /// bug.
     func accentText(isDark: Bool) -> NSColor {
+        let plain: NSColor = isDark ? .white : NSColor(white: 0.15, alpha: 1)
         guard let accentChoice else {
             return isDark ? .white : .controlAccentColor
         }
         let accent = clampedAccent(accentChoice)
         let background = Self.luminance(panelBackground(isDark: isDark))
-        guard Self.contrast(accent.luminance, background) < Self.minimumTitleContrast else {
-            return accent.nsColor
-        }
-        // Close in lightness is only a problem when the two are also close in
-        // hue. A yellow title on a blue panel has little luminance contrast and
-        // is perfectly readable, because the hue carries it; a green title on a
-        // yellow-green one has the same numbers and is not. Adjusting on
-        // luminance alone turned that yellow white.
-        if let tintChoice, Self.hueDistance(accent.hue, tintChoice.hue) >= Self.distinctHueDistance {
-            return accent.nsColor
-        }
 
-        let step: Double = accent.luminance >= background ? 0.03 : -0.03
-        var lightness = accent.lightness
-        var best = accent
-        // Past the legible clamp if it has to be: that band is about a fill
-        // holding its own against the panel, and a title that cannot be read
-        // is the worse failure of the two.
-        for _ in 0..<30 {
-            lightness += step
-            guard lightness > 0.05, lightness < 0.95 else { break }
-            best = HSLColor(hue: accent.hue, saturation: accent.saturation, lightness: lightness)
-            if Self.contrast(best.luminance, background) >= Self.minimumTitleContrast {
-                break
-            }
+        if Self.contrast(accent.luminance, background) >= Self.minimumTitleContrast {
+            return accent.nsColor
         }
-        return best.nsColor
+        if let tintChoice,
+           Self.hueDistance(accent.hue, tintChoice.hue) >= Self.distinctHueDistance {
+            return accent.nsColor
+        }
+        return plain
     }
 
     /// Deliberately short of the 4.5 a body-text guideline would ask for. The
-    /// title is large and semibold, and the point here is to stop a collision,
-    /// not to repaint every accent that is merely close.
+    /// title is large and semibold, and the point is to catch a collision, not
+    /// to drop every accent that is merely close.
     private static let minimumTitleContrast: Double = 2.0
 
     /// Far enough apart on the wheel to stand on hue alone: a quarter turn.
