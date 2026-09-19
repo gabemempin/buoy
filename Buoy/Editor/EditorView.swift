@@ -459,12 +459,22 @@ struct EditorView: NSViewRepresentable {
         }
 
         if abs(scrollView.magnification - magnification) > 0.001 {
+            // The scroller is hidden across the change and brought back a beat
+            // later, the same way a note switch does it. Magnification relays
+            // the whole document out, and AppKit flashes an overlay scroller
+            // for any layout that briefly leaves content taller than the clip
+            // view — which on every compact switch read as the bar stuttering
+            // in and out at the edge of the note.
+            scrollView.hasVerticalScroller = false
             scrollView.magnification = magnification
             // The text container tracks the clip view's width in document
             // coordinates, which magnification changes, so the text reflows
             // and the amount left to scroll with it.
             scrollView.layoutSubtreeIfNeeded()
             (scrollView as? DragBlockingScrollView)?.refreshEdgeFade()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                scrollView.hasVerticalScroller = true
+            }
         }
 
         if textView.usesDarkAppearance != usesDarkAppearance {

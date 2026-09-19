@@ -220,8 +220,13 @@ final class CornerResizeOverlayController {
         }
     }
 
+    /// Told when a corner drag starts and stops. The delegate defers anything
+    /// that would move the window itself until the user lets go.
+    var onDraggingChange: ((Bool) -> Void)?
+
     private func handleDraggingChange(_ dragging: Bool) {
         isDragging = dragging
+        onDraggingChange?(dragging)
         transitionGeneration += 1
         if dragging {
             return

@@ -33,6 +33,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var hasPositioned = false
     private var lastFullSizeFrame: NSRect?
     private var isMinimizeAnimating = false
+    /// True while the user has hold of a corner. Nothing may move the window
+    /// during that: the drag computes every frame from where it started, so a
+    /// width changed underneath it is undone on the very next mouse event and
+    /// the panel flickers between two shapes.
+    private var isResizingByDrag = false
+    /// A density width change that arrived mid-drag, applied on release.
+    private var pendingDensityWidth: ChromeDensity?
     private var minimizeAnimationGeneration = 0
 
     private func panelContentHeight(_ panel: NSPanel) -> CGFloat {
@@ -390,6 +397,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         p.contentView = hosting
 
         panel = p
+        cornerResizeOverlayController.onDraggingChange = { [weak self] dragging in
+            self?.handleCornerDragChange(dragging)
+        }
         cornerResizeOverlayController.attach(to: p)
         applyPanelMinimumSize(forMinimizedLayout: false)
         // `currentHeight` is the height to fall back to once an overlay closes, so
@@ -773,6 +783,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func applyDensityWidth(_ density: ChromeDensity) {
         guard let p = panel else { return }
         guard !panelPresentation.isMinimized, !isMinimizeAnimating else { return }
+        guard !isResizingByDrag else {
+            pendingDensityWidth = density
+            return
+        }
         let live = panelContentSize(p)
         let scale = PanelLayoutMetrics.compactWidthScale
         let target = density == .compact ? live.width * scale : live.width / scale
@@ -794,6 +808,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if overlayOverrideHeight == 0 {
             lastFullSizeFrame = targetFrame
         }
+    }
+
+    private func handleCornerDragChange(_ dragging: Bool) {
+        isResizingByDrag = dragging
+        guard !dragging, let pending = pendingDensityWidth else { return }
+        pendingDensityWidth = nil
+        applyDensityWidth(pending)
     }
 
     func applyOverrideHeight(_ height: CGFloat?) {
