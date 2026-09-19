@@ -12,14 +12,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var globalMouseMonitor: Any?
     private var localMouseMonitor: Any?
     private let cornerResizeOverlayController = CornerResizeOverlayController()
-    private lazy var settingsWindowController = SettingsWindowController(
-        store: settingsStore,
-        panelWindowProperties: { [weak self] in
-            (self?.panel?.level ?? .normal, self?.panel?.appearance)
-        },
-        onReportBug: { [weak self] in self?.startBugReport() },
-        onQuit: { NSApp.terminate(nil) }
-    )
     /// The last settings values whose side effects were applied. `.settingsDidChange`
     /// fires for every field, but activation policy, the login item and the global
     /// hotkey must only be touched when their own value actually moved.
@@ -334,7 +326,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             onCornerResizeAvailabilityChange: { [weak self] isAvailable in
                 self?.cornerResizeOverlayController.setEnabled(isAvailable)
             },
-            onOpenSettings: { [weak self] in self?.openSettings() },
             onClose: { [weak self] in self?.hidePanel() },
             onMinimize: { [weak self] in self?.enterMinimizedMode() },
             onExpand: { [weak self] in self?.toggleExpand() },
@@ -752,8 +743,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     /// Opens the Settings window. Deliberately does *not* show or restore the
     /// note panel: Settings is its own window now, and yanking the panel out of
     /// Harbor Mode to open a window somewhere else would be a non sequitur.
+    /// Asks the panel to show its Settings popover.
+    ///
+    /// Settings is anchored to the footer's gear rather than being a window of
+    /// its own, so opening it means bringing the panel forward and telling it
+    /// to toggle — there is nothing here to order front.
     @objc func openSettings() {
-        settingsWindowController.toggle(page: .general)
+        showPanel()
+        if panelPresentation.isMinimized { exitMinimizedMode() }
+        NotificationCenter.default.post(name: .openSettings, object: nil)
     }
 
     /// Creates the ephemeral bug-report note. Called from the About page, which
@@ -783,7 +781,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         panel?.level = settings.alwaysOnTop ? .statusBar : .normal
         cornerResizeOverlayController.syncWindowProperties()
 
-        settingsWindowController.syncWindowProperties()
 
         // The three below used to be applied inline by the settings overlay's
         // own `onChange` handlers. They belong here now that the view is in a
@@ -885,7 +882,11 @@ extension AppDelegate {
 }
 
 extension Notification.Name {
-    /// Posted by the Settings window's About page. The bug-report note lives in
+    /// Toggles the panel's Settings popover. Posted by ⌘, the menu bar and the
+    /// status item, all of which are outside the panel's view tree.
+    static let openSettings = Notification.Name("BuoyOpenSettings")
+
+    /// Posted by the Settings popover's About page. The bug-report note lives in
     /// the panel, so the request has to cross windows.
     static let buoyStartBugReport = Notification.Name("BuoyStartBugReport")
 }

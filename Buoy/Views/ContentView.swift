@@ -36,7 +36,6 @@ struct ContentView: View {
     var onOverrideHeight: ((CGFloat?) -> Void)?
     var onMinimizedWidthChange: ((CGFloat) -> Void)?
     var onCornerResizeAvailabilityChange: ((Bool) -> Void)?
-    var onOpenSettings: () -> Void
     var onClose: () -> Void
     var onMinimize: () -> Void
     var onExpand: () -> Void
@@ -44,6 +43,8 @@ struct ContentView: View {
 
     // Panel visibility
     @State private var showAllNotes = false
+    /// The Settings popover, anchored to the footer's gear.
+    @State private var showSettings = false
 
     /// How tightly the chrome is drawn. Driven by the panel's height and by
     /// the Settings toggle; see `ChromeDensityReader`.
@@ -101,7 +102,6 @@ struct ContentView: View {
         onOverrideHeight: ((CGFloat?) -> Void)? = nil,
         onMinimizedWidthChange: ((CGFloat) -> Void)? = nil,
         onCornerResizeAvailabilityChange: ((Bool) -> Void)? = nil,
-        onOpenSettings: @escaping () -> Void,
         onClose: @escaping () -> Void,
         onMinimize: @escaping () -> Void,
         onExpand: @escaping () -> Void,
@@ -114,7 +114,6 @@ struct ContentView: View {
         self.onOverrideHeight = onOverrideHeight
         self.onMinimizedWidthChange = onMinimizedWidthChange
         self.onCornerResizeAvailabilityChange = onCornerResizeAvailabilityChange
-        self.onOpenSettings = onOpenSettings
         self.onClose = onClose
         self.onMinimize = onMinimize
         self.onExpand = onExpand
@@ -162,6 +161,7 @@ struct ContentView: View {
             .buoyNextNote:        { navigateNote(forward: true) },
             .buoyToggleAllNotes:  { toggleAllNotes() },
             .buoyInsertLink:      { showLinkDialogFromToolbar() },
+            .openSettings:        { toggleSettings() },
             .buoyStartBugReport:  { createBugReportNote() },
             .buoyAutoTitleFailed: { toastState.show("Couldn't name this note", style: .warning) },
             .buoyAutoTitleUnsupportedLanguage: { toastState.show("Auto-naming isn't available for this note", style: .warning) }
@@ -376,7 +376,10 @@ struct ContentView: View {
                     updatedAt: noteStore.currentNote?.updatedAt ?? 0,
                     plainText: noteStore.currentNote.map(NotePlainText.of) ?? "",
                     selectedText: editorSelectedText,
-                    onSettings:  onOpenSettings,
+                    isSettingsPresented: $showSettings,
+                    settings: $settings,
+                    onReportBug: createBugReportNote,
+                    onQuit: { NSApp.terminate(nil) },
                     onTransferToAppleNotes: transferToAppleNotes,
                     onCopy: copyToClipboard,
                     isBugReport: isBugReport,
@@ -653,6 +656,11 @@ struct ContentView: View {
         showSelectionLinkDialog = false
         showLinkDialog = false
         withAnimation(BuoyMotion.easeOut(0.16)) { showAllNotes = false }
+    }
+
+    private func toggleSettings() {
+        guard !showWhatsNew, !showOnboarding else { return }
+        showSettings.toggle()
     }
 
     private func toggleAllNotes() {

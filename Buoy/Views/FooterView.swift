@@ -5,7 +5,10 @@ struct FooterView: View {
     var updatedAt: Int64
     var plainText: String = ""
     var selectedText: String = ""
-    var onSettings: () -> Void
+    @Binding var isSettingsPresented: Bool
+    @Binding var settings: AppSettings
+    var onReportBug: () -> Void
+    var onQuit: () -> Void
     var onTransferToAppleNotes: () -> Void
     var onCopy: () -> Void
     var isBugReport: Bool = false
@@ -104,7 +107,7 @@ struct FooterView: View {
                     // Shortcuts used to have a button of its own here. It is a
                     // page inside Settings now, and two gateways to the same
                     // window is one more than the footer has room for.
-                    Button(action: onSettings) {
+                    Button { isSettingsPresented.toggle() } label: {
                         Image(systemName: "gearshape")
                             .font(.system(size: metrics.footerButtonIconSize))
                             .foregroundStyle(Color.buoyOnAccent(isProminent: isSettingsHovering))
@@ -116,6 +119,18 @@ struct FooterView: View {
                     .help("Settings")
                     .accessibilityLabel("Settings")
                     .onHover { isSettingsHovering = $0 }
+                    // Anchored to the gear, like the link editor and Transfer
+                    // to Apple Notes. Settings was a separate window for a
+                    // while and every behaviour it needed — pointing at its
+                    // button, moving with the panel, closing on a click away —
+                    // had to be built by hand. A popover has all of it.
+                    .popover(isPresented: $isSettingsPresented, arrowEdge: .top) {
+                        SettingsPopover(
+                            settings: $settings,
+                            onReportBug: onReportBug,
+                            onQuit: onQuit
+                        )
+                    }
                 }
 
                 Spacer()

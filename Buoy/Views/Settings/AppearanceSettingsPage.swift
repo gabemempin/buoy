@@ -48,7 +48,7 @@ struct AppearanceSettingsPage: View {
                     Slider(value: $settings.windowTintOpacity, in: 0...1)
                         // The same lane as the text-size slider below, so the
                         // two read as one column rather than two guesses.
-                        .frame(width: SettingsWindowMetrics.sliderWidth)
+                        .frame(width: SettingsPopoverMetrics.sliderWidth)
                         .disabled(settings.windowTint == nil)
                         .accessibilityLabel("Window \(BuoyWording.colorLowercased) opacity")
                         .accessibilityValue("\(Int(settings.windowTintOpacity * 100)) percent")
@@ -118,7 +118,7 @@ private struct EditorFontSizeSlider: View {
                 .frame(height: 4)
                 .accessibilityHidden(true)
             }
-            .frame(width: SettingsWindowMetrics.sliderWidth)
+            .frame(width: SettingsPopoverMetrics.sliderWidth)
 
             Text("\(Int(value)) pt")
                 .font(BuoyFont.secondary)
