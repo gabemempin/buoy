@@ -129,7 +129,20 @@ struct FooterView: View {
                     // settings are being changed for — including the window
                     // colour, which is the one thing you need to see while
                     // picking it.
-                    .popover(isPresented: $isSettingsPresented, arrowEdge: .leading) {
+                    .popover(
+                        isPresented: $isSettingsPresented,
+                        attachmentAnchor: .rect(
+                            .rect(
+                                CGRect(
+                                    x: -SettingsPopoverMetrics.anchorGap,
+                                    y: 0,
+                                    width: metrics.footerButtonSize + SettingsPopoverMetrics.anchorGap,
+                                    height: metrics.footerButtonSize
+                                )
+                            )
+                        ),
+                        arrowEdge: .leading
+                    ) {
                         SettingsPopover(
                             settings: $settings,
                             onReportBug: onReportBug,

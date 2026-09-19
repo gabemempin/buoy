@@ -38,6 +38,14 @@ struct SettingsPopover: View {
             content
         }
         .frame(width: SettingsPopoverMetrics.width, height: SettingsPopoverMetrics.height)
+        // The popover wears the window colour too. It is the surface the
+        // colour is being chosen on, and a neutral one sitting against a
+        // tinted panel made the choice harder to judge, not easier.
+        .background {
+            if let tint = theme.tint {
+                tint.opacity(theme.tintOpacity)
+            }
+        }
         .environment(\.buoyTheme, theme)
         .tint(theme.accent)
     }
@@ -62,6 +70,10 @@ struct SettingsPopover: View {
 enum SettingsPopoverMetrics {
     static let width: CGFloat = 360
     static let height: CGFloat = 420
+    /// Gap between the gear and the popover's arrow, so the two are not
+    /// welded together. `.popover` has no offset of its own, so the anchor
+    /// rect is widened by this instead.
+    static let anchorGap: CGFloat = 10
     /// One lane for every slider in here.
     static let sliderWidth: CGFloat = 120
 }
