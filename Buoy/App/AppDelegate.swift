@@ -753,7 +753,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     /// note panel: Settings is its own window now, and yanking the panel out of
     /// Harbor Mode to open a window somewhere else would be a non sequitur.
     @objc func openSettings() {
-        settingsWindowController.show(page: .general)
+        settingsWindowController.toggle(page: .general)
     }
 
     /// Creates the ephemeral bug-report note. Called from the About page, which

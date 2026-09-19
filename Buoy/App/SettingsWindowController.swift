@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import QuartzCore
 
 /// Buoy's Settings window.
 ///
@@ -42,10 +43,32 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     // MARK: - Presentation
 
+    /// Opens Settings, or closes it if it is already up.
+    ///
+    /// The gear is a toggle rather than a one-way door, because a window that
+    /// follows the panel around is part of the panel as far as the user is
+    /// concerned, and the button that opened it should put it away.
+    @discardableResult
+    func toggle(page: SettingsPage) -> Bool {
+        if isVisible, model.page == page {
+            close()
+            return false
+        }
+        show(page: page)
+        return true
+    }
+
     func show(page: SettingsPage) {
         model.page = page
         let window = ensureWindow()
         syncWindowProperties()
+        attachToPanel(window)
+
+        if !window.isVisible {
+            positionAlongsidePanel(window)
+            animateOpen(window)
+        }
+
         // `.accessory` apps get no activation from `makeKeyAndOrderFront`
         // alone, and an unactivated settings window cannot type into the
         // shortcut recorder.
@@ -56,7 +79,102 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     var isVisible: Bool { window?.isVisible ?? false }
 
     func close(_ sender: Any? = nil) {
-        window?.performClose(nil)
+        guard let window, window.isVisible else { return }
+        animateClosed(window)
+    }
+
+    // MARK: Following the panel
+
+    /// Makes Settings a child of the note panel.
+    ///
+    /// Two things fall out of this, both of them what the user asked for. A
+    /// child window is dragged along by its parent, so Settings stays beside
+    /// the panel wherever the panel goes. And it is always ordered above the
+    /// panel, so the floating always-on-top panel can never bury it.
+    private func attachToPanel(_ window: NSWindow) {
+        guard let panel = NSApp.windows.first(where: { $0 is BuoyPanel }) else { return }
+        guard window.parent !== panel else { return }
+        panel.addChildWindow(window, ordered: .above)
+    }
+
+    /// Opens to the side of the panel with the most room, falling back to the
+    /// right. Only used the first time; after that the window keeps wherever
+    /// it was left, offset from the panel.
+    private func positionAlongsidePanel(_ window: NSWindow) {
+        guard let panel = NSApp.windows.first(where: { $0 is BuoyPanel }), panel.isVisible else {
+            centerOverPanel(window)
+            return
+        }
+        let gap: CGFloat = 8
+        let size = window.frame.size
+        let visible = (panel.screen ?? NSScreen.main)?.visibleFrame ?? .zero
+        let toRight = panel.frame.maxX + gap
+        let toLeft = panel.frame.minX - gap - size.width
+        let x = (toRight + size.width <= visible.maxX || toLeft < visible.minX) ? toRight : toLeft
+        let y = min(
+            max(panel.frame.midY - size.height / 2, visible.minY),
+            visible.maxY - size.height
+        )
+        window.setFrameOrigin(NSPoint(x: x, y: y))
+    }
+
+    // MARK: Open and close
+
+    /// Grows out of the panel rather than appearing on top of it.
+    ///
+    /// Not the Dock's genie — there is no public API to warp a window along a
+    /// curve, and faking it means swapping in a snapshot layer, which flickers.
+    /// A scale and fade anchored at the panel's edge reads as the same idea and
+    /// is honest about being a window.
+    private func animateOpen(_ window: NSWindow) {
+        let final = window.frame
+        window.setFrame(collapsedFrame(for: final), display: false)
+        window.alphaValue = 0
+        window.makeKeyAndOrderFront(nil)
+
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = BuoyMotion.duration(0.26)
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            window.animator().setFrame(final, display: true)
+            window.animator().alphaValue = 1
+        }
+    }
+
+    private func animateClosed(_ window: NSWindow) {
+        let start = window.frame
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = BuoyMotion.duration(0.2)
+            context.timingFunction = CAMediaTimingFunction(name: .easeIn)
+            window.animator().setFrame(collapsedFrame(for: start), display: true)
+            window.animator().alphaValue = 0
+        } completionHandler: {
+            window.parent?.removeChildWindow(window)
+            window.orderOut(nil)
+            // Restored so the next open starts from the right place, and so a
+            // frame autosave never records the collapsed size.
+            window.setFrame(start, display: false)
+            window.alphaValue = 1
+        }
+    }
+
+    /// The window shrunk toward whichever edge of it faces the panel, so the
+    /// motion reads as coming out of the panel rather than out of nowhere.
+    private func collapsedFrame(for frame: NSRect) -> NSRect {
+        let scale: CGFloat = 0.86
+        let size = NSSize(width: frame.width * scale, height: frame.height * scale)
+        let panelFrame = NSApp.windows.first { $0 is BuoyPanel }?.frame
+        let anchorX: CGFloat
+        if let panelFrame, panelFrame.midX > frame.midX {
+            anchorX = frame.maxX - size.width
+        } else {
+            anchorX = frame.minX
+        }
+        return NSRect(
+            x: anchorX,
+            y: frame.midY - size.height / 2,
+            width: size.width,
+            height: size.height
+        )
     }
 
     /// Keeps the window's level and appearance in step with the panel's.
@@ -122,10 +240,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
                 height: SettingsWindowMetrics.contentHeight
             )
         )
-        window.setFrameAutosaveName("BuoySettingsWindow2")
-        if !window.setFrameUsingName("BuoySettingsWindow2") {
-            centerOverPanel(window)
-        }
+        window.setFrameAutosaveName("BuoySettingsWindow3")
+        window.setFrameUsingName("BuoySettingsWindow3")
 
         self.window = window
         return window

@@ -57,10 +57,16 @@ struct GeneralSettingsPage: View {
                             // The note title's face. It is the app's name in
                             // the app's own lettering, not a form label.
                             .font(Font(PanelLayoutMetrics.minimizedTitleFont))
+                            // Expanded lettering is wide, and without this the
+                            // name broke across two lines as "Buo / y".
+                            .lineLimit(1)
+                            .fixedSize()
                         Text(versionLine)
                             .font(BuoyFont.secondary)
                             .monospacedDigit()
                             .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .fixedSize()
                     }
 
                     Spacer(minLength: 8)

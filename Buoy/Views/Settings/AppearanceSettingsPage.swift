@@ -46,7 +46,9 @@ struct AppearanceSettingsPage: View {
 
                 LabeledContent("Window \(BuoyWording.colorLowercased) opacity") {
                     Slider(value: $settings.windowTintOpacity, in: 0...1)
-                        .frame(width: 170)
+                        // The same lane as the text-size slider below, so the
+                        // two read as one column rather than two guesses.
+                        .frame(width: SettingsWindowMetrics.sliderWidth)
                         .disabled(settings.windowTint == nil)
                         .accessibilityLabel("Window \(BuoyWording.colorLowercased) opacity")
                         .accessibilityValue("\(Int(settings.windowTintOpacity * 100)) percent")
@@ -82,6 +84,15 @@ private struct EditorFontSizeSlider: View {
     /// marker has to use the same inset or it lines up with nothing.
     private let knobWidth: CGFloat = 20
 
+    /// Rounds to whole points on the way in, so the value still steps even
+    /// though the slider itself is continuous.
+    private var snapped: Binding<CGFloat> {
+        Binding(
+            get: { value },
+            set: { value = $0.rounded() }
+        )
+    }
+
     private var defaultFraction: CGFloat {
         (defaultValue - range.lowerBound) / (range.upperBound - range.lowerBound)
     }
@@ -91,7 +102,9 @@ private struct EditorFontSizeSlider: View {
             VStack(spacing: 3) {
                 // Default control size, not `.small`. A short slider next to
                 // full-height rows reads as a disabled or secondary control.
-                Slider(value: $value, in: range, step: 1)
+                // No `step:` — it draws a tick under every whole point, which
+                // buries the one tick that means something.
+                Slider(value: snapped, in: range)
                     .accessibilityLabel("Editor text size")
                     .accessibilityValue("\(Int(value)) points")
 
@@ -105,7 +118,7 @@ private struct EditorFontSizeSlider: View {
                 .frame(height: 4)
                 .accessibilityHidden(true)
             }
-            .frame(width: 170)
+            .frame(width: SettingsWindowMetrics.sliderWidth)
 
             Text("\(Int(value)) pt")
                 .font(BuoyFont.secondary)

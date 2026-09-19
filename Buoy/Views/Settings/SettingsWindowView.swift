@@ -24,10 +24,13 @@ struct SettingsWindowView: View {
         // clear of it.
         detail
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .safeAreaInset(edge: .top, spacing: 0) {
+            // An overlay, not a `safeAreaInset`: reserving a strip for three
+            // short words left a band of empty window above the first section.
+            // The form carries its own top inset instead, and its content
+            // scrolls under the capsule — which is the point of floating it.
+            .overlay(alignment: .top) {
                 SettingsTopBar(selection: selection, onSelect: onPageChange)
-                    .padding(.top, 10)
-                    .padding(.bottom, 8)
+                    .padding(.top, 9)
                     // The strip around the capsule is the window's grab
                     // handle, since the title bar is behind the content.
                     .frame(maxWidth: .infinity)
@@ -75,7 +78,9 @@ final class SettingsWindowModel {
 
 enum SettingsWindowMetrics {
     static let contentWidth: CGFloat = 540
-    static let contentHeight: CGFloat = 520
+    static let contentHeight: CGFloat = 500
+    /// Room for the floating picker above the first section.
+    static let topBarClearance: CGFloat = 46
     /// Resizable, but not to a size where the two colour wheels collide or a
     /// shortcut row's keycaps meet its label.
     static let minimumContentWidth: CGFloat = 500
@@ -84,6 +89,8 @@ enum SettingsWindowMetrics {
     /// fills a wide window leaves its controls stranded at the far right, a
     /// long way from the labels they belong to.
     static let formMaxWidth: CGFloat = 500
+    /// One lane for every slider in the window.
+    static let sliderWidth: CGFloat = 170
 }
 
 /// The window's own surface.
@@ -129,6 +136,11 @@ struct SettingsForm<Content: View>: View {
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
+        // Clears the floating picker on the first screenful, and nothing after
+        // that, so the content passes under it as it scrolls.
+        .safeAreaInset(edge: .top, spacing: 0) {
+            Color.clear.frame(height: SettingsWindowMetrics.topBarClearance)
+        }
         .frame(maxWidth: SettingsWindowMetrics.formMaxWidth)
         .frame(maxWidth: .infinity)
     }
