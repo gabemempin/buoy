@@ -15,11 +15,40 @@ private final class DragBlockingScrollView: NSScrollView {
     private var lastFadeBounds: CGRect = .null
     private var lastFadeDistance: CGFloat = -1
 
+    private var scrollerRestoreWork: DispatchWorkItem?
+
+    /// One cancellable restore for frame changes, zoom, and note swaps. Keeping
+    /// the scroller absent until layout settles avoids AppKit flashing it for
+    /// transient overflow, and prevents an older callback revealing it mid-resize.
+    func suppressScrollerUntilSettled() {
+        scrollerRestoreWork?.cancel()
+        if hasVerticalScroller { hasVerticalScroller = false }
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            if self.window?.inLiveResize == true || self.isResizingByDrag {
+                self.suppressScrollerUntilSettled()
+                return
+            }
+            self.scrollerRestoreWork = nil
+            self.hasVerticalScroller = true
+        }
+        scrollerRestoreWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
+    }
+
+    var isResizingByDrag = false
+
+    override func setFrameSize(_ newSize: NSSize) {
+        if newSize != frame.size { suppressScrollerUntilSettled() }
+        super.setFrameSize(newSize)
+    }
+
     override var documentView: NSView? {
         didSet { observeDocumentTextChanges() }
     }
 
     deinit {
+        scrollerRestoreWork?.cancel()
         if let textChangeObserver {
             NotificationCenter.default.removeObserver(textChangeObserver)
         }
@@ -374,6 +403,7 @@ struct EditorView: NSViewRepresentable {
     /// and re-save every note's RTF each time the panel crossed the compact
     /// threshold. Magnification is display-only and the document never moves.
     var magnification: CGFloat = 1
+    var isResizingByDrag: Bool = false
     var usesDarkAppearance: Bool
     var noteID: String
     var placeholder: String = "Start typing…"
@@ -391,8 +421,7 @@ struct EditorView: NSViewRepresentable {
     func makeNSView(context: Context) -> NSScrollView {
         let scrollView = DragBlockingScrollView()
         scrollView.borderType = .noBorder
-        // Start hidden so the scroller doesn't flash during the slide-in transition.
-        // Re-enabled after the spring animation (~0.3s response) settles.
+        // The shared restore waits until the initial layout settles.
         scrollView.hasVerticalScroller = false
         scrollView.hasHorizontalScroller = false
         scrollView.scrollerStyle = .overlay
@@ -437,16 +466,18 @@ struct EditorView: NSViewRepresentable {
         context.coordinator.setLoadingContent(false)
         scrollView.refreshEdgeFade()
 
-        // Re-enable the scroller after the slide-in transition finishes.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-            scrollView.hasVerticalScroller = true
-        }
+        scrollView.isResizingByDrag = isResizingByDrag
+        scrollView.suppressScrollerUntilSettled()
 
         return scrollView
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = scrollView.documentView as? BuoyTextView else { return }
+        if let editorScrollView = scrollView as? DragBlockingScrollView {
+            editorScrollView.isResizingByDrag = isResizingByDrag
+            if isResizingByDrag { editorScrollView.suppressScrollerUntilSettled() }
+        }
 
         scrollView.layoutSubtreeIfNeeded()
         textViewRef?(textView)
@@ -459,22 +490,13 @@ struct EditorView: NSViewRepresentable {
         }
 
         if abs(scrollView.magnification - magnification) > 0.001 {
-            // The scroller is hidden across the change and brought back a beat
-            // later, the same way a note switch does it. Magnification relays
-            // the whole document out, and AppKit flashes an overlay scroller
-            // for any layout that briefly leaves content taller than the clip
-            // view — which on every compact switch read as the bar stuttering
-            // in and out at the edge of the note.
-            scrollView.hasVerticalScroller = false
+            (scrollView as? DragBlockingScrollView)?.suppressScrollerUntilSettled()
             scrollView.magnification = magnification
             // The text container tracks the clip view's width in document
             // coordinates, which magnification changes, so the text reflows
             // and the amount left to scroll with it.
             scrollView.layoutSubtreeIfNeeded()
             (scrollView as? DragBlockingScrollView)?.refreshEdgeFade()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                scrollView.hasVerticalScroller = true
-            }
         }
 
         if textView.usesDarkAppearance != usesDarkAppearance {
@@ -488,15 +510,11 @@ struct EditorView: NSViewRepresentable {
         if context.coordinator.currentNoteID != noteID {
             context.coordinator.currentNoteID = noteID
             // Temporarily hide the scroller so the content swap doesn't flash it.
-            scrollView.hasVerticalScroller = false
+            (scrollView as? DragBlockingScrollView)?.suppressScrollerUntilSettled()
             context.coordinator.setLoadingContent(true)
             textView.loadRTF(rtfData)
             context.coordinator.setLoadingContent(false)
             (scrollView as? DragBlockingScrollView)?.refreshEdgeFade()
-            // Re-enable after AppKit's scroller-flash window has passed.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                scrollView.hasVerticalScroller = true
-            }
         }
 
         context.coordinator.onSelectionChange = onSelectionChange

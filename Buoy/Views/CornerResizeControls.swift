@@ -436,71 +436,37 @@ private final class CornerResizeOverlayView: NSView {
         onDraggingChange?(true)
     }
 
-    /// Resizes the panel diagonally, always.
-    ///
-    /// A corner used to drive width and height independently, which meant a
-    /// mostly-vertical drag moved only the height and left the panel in a
-    /// shape the user had not asked for — and, because both axes ran through
-    /// the compact detent separately, the two could disagree and snap the
-    /// panel sideways mid-drag. The corner now moves one number: how big the
-    /// panel is. Its proportions come from wherever the drag started, so the
-    /// user sets those by resizing again once they are in the mode they want.
+    /// Each axis follows the pointer independently; the opposite corner stays fixed.
     override func mouseDragged(with event: NSEvent) {
         guard isDragging, let parentWindow else { return }
 
         let start = dragStartWindowFrame
-        guard start.width > 0, start.height > 0 else { return }
-        let aspect = start.width / start.height
-
         let mouseLocation = NSEvent.mouseLocation
         let deltaX = mouseLocation.x - dragStartMouseLocation.x
         let deltaY = mouseLocation.y - dragStartMouseLocation.y
-
-        // What each axis would have done on its own, combined into a single
-        // scale. Averaging the two lets a drag in either direction grow the
-        // panel, rather than one axis being ignored.
-        let wantedWidth = corner.isLeading ? start.width - deltaX : start.width + deltaX
-        let wantedHeight = corner.isTop ? start.height + deltaY : start.height - deltaY
-        let scale = ((wantedWidth / start.width) + (wantedHeight / start.height)) / 2
-
-        let minimumSize = NSSize(
-            width: max(parentWindow.minSize.width, PanelLayoutMetrics.minimumWindowWidth),
-            height: max(parentWindow.minSize.height, PanelLayoutMetrics.minimumWindowHeight)
+        var size = NSSize(
+            width: corner.isLeading ? start.width - deltaX : start.width + deltaX,
+            height: corner.isTop ? start.height + deltaY : start.height - deltaY
         )
-        let visibleFrame = (parentWindow.screen ?? NSScreen.main)?.visibleFrame
 
-        var height = start.height * scale
-        // Floors, expressed as heights so the aspect survives them.
-        height = max(height, minimumSize.height, minimumSize.width / aspect)
-
-        // Ceilings, from however much room the pinned edges leave.
-        if let visibleFrame {
-            let maximumHeight = corner.isTop
-                ? visibleFrame.maxY - start.minY
-                : start.maxY - visibleFrame.minY
-            let maximumWidth = corner.isLeading
-                ? start.maxX - visibleFrame.minX
-                : visibleFrame.maxX - start.minX
-            height = min(height, maximumHeight, maximumWidth / aspect)
+        if let visibleFrame = (parentWindow.screen ?? NSScreen.main)?.visibleFrame {
+            size.width = min(size.width, corner.isLeading
+                ? start.maxX - visibleFrame.minX : visibleFrame.maxX - start.minX)
+            size.height = min(size.height, corner.isTop
+                ? visibleFrame.maxY - start.minY : start.maxY - visibleFrame.minY)
         }
+        // Keep each floor independent so a wide window can still become short.
+        size.width = max(size.width, parentWindow.minSize.width, PanelLayoutMetrics.minimumWindowWidth)
+        size.height = max(size.height, parentWindow.minSize.height, PanelLayoutMetrics.minimumWindowHeight)
+        // setFrame does not invoke the delegate, which also enforces overlay floors.
+        size = parentWindow.delegate?.windowWillResize?(parentWindow, to: size) ?? size
+        size.width = size.width.rounded()
+        size.height = size.height.rounded()
 
-        // One detent, on one axis. `setFrame` does not call `windowWillResize`,
-        // so the delegate is asked directly — otherwise a corner drag slips
-        // under floors the ordinary resize path enforces, most visibly the
-        // height an open overlay needs to stay laid out. The width is derived
-        // afterwards so the detent cannot break the proportions.
-        if let delegate = parentWindow.delegate,
-           delegate.responds(to: #selector(NSWindowDelegate.windowWillResize(_:to:))) {
-            let probe = NSSize(width: height * aspect, height: height)
-            height = (delegate.windowWillResize?(parentWindow, to: probe) ?? probe).height
-        }
-
-        let size = NSSize(width: (height * aspect).rounded(), height: height.rounded())
         var frame = start
         frame.size = size
         frame.origin.x = corner.isLeading ? start.maxX - size.width : start.minX
         frame.origin.y = corner.isTop ? start.minY : start.maxY - size.height
-
         parentWindow.setFrame(frame, display: true)
     }
 

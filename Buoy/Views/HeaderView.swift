@@ -131,6 +131,7 @@ struct HeaderView: View {
     var onAllNotes: () -> Void
     var onNewNote: () -> Void
     var focusEditor: () -> Void
+    var onHeaderDoubleClick: (() -> Void)? = nil
     var dragEnabled: Bool = true
     var isBugReport: Bool = false
     /// Set the instant an auto-generated title lands, to play the reveal
@@ -192,6 +193,7 @@ struct HeaderView: View {
             }
             .frame(height: metrics.headerControlRowHeight)
             .padding(.top, metrics.headerTopPadding)
+            .background(dragEnabled ? WindowDragHandle(onDoubleClick: onHeaderDoubleClick) : nil)
 
             ZStack {
                 TitleTextField(

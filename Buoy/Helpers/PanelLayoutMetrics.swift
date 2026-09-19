@@ -114,38 +114,6 @@ enum PanelLayoutMetrics {
 
     static let compactChromeEnterHeight: CGFloat = regularChromeWindowHeight
 
-    /// How far a resize has to be pushed past the compact threshold before it
-    /// gives way.
-    ///
-    /// The panel sticks at the boundary for this many points and then jumps
-    /// clear of it, so switching density is a thing the user does rather than
-    /// something that happens in passing. It also means the panel can never
-    /// come to rest near the threshold, which is what lets the density switch
-    /// drop its own hysteresis and follow the size exactly.
-    static let compactChromeDetentResistance: CGFloat = 60
-
-    /// Applies that detent to one axis of a live resize.
-    ///
-    /// `current` decides which side the panel is stuck to, so the drag has to
-    /// cross the whole band to flip — coming back up is as deliberate as going
-    /// down was.
-    static func detented(
-        proposed: CGFloat,
-        current: CGFloat,
-        threshold: CGFloat
-    ) -> CGFloat {
-        // An axis that is not moving is left alone. Both axes go through here
-        // on every resize event, so without this a panel whose *width* merely
-        // happened to sit inside the band was yanked to the far side of it the
-        // moment the user dragged the *height* — the panel changing shape in a
-        // direction nobody was dragging.
-        guard abs(proposed - current) > 0.5 else { return proposed }
-
-        let floor = threshold - compactChromeDetentResistance
-        guard proposed > floor, proposed < threshold else { return proposed }
-        return current >= threshold ? threshold : floor
-    }
-
     static let maximumAutoHeight: CGFloat = 700 + (glassEdgeInset * 2)
 
     // Minimum window heights for the two full-panel takeovers. Expressed as

@@ -36,8 +36,7 @@ struct ContentView: View {
     var onOverrideHeight: ((CGFloat?) -> Void)?
     var onMinimizedWidthChange: ((CGFloat) -> Void)?
     var onCornerResizeAvailabilityChange: ((Bool) -> Void)?
-    /// Grows the panel back past the compact thresholds. Behind the toast's
-    /// Undo.
+    /// Restores regular size when the empty top bar is double-clicked.
     var onRestorePanelSize: ((CGSize) -> Void)?
     var onClose: () -> Void
     var onMinimize: () -> Void
@@ -49,16 +48,8 @@ struct ContentView: View {
     /// The Settings popover, anchored to the footer's gear.
     @State private var showSettings = false
 
-    /// How tightly the chrome is drawn. Driven by the panel's height and by
-    /// the Settings toggle; see `ChromeDensityReader`.
-    @State private var chromeDensity: ChromeDensity = .regular
-    /// The settle after a density change.
-    ///
-    /// One spring on one number, run once everything else has already landed.
-    /// The bounce used to be spread across three things moving at once — the
-    /// window's height jumping, its width easing, and the chrome springing —
-    /// which is why it stuttered instead of bouncing.
-    @State private var densitySettle: CGFloat = 1
+    /// Controls and editor scale directly with the available window size.
+    @State private var chromeCompactness: CGFloat = 0
     /// True from the moment Harbor Mode is left until its frame animation has
     /// finished. The full panel remounts at the *pill's* height and the window
     /// then grows under it, so the heights the density reader would see during
@@ -254,26 +245,13 @@ struct ContentView: View {
             )
             .background(
                 ChromeDensityReader(
-                    density: $chromeDensity,
+                    compactness: $chromeCompactness,
                     isSuspended: panelPresentation.isMinimized || isRestoringFromHarbor,
-                    windowSize: panelPresentation.windowSize,
-                    onEnteredCompact: { restoreSize in
-                        guard !showOnboarding, !showWhatsNew, !isBugReport else { return }
-                        toastState.show(
-                            "Entered Compact Mode",
-                            actionTitle: "Undo",
-                            duration: 3
-                        ) {
-                            onRestorePanelSize?(restoreSize)
-                        }
-                    },
-                    onExitedCompact: { toastState.dismiss() },
-                    onDensityChanged: { _ in bounceAfterDensityChange() }
+                    windowSize: panelPresentation.windowSize
                 )
             )
             .background(WindowDragBlocker())
             .overlay { deleteConfirmOverlay }
-            .scaleEffect(densitySettle)
             .buoyGlass()
             // Applied outermost on purpose. `.environment` reaches the modified
             // view and everything *inside* it, so setting it above `.buoyGlass`
@@ -356,6 +334,13 @@ struct ContentView: View {
                     onAllNotes: toggleAllNotes,
                     onNewNote: createNote,
                     focusEditor: focusEditor,
+                    onHeaderDoubleClick: {
+                        guard !showOnboarding, !showWhatsNew else { return }
+                        onRestorePanelSize?(CGSize(
+                            width: PanelLayoutMetrics.regularChromeWindowWidth,
+                            height: PanelLayoutMetrics.regularChromeWindowHeight
+                        ))
+                    },
                     dragEnabled: !showAllNotes && !isLinkDialogPresented,
                     isBugReport: isBugReport,
                     titleReveal: noteStore.titleReveal,
@@ -370,6 +355,7 @@ struct ContentView: View {
                         rtfData: note.contentRTF,
                         fontSize: settings.fontSize,
                         magnification: chromeMetrics.editorMagnification,
+                        isResizingByDrag: panelPresentation.isResizingByDrag,
                         usesDarkAppearance: usesDarkAppearance,
                         noteID: note.id,
                         placeholder: isBugReport
@@ -514,7 +500,7 @@ struct ContentView: View {
     }
 
     private var chromeMetrics: ChromeMetrics {
-        ChromeMetrics(density: chromeDensity)
+        ChromeMetrics(compactness: chromeCompactness)
     }
 
     private var buoyTheme: BuoyTheme {
@@ -692,18 +678,6 @@ struct ContentView: View {
     private func toggleSettings() {
         guard !showWhatsNew, !showOnboarding else { return }
         showSettings.toggle()
-    }
-
-    /// Squashes the panel a touch and lets it spring back, so crossing the
-    /// detent registers as something that happened.
-    private func bounceAfterDensityChange() {
-        // Loose enough to read as a bounce rather than a settle. It can run
-        // during a drag now, because the drag is the only other thing moving
-        // and it is proportional — there is nothing left for this to fight.
-        densitySettle = 0.92
-        withAnimation(BuoyMotion.spring(response: 0.42, dampingFraction: 0.45)) {
-            densitySettle = 1
-        }
     }
 
     private func toggleAllNotes() {

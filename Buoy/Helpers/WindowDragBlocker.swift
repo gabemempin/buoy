@@ -45,22 +45,37 @@ extension View {
 
 /// Re-enables window dragging for a specific region (e.g. the header bar).
 struct WindowDragHandle: NSViewRepresentable {
-    func makeNSView(context: Context) -> DragEnablingNSView { DragEnablingNSView() }
-    func updateNSView(_ nsView: DragEnablingNSView, context: Context) {}
+    var onDoubleClick: (() -> Void)? = nil
+
+    func makeNSView(context: Context) -> DragEnablingNSView {
+        let view = DragEnablingNSView()
+        view.onDoubleClick = onDoubleClick
+        return view
+    }
+    func updateNSView(_ nsView: DragEnablingNSView, context: Context) {
+        nsView.onDoubleClick = onDoubleClick
+    }
 }
 
 final class DragEnablingNSView: NSView {
+    var onDoubleClick: (() -> Void)?
+    private var isDoubleClick = false
     override var mouseDownCanMoveWindow: Bool { false }
     private var dragStartMouse: NSPoint = .zero
     private var dragStartWindowOrigin: NSPoint = .zero
 
     override func mouseDown(with event: NSEvent) {
+        isDoubleClick = event.clickCount == 2 && onDoubleClick != nil
+        if isDoubleClick {
+            onDoubleClick?()
+            return
+        }
         dragStartMouse = NSEvent.mouseLocation
         dragStartWindowOrigin = window?.frame.origin ?? .zero
     }
 
     override func mouseDragged(with event: NSEvent) {
-        guard let window = window else { return }
+        guard !isDoubleClick, let window = window else { return }
         let loc = NSEvent.mouseLocation
         var origin = NSPoint(
             x: dragStartWindowOrigin.x + loc.x - dragStartMouse.x,

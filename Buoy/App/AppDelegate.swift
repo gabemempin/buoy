@@ -742,20 +742,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
     }
 
-    /// Grows the panel back past the compact thresholds, behind the toast's
-    /// Undo. Only ever grows: the user asked to take back a shrink, and an
-    /// Undo that could also make the panel smaller would be a second surprise
-    /// on top of the first.
+    /// Double-clicking the top bar restores the default dimensions from any size.
     func restorePanelSize(_ size: CGSize) {
         guard let p = panel else { return }
         guard !panelPresentation.isMinimized, !isMinimizeAnimating else { return }
         let live = panelContentSize(p)
         let target = NSSize(
-            width: max(live.width, size.width),
-            height: max(live.height, min(PanelLayoutMetrics.maximumAutoHeight, size.height))
+            width: max(PanelLayoutMetrics.minimumWindowWidth, size.width),
+            height: max(PanelLayoutMetrics.minimumWindowHeight, overlayOverrideHeight, size.height)
         )
-        guard abs(target.width - live.width) > 0.5 || abs(target.height - live.height) > 0.5 else { return }
+        panelPresentation.fullSizeMode = .compact
         currentHeight = target.height
+        guard abs(target.width - live.width) > 0.5 || abs(target.height - live.height) > 0.5 else { return }
         let targetFrame = resizedFrame(
             contentSize: target,
             currentFrame: p.frame,
@@ -900,20 +898,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         var constrainedSize = frameSize
         constrainedSize.width = max(constrainedSize.width, floor.width)
         constrainedSize.height = max(constrainedSize.height, floor.height)
-
-        // Hold a detent either side of the compact threshold, so a drag pauses
-        // at the boundary and then pops across rather than sliding through it.
-        //
-        // Height only. A corner drag is proportional now, so the width follows
-        // from it; detenting both meant two thresholds that could disagree and
-        // snap the panel into a shape nobody dragged for.
-        if !usesMinimizedLayout {
-            constrainedSize.height = PanelLayoutMetrics.detented(
-                proposed: constrainedSize.height,
-                current: sender.frame.height,
-                threshold: PanelLayoutMetrics.compactChromeEnterHeight
-            )
-        }
 
         if overlayOverrideHeight > 0 {
             let minWindowHeight = overlayOverrideHeight + sender.frame.height - sender.contentRect(forFrameRect: sender.frame).height

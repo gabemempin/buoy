@@ -16,19 +16,24 @@ enum ChromeDensity: Equatable {
 ///
 /// Chrome shrinks so that a panel the user has dragged short still has a
 /// usable editor in it: at the regular sizes the header, toolbar and footer
-/// alone claim 174pt, which is most of a short panel. Only chrome scales —
-/// note text keeps `AppSettings.fontSize`, because that is a preference about
-/// content and shrinking it would be answering a question nobody asked.
+/// alone claim 174pt, which is most of a short panel. Controls and rendered
+/// text scale together; the stored editor font size stays unchanged.
 struct ChromeMetrics: Equatable {
-    var density: ChromeDensity
+    var compactness: CGFloat
+
+    init(density: ChromeDensity) {
+        compactness = density == .compact ? 1 : 0
+    }
+
+    init(compactness: CGFloat) {
+        self.compactness = min(1, max(0, compactness))
+    }
 
     static let regular = ChromeMetrics(density: .regular)
     static let compact = ChromeMetrics(density: .compact)
 
-    private var isCompact: Bool { density == .compact }
-
     private func pick(_ regular: CGFloat, _ compact: CGFloat) -> CGFloat {
-        isCompact ? compact : regular
+        regular + (compact - regular) * compactness
     }
 
     // MARK: Header
@@ -104,12 +109,16 @@ struct ChromeMetrics: Equatable {
     // one place in the app where chrome text does, and only because there is
     // no semantic style below `.caption` to step down to.
 
-    var footerInfoFont: Font { isCompact ? .system(size: 9) : BuoyFont.caption }
-    var footerActionFont: Font {
-        isCompact ? .system(size: 10, weight: .medium) : BuoyFont.secondaryEmphasized
+    var footerInfoFont: Font {
+        .system(size: pick(NSFont.preferredFont(forTextStyle: .caption1, options: [:]).pointSize, 9))
     }
-    var footerHintFont: Font { isCompact ? .system(size: 9) : BuoyFont.caption }
-    var footerTransferFont: Font { isCompact ? .system(size: 10) : BuoyFont.secondary }
+    var footerActionFont: Font {
+        .system(size: pick(NSFont.preferredFont(forTextStyle: .subheadline, options: [:]).pointSize, 10), weight: .medium)
+    }
+    var footerHintFont: Font { footerInfoFont }
+    var footerTransferFont: Font {
+        .system(size: pick(NSFont.preferredFont(forTextStyle: .subheadline, options: [:]).pointSize, 10))
+    }
 
     // MARK: Width minimums
     //
@@ -178,98 +187,31 @@ extension EnvironmentValues {
     }
 }
 
-/// Watches the panel's height and picks the chrome density from it.
-///
-/// Sits in the background so it never affects layout — the same trick
-/// `TitleLaneWidthReader` uses. Reading the height in SwiftUI rather than
-/// publishing it from `windowDidResize` is deliberate: the hosting view runs
-/// with `sizingOptions = []` specifically to keep SwiftUI out of AppKit's
-/// constraint cycle during the Harbor Mode frame animation, and a new
-/// AppKit-to-SwiftUI size channel is exactly what that was protecting against.
+/// Reads the real window size without pushing layout constraints back into AppKit.
+/// Scaling follows the pointer directly, with no mode animation or notification.
 struct ChromeDensityReader: View {
-    @Binding var density: ChromeDensity
-    /// Harbor Mode unmounts this whole tree and animates the frame to pill
-    /// size; a density recomputed from those intermediate heights would be
-    /// meaningless and would land just as the panel is restoring.
+    @Binding var compactness: CGFloat
     var isSuspended: Bool
-    /// The panel's real size, published by `AppDelegate`.
     var windowSize: CGSize
-    /// Fired when a resize crossed into compact chrome, carrying the window
-    /// size to go back to. Not called for the first reading, which only
-    /// establishes where the panel started.
-    var onEnteredCompact: ((CGSize) -> Void)? = nil
-    /// Fired when a resize took the panel back to regular chrome, so anything
-    /// said about going compact can stop being said.
-    var onExitedCompact: (() -> Void)? = nil
-    /// Called on every density change so the window's *width* can follow.
-    /// Compact chrome is narrower as well as shorter.
-    var onDensityChanged: ((ChromeDensity) -> Void)? = nil
-
-    /// The size the panel was last seen at while drawing regular chrome.
-    @State private var lastRegularWindowSize = CGSize(
-        width: PanelLayoutMetrics.regularChromeWindowWidth,
-        height: PanelLayoutMetrics.regularChromeWindowHeight
-    )
-
-    @State private var hasRead = false
 
     var body: some View {
         Color.clear
-            .onAppear { update(windowSize: windowSize) }
-            .onChange(of: windowSize) { _, size in update(windowSize: size) }
+            .onAppear { update() }
+            .onChange(of: windowSize) { _, _ in update() }
+            .onChange(of: isSuspended) { _, _ in update() }
             .allowsHitTesting(false)
     }
 
-    private func update(windowSize: CGSize) {
+    private func update() {
         guard !isSuspended else { return }
-        if density == .regular { lastRegularWindowSize = windowSize }
-
-        let next = Self.density(forWindowSize: windowSize)
-        let wasFirstReading = !hasRead
-        hasRead = true
-        guard next != density else { return }
-
-        // No animation on the swap itself. The window crosses the detent in a
-        // single frame, so anything that eases the chrome into place is a
-        // second timeline running against that jump — which is what the
-        // stutter was. The bounce lives on one property in `ContentView`,
-        // applied after everything has already landed.
-        density = next
-
-        guard !wasFirstReading else { return }
-        onDensityChanged?(next)
-        guard next == .compact else {
-            onExitedCompact?()
-            return
-        }
-        // Past the thresholds, not merely back to the old size: a size inside
-        // the detent's band would leave the chrome compact and make Undo look
-        // like it did nothing.
-        onEnteredCompact?(
-            CGSize(
-                width: max(lastRegularWindowSize.width, PanelLayoutMetrics.compactChromeEnterWidth + 4),
-                height: max(lastRegularWindowSize.height, PanelLayoutMetrics.compactChromeEnterHeight + 4)
-            )
-        )
-    }
-
-    /// Hysteresis: compact engages the moment regular chrome no longer fits,
-    /// and only lets go once there is a clear margin above that. Without the
-    /// gap, a drag parked on the boundary flickers the whole chrome.
-    /// Either axis can ask for compact chrome, and regular only comes back
-    /// when both have room for it.
-    ///
-    /// No hysteresis band here any more: the panel physically cannot come to
-    /// rest near the threshold, because `AppDelegate.windowWillResize` holds a
-    /// detent there and makes the drag jump across. A second, softer boundary
-    /// on top of that one would only put the chrome out of step with the size.
-    ///
-    /// Half a point of slack all the same, because the panel launches at
-    /// exactly the regular minimum and a rounding difference in the measured
-    /// glass size should not start it compact.
-    static func density(forWindowSize size: CGSize) -> ChromeDensity {
-        let tooShort = size.height < PanelLayoutMetrics.compactChromeEnterHeight - 0.5
-        let tooNarrow = size.width < PanelLayoutMetrics.compactChromeEnterWidth - 0.5
-        return (tooShort || tooNarrow) ? .compact : .regular
+        let widthFraction = (PanelLayoutMetrics.regularChromeWindowWidth - windowSize.width)
+            / (PanelLayoutMetrics.regularChromeWindowWidth - PanelLayoutMetrics.minimumWindowWidth)
+        let heightFraction = (PanelLayoutMetrics.regularChromeWindowHeight - windowSize.height)
+            / (PanelLayoutMetrics.regularChromeWindowHeight - PanelLayoutMetrics.minimumWindowHeight)
+        let next = min(1, max(0, widthFraction, heightFraction))
+        guard next != compactness else { return }
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) { compactness = next }
     }
 }

@@ -42,10 +42,11 @@ struct AppearanceSettingsPage: View {
                 .padding(.vertical, 2)
 
                 LabeledContent("Window \(BuoyWording.colorLowercased) opacity") {
-                    Slider(value: $settings.windowTintOpacity, in: 0...1)
-                        // The same lane as the text-size slider below, so the
-                        // two read as one column rather than two guesses.
-                        .frame(width: SettingsPopoverMetrics.sliderWidth)
+                    DefaultMarkedSlider(
+                        value: $settings.windowTintOpacity,
+                        range: 0...1,
+                        defaultValue: AppSettings().windowTintOpacity
+                    )
                         .disabled(settings.windowTint == nil)
                         .accessibilityLabel("Window \(BuoyWording.colorLowercased) opacity")
                         .accessibilityValue("\(Int(settings.windowTintOpacity * 100)) percent")
@@ -67,55 +68,64 @@ struct AppearanceSettingsPage: View {
     }
 }
 
-/// The size slider, with a dot under the default.
-///
-/// The marker is the only thing that says where "normal" is. Without it the
-/// slider is a bare range and there is no way back to the size the app shipped
-/// with except by counting.
+/// Shared default marker and magnetic default value for Appearance sliders.
+private struct DefaultMarkedSlider: View {
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    let defaultValue: Double
+    var roundsToWholePoints = false
+
+    private let knobWidth: CGFloat = 20
+
+    private var snapped: Binding<Double> {
+        Binding(
+            get: { value },
+            set: { proposed in
+                // Two percent of the track gives the default a small landing
+                // zone while leaving the rest of the opacity range continuous.
+                let tolerance = (range.upperBound - range.lowerBound) * 0.02
+                if abs(proposed - defaultValue) <= tolerance {
+                    value = defaultValue
+                } else {
+                    value = roundsToWholePoints ? proposed.rounded() : proposed
+                }
+            }
+        )
+    }
+
+    var body: some View {
+        VStack(spacing: 3) {
+            // No step parameter: it would draw ticks at every font size.
+            Slider(value: snapped, in: range)
+            GeometryReader { proxy in
+                let usable = max(0, proxy.size.width - knobWidth)
+                let fraction = CGFloat((defaultValue - range.lowerBound) / (range.upperBound - range.lowerBound))
+                Circle()
+                    .fill(Color.secondary)
+                    .frame(width: 4, height: 4)
+                    .offset(x: knobWidth / 2 + usable * fraction - 2)
+            }
+            .frame(height: 4)
+            .accessibilityHidden(true)
+        }
+        .frame(width: SettingsPopoverMetrics.sliderWidth)
+    }
+}
+
 private struct EditorFontSizeSlider: View {
     @Binding var value: CGFloat
     let defaultValue: CGFloat
 
-    private let range: ClosedRange<CGFloat> = 11...20
-    /// The knob's own width, which the track is inset by at each end. The
-    /// marker has to use the same inset or it lines up with nothing.
-    private let knobWidth: CGFloat = 20
-
-    /// Rounds to whole points on the way in, so the value still steps even
-    /// though the slider itself is continuous.
-    private var snapped: Binding<CGFloat> {
-        Binding(
-            get: { value },
-            set: { value = $0.rounded() }
-        )
-    }
-
-    private var defaultFraction: CGFloat {
-        (defaultValue - range.lowerBound) / (range.upperBound - range.lowerBound)
-    }
-
     var body: some View {
         HStack(spacing: 10) {
-            VStack(spacing: 3) {
-                // Default control size, not `.small`. A short slider next to
-                // full-height rows reads as a disabled or secondary control.
-                // No `step:` — it draws a tick under every whole point, which
-                // buries the one tick that means something.
-                Slider(value: snapped, in: range)
-                    .accessibilityLabel("Editor text size")
-                    .accessibilityValue("\(Int(value)) points")
-
-                GeometryReader { proxy in
-                    let usable = max(0, proxy.size.width - knobWidth)
-                    Circle()
-                        .fill(Color.secondary)
-                        .frame(width: 4, height: 4)
-                        .offset(x: knobWidth / 2 + usable * defaultFraction - 2)
-                }
-                .frame(height: 4)
-                .accessibilityHidden(true)
-            }
-            .frame(width: SettingsPopoverMetrics.sliderWidth)
+            DefaultMarkedSlider(
+                value: Binding(get: { Double(value) }, set: { value = CGFloat($0) }),
+                range: 11...20,
+                defaultValue: Double(defaultValue),
+                roundsToWholePoints: true
+            )
+            .accessibilityLabel("Editor text size")
+            .accessibilityValue("\(Int(value)) points")
 
             Text("\(Int(value)) pt")
                 .font(BuoyFont.secondary)
