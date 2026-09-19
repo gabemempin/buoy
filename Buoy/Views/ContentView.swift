@@ -39,8 +39,6 @@ struct ContentView: View {
     /// Grows the panel back past the compact thresholds. Behind the toast's
     /// Undo.
     var onRestorePanelSize: ((CGSize) -> Void)?
-    /// Narrows or widens the panel to match the chrome density.
-    var onChromeDensityChanged: ((ChromeDensity) -> Void)?
     var onClose: () -> Void
     var onMinimize: () -> Void
     var onExpand: () -> Void
@@ -115,7 +113,6 @@ struct ContentView: View {
         onMinimizedWidthChange: ((CGFloat) -> Void)? = nil,
         onCornerResizeAvailabilityChange: ((Bool) -> Void)? = nil,
         onRestorePanelSize: ((CGSize) -> Void)? = nil,
-        onChromeDensityChanged: ((ChromeDensity) -> Void)? = nil,
         onClose: @escaping () -> Void,
         onMinimize: @escaping () -> Void,
         onExpand: @escaping () -> Void,
@@ -129,7 +126,6 @@ struct ContentView: View {
         self.onMinimizedWidthChange = onMinimizedWidthChange
         self.onCornerResizeAvailabilityChange = onCornerResizeAvailabilityChange
         self.onRestorePanelSize = onRestorePanelSize
-        self.onChromeDensityChanged = onChromeDensityChanged
         self.onClose = onClose
         self.onMinimize = onMinimize
         self.onExpand = onExpand
@@ -272,10 +268,7 @@ struct ContentView: View {
                         }
                     },
                     onExitedCompact: { toastState.dismiss() },
-                    onDensityChanged: { density in
-                        onChromeDensityChanged?(density)
-                        bounceAfterDensityChange()
-                    }
+                    onDensityChanged: { _ in bounceAfterDensityChange() }
                 )
             )
             .background(WindowDragBlocker())
@@ -704,12 +697,11 @@ struct ContentView: View {
     /// Squashes the panel a touch and lets it spring back, so crossing the
     /// detent registers as something that happened.
     private func bounceAfterDensityChange() {
-        // Not while a corner is held. A squash-and-spring on top of a live
-        // drag is one more thing moving against the pointer, and the snap
-        // across the detent is feedback enough on its own.
-        guard !panelPresentation.isResizingByDrag else { return }
-        densitySettle = 0.965
-        withAnimation(BuoyMotion.spring(response: 0.32, dampingFraction: 0.55)) {
+        // Loose enough to read as a bounce rather than a settle. It can run
+        // during a drag now, because the drag is the only other thing moving
+        // and it is proportional — there is nothing left for this to fight.
+        densitySettle = 0.92
+        withAnimation(BuoyMotion.spring(response: 0.42, dampingFraction: 0.45)) {
             densitySettle = 1
         }
     }

@@ -436,72 +436,70 @@ private final class CornerResizeOverlayView: NSView {
         onDraggingChange?(true)
     }
 
+    /// Resizes the panel diagonally, always.
+    ///
+    /// A corner used to drive width and height independently, which meant a
+    /// mostly-vertical drag moved only the height and left the panel in a
+    /// shape the user had not asked for — and, because both axes ran through
+    /// the compact detent separately, the two could disagree and snap the
+    /// panel sideways mid-drag. The corner now moves one number: how big the
+    /// panel is. Its proportions come from wherever the drag started, so the
+    /// user sets those by resizing again once they are in the mode they want.
     override func mouseDragged(with event: NSEvent) {
         guard isDragging, let parentWindow else { return }
+
+        let start = dragStartWindowFrame
+        guard start.width > 0, start.height > 0 else { return }
+        let aspect = start.width / start.height
 
         let mouseLocation = NSEvent.mouseLocation
         let deltaX = mouseLocation.x - dragStartMouseLocation.x
         let deltaY = mouseLocation.y - dragStartMouseLocation.y
+
+        // What each axis would have done on its own, combined into a single
+        // scale. Averaging the two lets a drag in either direction grow the
+        // panel, rather than one axis being ignored.
+        let wantedWidth = corner.isLeading ? start.width - deltaX : start.width + deltaX
+        let wantedHeight = corner.isTop ? start.height + deltaY : start.height - deltaY
+        let scale = ((wantedWidth / start.width) + (wantedHeight / start.height)) / 2
+
         let minimumSize = NSSize(
             width: max(parentWindow.minSize.width, PanelLayoutMetrics.minimumWindowWidth),
             height: max(parentWindow.minSize.height, PanelLayoutMetrics.minimumWindowHeight)
         )
         let visibleFrame = (parentWindow.screen ?? NSScreen.main)?.visibleFrame
 
-        var frame = dragStartWindowFrame
-        if corner.isTop {
-            let maximumHeight = visibleFrame.map { $0.maxY - dragStartWindowFrame.minY }
-                ?? CGFloat.greatestFiniteMagnitude
-            frame.size.height = min(
-                max(dragStartWindowFrame.height + deltaY, minimumSize.height),
-                maximumHeight
-            )
-            frame.origin.y = dragStartWindowFrame.minY
-        } else {
-            let maximumHeight = visibleFrame.map { dragStartWindowFrame.maxY - $0.minY }
-                ?? CGFloat.greatestFiniteMagnitude
-            frame.size.height = min(
-                max(dragStartWindowFrame.height - deltaY, minimumSize.height),
-                maximumHeight
-            )
-            frame.origin.y = dragStartWindowFrame.maxY - frame.height
+        var height = start.height * scale
+        // Floors, expressed as heights so the aspect survives them.
+        height = max(height, minimumSize.height, minimumSize.width / aspect)
+
+        // Ceilings, from however much room the pinned edges leave.
+        if let visibleFrame {
+            let maximumHeight = corner.isTop
+                ? visibleFrame.maxY - start.minY
+                : start.maxY - visibleFrame.minY
+            let maximumWidth = corner.isLeading
+                ? start.maxX - visibleFrame.minX
+                : visibleFrame.maxX - start.minX
+            height = min(height, maximumHeight, maximumWidth / aspect)
         }
 
-        if corner.isLeading {
-            let maximumWidth = visibleFrame.map { dragStartWindowFrame.maxX - $0.minX }
-                ?? CGFloat.greatestFiniteMagnitude
-            frame.size.width = min(
-                max(dragStartWindowFrame.width - deltaX, minimumSize.width),
-                maximumWidth
-            )
-            frame.origin.x = dragStartWindowFrame.maxX - frame.width
-        } else {
-            let maximumWidth = visibleFrame.map { $0.maxX - dragStartWindowFrame.minX }
-                ?? CGFloat.greatestFiniteMagnitude
-            frame.size.width = min(
-                max(dragStartWindowFrame.width + deltaX, minimumSize.width),
-                maximumWidth
-            )
-            frame.origin.x = dragStartWindowFrame.minX
-        }
-
-        // `setFrame` does not call `windowWillResize`, so ask the delegate
-        // directly. Otherwise a corner drag would slip under floors that the
-        // ordinary resize path enforces — most visibly the height an open
-        // overlay (Settings) needs to stay laid out.
+        // One detent, on one axis. `setFrame` does not call `windowWillResize`,
+        // so the delegate is asked directly — otherwise a corner drag slips
+        // under floors the ordinary resize path enforces, most visibly the
+        // height an open overlay needs to stay laid out. The width is derived
+        // afterwards so the detent cannot break the proportions.
         if let delegate = parentWindow.delegate,
            delegate.responds(to: #selector(NSWindowDelegate.windowWillResize(_:to:))) {
-            let constrained = delegate.windowWillResize?(parentWindow, to: frame.size) ?? frame.size
-            frame.size = constrained
-            // Re-anchor against the same edges the branches above used: a
-            // leading drag pins the right edge, a bottom drag pins the top.
-            if corner.isLeading {
-                frame.origin.x = dragStartWindowFrame.maxX - constrained.width
-            }
-            if !corner.isTop {
-                frame.origin.y = dragStartWindowFrame.maxY - constrained.height
-            }
+            let probe = NSSize(width: height * aspect, height: height)
+            height = (delegate.windowWillResize?(parentWindow, to: probe) ?? probe).height
         }
+
+        let size = NSSize(width: (height * aspect).rounded(), height: height.rounded())
+        var frame = start
+        frame.size = size
+        frame.origin.x = corner.isLeading ? start.maxX - size.width : start.minX
+        frame.origin.y = corner.isTop ? start.minY : start.maxY - size.height
 
         parentWindow.setFrame(frame, display: true)
     }

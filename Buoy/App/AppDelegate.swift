@@ -38,8 +38,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     /// width changed underneath it is undone on the very next mouse event and
     /// the panel flickers between two shapes.
     private var isResizingByDrag = false
-    /// A density width change that arrived mid-drag, applied on release.
-    private var pendingDensityWidth: ChromeDensity?
     private var minimizeAnimationGeneration = 0
 
     private func panelContentHeight(_ panel: NSPanel) -> CGFloat {
@@ -336,9 +334,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             },
             onRestorePanelSize: { [weak self] size in
                 self?.restorePanelSize(size)
-            },
-            onChromeDensityChanged: { [weak self] density in
-                self?.applyDensityWidth(density)
             },
             onClose: { [weak self] in self?.hidePanel() },
             onMinimize: { [weak self] in self?.enterMinimizedMode() },
@@ -773,49 +768,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
     }
 
-    /// Narrows the panel when the chrome goes compact, and widens it back.
-    ///
-    /// The height is the user's gesture — they dragged it — but the width has
-    /// to follow it, or compact mode is regular mode with undersized buttons
-    /// rattling around in a full-width panel. Scaled rather than snapped to a
-    /// fixed width, so a panel the user had made wide stays proportionally
-    /// wide on the other side.
-    func applyDensityWidth(_ density: ChromeDensity) {
-        guard let p = panel else { return }
-        guard !panelPresentation.isMinimized, !isMinimizeAnimating else { return }
-        guard !isResizingByDrag else {
-            pendingDensityWidth = density
-            return
-        }
-        let live = panelContentSize(p)
-        let scale = PanelLayoutMetrics.compactWidthScale
-        let target = density == .compact ? live.width * scale : live.width / scale
-        let floor = PanelLayoutMetrics.minimumWindowWidth(for: ChromeMetrics(density: density))
-        let width = max(floor, target.rounded())
-        guard abs(width - live.width) > 0.5 else { return }
-
-        let targetFrame = resizedFrame(
-            contentSize: NSSize(width: width, height: live.height),
-            currentFrame: p.frame,
-            in: p,
-            centerHorizontally: false
-        )
-        // Set, not animated. The height has already jumped — the detent
-        // releases in one frame — so a width that slides in over 0.2s arrives
-        // late and reads as a stutter rather than one movement.
-        p.setFrame(targetFrame, display: true)
-        publishPanelSize()
-        if overlayOverrideHeight == 0 {
-            lastFullSizeFrame = targetFrame
-        }
-    }
-
     private func handleCornerDragChange(_ dragging: Bool) {
         isResizingByDrag = dragging
         panelPresentation.isResizingByDrag = dragging
-        guard !dragging, let pending = pendingDensityWidth else { return }
-        pendingDensityWidth = nil
-        applyDensityWidth(pending)
     }
 
     func applyOverrideHeight(_ height: CGFloat?) {
@@ -948,16 +903,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         // Hold a detent either side of the compact threshold, so a drag pauses
         // at the boundary and then pops across rather than sliding through it.
+        //
+        // Height only. A corner drag is proportional now, so the width follows
+        // from it; detenting both meant two thresholds that could disagree and
+        // snap the panel into a shape nobody dragged for.
         if !usesMinimizedLayout {
-            let live = sender.frame.size
-            constrainedSize.width = PanelLayoutMetrics.detented(
-                proposed: constrainedSize.width,
-                current: live.width,
-                threshold: PanelLayoutMetrics.compactChromeEnterWidth
-            )
             constrainedSize.height = PanelLayoutMetrics.detented(
                 proposed: constrainedSize.height,
-                current: live.height,
+                current: sender.frame.height,
                 threshold: PanelLayoutMetrics.compactChromeEnterHeight
             )
         }
