@@ -74,16 +74,16 @@ final class SettingsWindowModel {
 }
 
 enum SettingsWindowMetrics {
-    static let contentWidth: CGFloat = 480
-    static let contentHeight: CGFloat = 430
-    /// Resizable, but not to a width where the two colour columns collide or
-    /// a shortcut row's keycaps meet its label.
-    static let minimumContentWidth: CGFloat = 440
-    static let minimumContentHeight: CGFloat = 360
+    static let contentWidth: CGFloat = 540
+    static let contentHeight: CGFloat = 520
+    /// Resizable, but not to a size where the two colour wheels collide or a
+    /// shortcut row's keycaps meet its label.
+    static let minimumContentWidth: CGFloat = 500
+    static let minimumContentHeight: CGFloat = 400
     /// Forms stop here and centre in whatever is left. A grouped form that
     /// fills a wide window leaves its controls stranded at the far right, a
     /// long way from the labels they belong to.
-    static let formMaxWidth: CGFloat = 440
+    static let formMaxWidth: CGFloat = 500
 }
 
 /// The window's own surface.

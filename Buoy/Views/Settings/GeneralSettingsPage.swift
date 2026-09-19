@@ -66,21 +66,19 @@ struct GeneralSettingsPage: View {
                     Spacer(minLength: 8)
 
                     VStack(alignment: .trailing, spacing: 5) {
-                        Button(action: checkForUpdates) {
+                        SettingsCapsuleButton(
+                            updateStatus ?? "Check for Updates",
                             // Fixed so the column does not jump when the label
                             // swaps to a status line and back.
-                            Text(updateStatus ?? "Check for Updates").frame(width: 128)
-                        }
+                            width: 120,
+                            action: checkForUpdates
+                        )
                         .accessibilityLabel("Check for Updates")
                         .accessibilityValue(updateStatus ?? "")
 
-                        Button("Report a Bug", action: onReportBug)
-                            .frame(width: 128)
-                        Button("Quit Buoy", role: .destructive, action: onQuit)
-                            .frame(width: 128)
+                        SettingsCapsuleButton("Report a Bug", width: 120, action: onReportBug)
+                        SettingsCapsuleButton("Quit Buoy", isDestructive: true, width: 120, action: onQuit)
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
                 }
                 .padding(.vertical, 2)
                 .accessibilityElement(children: .contain)

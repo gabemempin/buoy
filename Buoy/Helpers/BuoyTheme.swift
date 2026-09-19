@@ -32,8 +32,46 @@ struct BuoyTheme: Equatable {
 
     // MARK: Accent
 
-    var accentNSColor: NSColor { accentChoice?.nsColor ?? .controlAccentColor }
+    /// The lightness an accent has to stay within to be usable.
+    ///
+    /// The accent is a *fill* — buttons, the toolbar capsule, the footer
+    /// pill — so what matters is its contrast against the panel behind it, not
+    /// against the glyph on top. A near-white accent on light glass leaves a
+    /// button that is only visible as the shadow under it, whatever colour the
+    /// glyph flips to.
+    static let legibleAccentLightness: ClosedRange<Double> = 0.28...0.62
+
+    var accentNSColor: NSColor {
+        guard let accentChoice else { return .controlAccentColor }
+        return HSLColor(
+            hue: accentChoice.hue,
+            saturation: accentChoice.saturation,
+            lightness: min(
+                max(accentChoice.lightness, Self.legibleAccentLightness.lowerBound),
+                Self.legibleAccentLightness.upperBound
+            )
+        ).nsColor
+    }
+
     var accent: Color { Color(nsColor: accentNSColor) }
+
+    /// The accent as *text*, on the panel's own background.
+    ///
+    /// The note title is drawn in the accent, and a fill that reads well as a
+    /// 28pt circle is often too pale as 19pt letterforms. This darkens it in
+    /// light mode and lifts it in dark, so the title stays the accent without
+    /// becoming something you have to lean in to read.
+    func accentText(isDark: Bool) -> NSColor {
+        guard let accentChoice else {
+            return isDark ? .white : .controlAccentColor
+        }
+        let target: Double = isDark ? 0.68 : 0.40
+        return HSLColor(
+            hue: accentChoice.hue,
+            saturation: accentChoice.saturation,
+            lightness: target
+        ).nsColor
+    }
 
     /// What can legibly sit *on* an accent fill.
     ///

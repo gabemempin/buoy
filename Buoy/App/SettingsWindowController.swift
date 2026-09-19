@@ -122,8 +122,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
                 height: SettingsWindowMetrics.contentHeight
             )
         )
-        window.setFrameAutosaveName("BuoySettingsWindow")
-        if !window.setFrameUsingName("BuoySettingsWindow") {
+        window.setFrameAutosaveName("BuoySettingsWindow2")
+        if !window.setFrameUsingName("BuoySettingsWindow2") {
             centerOverPanel(window)
         }
 
