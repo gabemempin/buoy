@@ -74,77 +74,25 @@ struct BuoyTheme: Equatable {
         return clampedAccent(accentChoice).luminance
     }
 
-    /// The accent as *text*, or the plain title colour when the accent cannot
-    /// be read against the panel.
+    /// The accent as *text*.
     ///
-    /// The accent is used exactly as chosen whenever it stands apart from the
-    /// panel — either in luminance, or by being far enough round the hue wheel
-    /// from the tint that the hue alone carries it. A yellow title on a blue
-    /// panel has almost no luminance contrast and is perfectly legible, so it
-    /// is left alone.
+    /// The accent, as chosen, and nothing else. Four versions of this tried to
+    /// guarantee contrast against the tinted panel and every one of them was
+    /// worse than the problem: a fixed lightness turned every accent olive,
+    /// walking it down turned a bright yellow to mud, walking it up turned it
+    /// white, and falling back to the ordinary text colour made the title go
+    /// black on colours the user had deliberately picked.
     ///
-    /// When neither holds, the title falls back to the ordinary text colour
-    /// rather than to a nudged accent. Three earlier versions tried to walk the
-    /// accent's lightness until it cleared the background, and every one of
-    /// them produced something worse than plain text: a fixed target turned
-    /// every accent olive, moving down turned a bright yellow into mud, moving
-    /// up turned it white. A pale accent on a pale panel simply has no readable
-    /// version of itself — near-black reads as a decision, olive reads as a
-    /// bug.
+    /// The title is the accent. Legibility is handled where it can be handled
+    /// honestly — `accentNSColor` keeps the lightness inside a usable band —
+    /// and past that, a tint chosen to sit right next to the accent will have
+    /// low contrast, which is a consequence of the choice rather than a fault
+    /// to correct behind the user's back.
     func accentText(isDark: Bool) -> NSColor {
-        let plain: NSColor = isDark ? .white : NSColor(white: 0.15, alpha: 1)
         guard let accentChoice else {
             return isDark ? .white : .controlAccentColor
         }
-        let accent = clampedAccent(accentChoice)
-        let background = Self.luminance(panelBackground(isDark: isDark))
-
-        if Self.contrast(accent.luminance, background) >= Self.minimumTitleContrast {
-            return accent.nsColor
-        }
-        if let tintChoice,
-           Self.hueDistance(accent.hue, tintChoice.hue) >= Self.distinctHueDistance {
-            return accent.nsColor
-        }
-        return plain
-    }
-
-    /// Deliberately short of the 4.5 a body-text guideline would ask for. The
-    /// title is large and semibold, and the point is to catch a collision, not
-    /// to drop every accent that is merely close.
-    private static let minimumTitleContrast: Double = 2.0
-
-    /// Far enough apart on the wheel to stand on hue alone: a quarter turn.
-    private static let distinctHueDistance: Double = 0.25
-
-    /// Shortest way round the wheel, 0 to 0.5.
-    private static func hueDistance(_ a: Double, _ b: Double) -> Double {
-        let raw = abs(a - b).truncatingRemainder(dividingBy: 1)
-        return min(raw, 1 - raw)
-    }
-
-    private static func contrast(_ a: Double, _ b: Double) -> Double {
-        let lighter = max(a, b)
-        let darker = min(a, b)
-        return (lighter + 0.05) / (darker + 0.05)
-    }
-
-    private static func luminance(_ rgb: (red: Double, green: Double, blue: Double)) -> Double {
-        0.299 * rgb.red + 0.587 * rgb.green + 0.114 * rgb.blue
-    }
-
-    /// Roughly what the panel looks like behind the title: its appearance,
-    /// washed with the tint at the strength the tint is drawn.
-    private func panelBackground(isDark: Bool) -> (red: Double, green: Double, blue: Double) {
-        let base: Double = isDark ? 0.16 : 0.92
-        guard let tintChoice else { return (base, base, base) }
-        let tint = tintChoice.rgb
-        let alpha = tintOpacity
-        return (
-            base * (1 - alpha) + tint.red * alpha,
-            base * (1 - alpha) + tint.green * alpha,
-            base * (1 - alpha) + tint.blue * alpha
-        )
+        return clampedAccent(accentChoice).nsColor
     }
 
     /// The accent with its lightness held inside the legible band — what the
