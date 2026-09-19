@@ -39,7 +39,11 @@ struct BuoyTheme: Equatable {
     /// against the glyph on top. A near-white accent on light glass leaves a
     /// button that is only visible as the shadow under it, whatever colour the
     /// glyph flips to.
-    static let legibleAccentLightness: ClosedRange<Double> = 0.28...0.62
+    /// Symmetric about the middle on purpose. An earlier 0.28...0.62 was
+    /// picked by eye, and because it left more room below mid-lightness than
+    /// above, the two shaded bands on the wheel came out visibly different
+    /// sizes — which reads as a mistake rather than a rule.
+    static let legibleAccentLightness: ClosedRange<Double> = 0.30...0.70
 
     var accentNSColor: NSColor {
         guard let accentChoice else { return .controlAccentColor }
