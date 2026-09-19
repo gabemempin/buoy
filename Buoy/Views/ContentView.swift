@@ -36,6 +36,9 @@ struct ContentView: View {
     var onOverrideHeight: ((CGFloat?) -> Void)?
     var onMinimizedWidthChange: ((CGFloat) -> Void)?
     var onCornerResizeAvailabilityChange: ((Bool) -> Void)?
+    /// Grows the panel back past the compact thresholds. Behind the toast's
+    /// Undo.
+    var onRestorePanelSize: ((CGSize) -> Void)?
     var onClose: () -> Void
     var onMinimize: () -> Void
     var onExpand: () -> Void
@@ -102,6 +105,7 @@ struct ContentView: View {
         onOverrideHeight: ((CGFloat?) -> Void)? = nil,
         onMinimizedWidthChange: ((CGFloat) -> Void)? = nil,
         onCornerResizeAvailabilityChange: ((Bool) -> Void)? = nil,
+        onRestorePanelSize: ((CGSize) -> Void)? = nil,
         onClose: @escaping () -> Void,
         onMinimize: @escaping () -> Void,
         onExpand: @escaping () -> Void,
@@ -114,6 +118,7 @@ struct ContentView: View {
         self.onOverrideHeight = onOverrideHeight
         self.onMinimizedWidthChange = onMinimizedWidthChange
         self.onCornerResizeAvailabilityChange = onCornerResizeAvailabilityChange
+        self.onRestorePanelSize = onRestorePanelSize
         self.onClose = onClose
         self.onMinimize = onMinimize
         self.onExpand = onExpand
@@ -235,9 +240,15 @@ struct ContentView: View {
                 ChromeDensityReader(
                     density: $chromeDensity,
                     isSuspended: panelPresentation.isMinimized || isRestoringFromHarbor,
-                    onEnteredCompact: {
+                    onEnteredCompact: { restoreSize in
                         guard !showOnboarding, !showWhatsNew, !isBugReport else { return }
-                        toastState.show("Entered Compact Mode")
+                        toastState.show(
+                            "Entered Compact Mode",
+                            actionTitle: "Undo",
+                            duration: 3
+                        ) {
+                            onRestorePanelSize?(restoreSize)
+                        }
                     }
                 )
             )

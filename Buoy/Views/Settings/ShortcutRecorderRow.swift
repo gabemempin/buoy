@@ -25,47 +25,64 @@ struct ShortcutRecorderRow: View {
     @State private var flashTask: Task<Void, Never>?
 
     var body: some View {
-        LabeledContent(label) {
-            VStack(alignment: .trailing, spacing: 3) {
-                HStack(spacing: 10) {
-                    Circle()
-                        .fill(BuoyTheme.current.accent)
-                        .frame(width: 6, height: 6)
-                        .opacity(isCustomised && !isRecording ? 1 : 0)
-                        .accessibilityHidden(true)
-                    display
-                        .frame(width: 140, alignment: .trailing)
-                    Button(isRecording ? "Cancel" : "Edit") {
-                        isRecording ? stopRecording() : startRecording()
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .frame(width: 64)
-                    .accessibilityLabel(isRecording ? "Cancel recording \(label)" : "Change shortcut for \(label)")
-                }
-                .frame(width: 230, alignment: .trailing)
-                if let flash, isRecording {
-                    Text(flash)
-                        .font(BuoyFont.caption)
-                        .foregroundStyle(.red)
-                        .transition(.opacity)
-                }
+        // An explicit row rather than `LabeledContent`. At the popover's width
+        // that wrapped the key caps onto a second line under the label, which
+        // doubled every row's height and left the page a column of tall,
+        // half-empty blocks.
+        HStack(spacing: 8) {
+            Text(label)
+                .font(BuoyFont.control)
+                .lineLimit(1)
+                .layoutPriority(1)
+
+            Spacer(minLength: 4)
+
+            if isCustomised && !isRecording {
+                Circle()
+                    .fill(BuoyTheme.current.accent)
+                    .frame(width: 5, height: 5)
+                    .accessibilityHidden(true)
             }
-            .animation(BuoyMotion.easeInOut(0.15), value: flash)
+
+            display
+
+            Button(isRecording ? "Cancel" : "Edit") {
+                isRecording ? stopRecording() : startRecording()
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(BuoyTheme.current.accent)
+            .font(BuoyFont.secondaryEmphasized)
+            .pointingHandCursor()
+            // Fixed, so the row does not shift when the label swaps.
+            .frame(width: 42, alignment: .trailing)
+            .accessibilityLabel(isRecording ? "Cancel recording \(label)" : "Change shortcut for \(label)")
         }
+        .frame(height: 22)
+        // The conflict message replaces the key caps in place rather than
+        // adding a line under them, so nothing reflows while recording.
+        .overlay(alignment: .trailing) {
+            if let flash, isRecording {
+                Text(flash)
+                    .font(BuoyFont.caption)
+                    .foregroundStyle(.red)
+                    .lineLimit(1)
+                    .padding(.trailing, 50)
+                    .transition(.opacity)
+            }
+        }
+        .animation(BuoyMotion.easeInOut(0.15), value: flash)
         .accessibilityValue(ShortcutStrings.symbols(shortcut))
         .onDisappear { stopRecording() }
-        .onChange(of: activeRecording) { _, owner in
-            if isRecording && owner != label { stopRecording() }
-        }
     }
 
     @ViewBuilder
     private var display: some View {
         if isRecording {
-            ShimmeringShortcutPromptView(text: "Type shortcut…", fontSize: 11, minHeight: 24)
+            ShimmeringShortcutPromptView(text: "Type shortcut…", fontSize: 10, minHeight: 20)
+                .frame(width: 92)
         } else {
-            ShortcutKeyCapsView(shortcut: shortcut, keySize: 24, spacing: 4, fontSize: 11)
+            ShortcutKeyCapsView(shortcut: shortcut, keySize: 20, spacing: 3, fontSize: 10)
+                .opacity(flash == nil ? 1 : 0)
         }
     }
 
@@ -136,16 +153,23 @@ struct ShortcutReferenceRow: View {
     let keys: String
 
     var body: some View {
-        LabeledContent {
+        HStack(spacing: 8) {
+            // Dimmed to match its keys. A fixed row that looks exactly like an
+            // editable one, minus the button, invites a hunt for the button.
+            Text(label)
+                .font(BuoyFont.control)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Spacer(minLength: 4)
             Text(keys)
                 .font(BuoyFont.secondaryEmphasized)
                 .foregroundStyle(.tertiary)
                 .monospacedDigit()
-        } label: {
-            // Dimmed to match its keys. A fixed row that looks exactly like an
-            // editable one, minus the button, invites a hunt for the button.
-            Text(label).foregroundStyle(.secondary)
+            // Lines its keys up with the editable rows' key caps, which sit
+            // inside a 42pt button lane.
+            Color.clear.frame(width: 42, height: 1)
         }
+        .frame(height: 20)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(label), \(keys)")
         .accessibilityHint("This shortcut can't be changed")

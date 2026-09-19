@@ -192,10 +192,16 @@ struct ChromeDensityReader: View {
     /// size; a density recomputed from those intermediate heights would be
     /// meaningless and would land just as the panel is restoring.
     var isSuspended: Bool
-    /// Fired when a resize crossed into compact chrome, so the panel can say
-    /// so. Not called for the first reading, which only establishes where the
-    /// panel started.
-    var onEnteredCompact: (() -> Void)? = nil
+    /// Fired when a resize crossed into compact chrome, carrying the window
+    /// size to go back to. Not called for the first reading, which only
+    /// establishes where the panel started.
+    var onEnteredCompact: ((CGSize) -> Void)? = nil
+
+    /// The size the panel was last seen at while drawing regular chrome.
+    @State private var lastRegularWindowSize = CGSize(
+        width: PanelLayoutMetrics.regularChromeWindowWidth,
+        height: PanelLayoutMetrics.regularChromeWindowHeight
+    )
 
     @State private var hasRead = false
 
@@ -212,14 +218,32 @@ struct ChromeDensityReader: View {
         guard !isSuspended else { return }
         let inset = PanelLayoutMetrics.glassEdgeInset * 2
         let windowSize = CGSize(width: glassSize.width + inset, height: glassSize.height + inset)
+        if density == .regular { lastRegularWindowSize = windowSize }
+
         let next = Self.density(forWindowSize: windowSize)
         let wasFirstReading = !hasRead
         hasRead = true
         guard next != density else { return }
-        withAnimation(BuoyMotion.easeOut(0.15)) { density = next }
+
+        // A spring rather than an ease. The window itself jumps across the
+        // detent, and chrome that merely slides to its new size beside that
+        // jump reads as lag; a little overshoot makes the two one movement.
+        withAnimation(BuoyMotion.spring(response: 0.28, dampingFraction: 0.62)) {
+            density = next
+        }
+
         // The first reading only establishes where the panel started; it is
         // not something the user just did and must not announce itself.
-        if next == .compact, !wasFirstReading { onEnteredCompact?() }
+        guard next == .compact, !wasFirstReading else { return }
+        // Past the thresholds, not merely back to the old size: a size inside
+        // the detent's band would leave the chrome compact and make Undo look
+        // like it did nothing.
+        onEnteredCompact?(
+            CGSize(
+                width: max(lastRegularWindowSize.width, PanelLayoutMetrics.compactChromeEnterWidth + 4),
+                height: max(lastRegularWindowSize.height, PanelLayoutMetrics.compactChromeEnterHeight + 4)
+            )
+        )
     }
 
     /// Hysteresis: compact engages the moment regular chrome no longer fits,

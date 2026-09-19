@@ -49,7 +49,17 @@ struct BuoySegmentedPicker<Value: Hashable>: View {
         .padding(3)
         .background(Capsule().fill(Color.buoySegmentTrack))
         .coordinateSpace(name: Self.space)
+        // A tap as well as the drag. `DragGesture(minimumDistance: 0)` does
+        // not reliably deliver `onChanged` for a press that never moves, so on
+        // its own the control only responded to dragging — which is exactly
+        // how it behaved.
+        .onTapGesture(coordinateSpace: .named(Self.space)) { point in
+            guard let index = nearestIndex(to: point.x) else { return }
+            select(options[index].value)
+        }
         .gesture(dragGesture)
+        // Text inside a control should not offer an insertion point.
+        .pointingHandCursor()
         .accessibilityElement(children: .contain)
         .accessibilityLabel(accessibilityLabel)
     }
@@ -74,7 +84,6 @@ struct BuoySegmentedPicker<Value: Hashable>: View {
         .padding(.vertical, 5)
         .contentShape(Rectangle())
         .background(frameReader(index: index))
-        .onTapGesture { select(option.value) }
         // Without this the icon and the label reach VoiceOver as two separate
         // buttons for one segment.
         .accessibilityElement(children: .ignore)
@@ -136,18 +145,41 @@ struct BuoySegmentedPicker<Value: Hashable>: View {
         )
     }
 
-    /// The clear glass lens. Its rim is what reads while it moves — the fill
-    /// stays transparent so the label underneath is still legible through it.
+    /// The lens the pill becomes while it is being dragged.
+    ///
+    /// Copied off Calendar's: a clear centre with a bright refractive rim, so
+    /// the label underneath stays readable *through* it and the edge is what
+    /// you see travelling. The rim is drawn explicitly rather than left to the
+    /// material — `.glassEffect` alone over a light track gives almost nothing
+    /// to see, which is what made the first version look like a plain
+    /// translucent blob.
     @ViewBuilder
     private var lens: some View {
+        let rim = Capsule()
+            .strokeBorder(
+                LinearGradient(
+                    colors: [
+                        Color.white.opacity(0.95),
+                        Color.white.opacity(0.55),
+                        Color.white.opacity(0.85)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                lineWidth: 1.5
+            )
+
         if #available(macOS 26, *) {
             Capsule()
                 .fill(.clear)
                 .glassEffect(.regular.interactive(), in: Capsule())
+                .overlay(rim)
+                .shadow(color: .black.opacity(0.16), radius: 4, y: 1)
         } else {
             Capsule()
-                .fill(Color.white.opacity(0.22))
-                .overlay(Capsule().strokeBorder(Color.white.opacity(0.7), lineWidth: 1))
+                .fill(Color.white.opacity(0.18))
+                .overlay(rim)
+                .shadow(color: .black.opacity(0.16), radius: 4, y: 1)
         }
     }
 

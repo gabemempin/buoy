@@ -92,5 +92,11 @@ struct SettingsForm<Content: View>: View {
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
+        // Rows sit at the chrome size the rest of the app uses. A grouped
+        // form's default body size is set for a settings *window*, and in a
+        // 360pt popover it left row labels reading larger than the section
+        // headings above them — the hierarchy upside down.
+        .font(BuoyFont.control)
+        .controlSize(.small)
     }
 }

@@ -8,17 +8,20 @@ struct AppearanceSettingsPage: View {
     var body: some View {
         SettingsForm {
             Section("Theme") {
-                LabeledContent("Appearance") {
-                    BuoySegmentedPicker(
-                        selection: $settings.theme,
-                        options: [
-                            .init(value: .system, title: "Auto"),
-                            .init(value: .light, title: "Light"),
-                            .init(value: .dark, title: "Dark")
-                        ],
-                        accessibilityLabel: "Appearance"
-                    )
-                }
+                // Centred rather than pinned to the trailing edge. It is the
+                // only control in its section and the widest thing on the
+                // page; hard against the right it read as an afterthought.
+                BuoySegmentedPicker(
+                    selection: $settings.theme,
+                    options: [
+                        .init(value: .system, title: "Auto"),
+                        .init(value: .light, title: "Light"),
+                        .init(value: .dark, title: "Dark")
+                    ],
+                    accessibilityLabel: "Appearance"
+                )
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 2)
             }
 
             Section(BuoyWording.colors) {
