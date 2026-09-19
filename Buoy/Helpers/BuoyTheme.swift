@@ -55,24 +55,6 @@ struct BuoyTheme: Equatable {
 
     var accent: Color { Color(nsColor: accentNSColor) }
 
-    /// The accent as *text*, on the panel's own background.
-    ///
-    /// The note title is drawn in the accent, and a fill that reads well as a
-    /// 28pt circle is often too pale as 19pt letterforms. This darkens it in
-    /// light mode and lifts it in dark, so the title stays the accent without
-    /// becoming something you have to lean in to read.
-    func accentText(isDark: Bool) -> NSColor {
-        guard let accentChoice else {
-            return isDark ? .white : .controlAccentColor
-        }
-        let target: Double = isDark ? 0.68 : 0.40
-        return HSLColor(
-            hue: accentChoice.hue,
-            saturation: accentChoice.saturation,
-            lightness: target
-        ).nsColor
-    }
-
     /// What can legibly sit *on* an accent fill.
     ///
     /// Cannot be `NSColor.alternateSelectedControlTextColor`: that tracks the
@@ -81,13 +63,45 @@ struct BuoyTheme: Equatable {
     /// capsule, every circle button, the Harbor restore chevron, the checked
     /// to-do glyph. Derived from the accent's own luminance instead.
     var onAccentNSColor: NSColor {
-        guard let accentChoice else { return .alternateSelectedControlTextColor }
-        return accentChoice.luminance > 0.62
+        guard accentChoice != nil else { return .alternateSelectedControlTextColor }
+        return accentLuminance > 0.62
             ? NSColor(white: 0.12, alpha: 1)
             : NSColor(white: 1, alpha: 1)
     }
 
     var onAccent: Color { Color(nsColor: onAccentNSColor) }
+
+    /// Luminance of the accent as it is actually drawn, clamp included.
+    private var accentLuminance: Double {
+        guard let accentChoice else { return 0 }
+        return HSLColor(
+            hue: accentChoice.hue,
+            saturation: accentChoice.saturation,
+            lightness: min(
+                max(accentChoice.lightness, Self.legibleAccentLightness.lowerBound),
+                Self.legibleAccentLightness.upperBound
+            )
+        ).luminance
+    }
+
+    /// The accent as *text*.
+    ///
+    /// The same colour the fills use, deliberately. An earlier version pushed
+    /// it to a fixed lightness so it would read against a light panel, which
+    /// meant every accent arrived at the same brightness whatever its hue — a
+    /// yellow accent gave bright yellow buttons and an olive title, and the
+    /// title stopped looking like the accent at all. Legibility is already
+    /// handled upstream: `accentNSColor` clamps lightness into a band that
+    /// works on both appearances, so there is nothing left for this to fix.
+    ///
+    /// Only the no-custom-accent case differs, where white is still the right
+    /// answer in dark mode.
+    func accentText(isDark: Bool) -> NSColor {
+        guard accentChoice != nil else {
+            return isDark ? .white : .controlAccentColor
+        }
+        return accentNSColor
+    }
 
     // MARK: Tint
 
