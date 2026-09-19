@@ -32,22 +32,11 @@ struct BuoyTheme: Equatable {
 
     // MARK: Accent
 
-    /// The lightness an accent has to stay within to be usable.
-    ///
-    /// The accent is a *fill* — buttons, the toolbar capsule, the footer
-    /// pill — so what matters is its contrast against the panel behind it, not
-    /// against the glyph on top. A near-white accent on light glass leaves a
-    /// button that is only visible as the shadow under it, whatever colour the
-    /// glyph flips to.
-    /// Symmetric about the middle on purpose. An earlier 0.28...0.62 was
-    /// picked by eye, and because it left more room below mid-lightness than
-    /// above, the two shaded bands on the wheel came out visibly different
-    /// sizes — which reads as a mistake rather than a rule.
-    static let legibleAccentLightness: ClosedRange<Double> = 0.30...0.70
-
     var accentNSColor: NSColor {
-        guard let accentChoice else { return .controlAccentColor }
-        return clampedAccent(accentChoice).nsColor
+        // No clamp. The accent is whatever was picked, everywhere it is used.
+        // There used to be a legible-lightness band here, which meant the
+        // colour on screen was not quite the colour in the picker.
+        accentChoice?.nsColor ?? .controlAccentColor
     }
 
     var accent: Color { Color(nsColor: accentNSColor) }
@@ -60,57 +49,83 @@ struct BuoyTheme: Equatable {
     /// capsule, every circle button, the Harbor restore chevron, the checked
     /// to-do glyph. Derived from the accent's own luminance instead.
     var onAccentNSColor: NSColor {
-        guard accentChoice != nil else { return .alternateSelectedControlTextColor }
-        return accentLuminance > 0.62
+        guard let accentChoice else { return .alternateSelectedControlTextColor }
+        return accentChoice.luminance > 0.62
             ? NSColor(white: 0.12, alpha: 1)
             : NSColor(white: 1, alpha: 1)
     }
 
     var onAccent: Color { Color(nsColor: onAccentNSColor) }
 
-    /// Luminance of the accent as it is actually drawn, clamp included.
-    private var accentLuminance: Double {
-        guard let accentChoice else { return 0 }
-        return clampedAccent(accentChoice).luminance
-    }
-
-    /// The accent as *text*, deepened into the tint's own hue when the accent
-    /// cannot be read on it.
+    /// The accent as *text*, deepened or lifted when it cannot be read on the
+    /// panel — but never moved off its own hue.
     ///
     /// The accent is used exactly as chosen whenever it stands apart from the
-    /// panel — either in luminance, or by sitting far enough round the hue
-    /// wheel from the tint that the hue carries it on its own. A yellow title
-    /// on a blue panel has almost no luminance contrast and is perfectly
-    /// legible, so nothing happens to it.
+    /// panel, either in luminance or by sitting far enough round the hue wheel
+    /// from the tint that the hue carries it. A yellow title on a blue panel
+    /// has almost no luminance contrast and is perfectly legible, so nothing
+    /// happens to it.
     ///
-    /// When neither holds, the title takes the *tint's* hue at a lightness
-    /// well clear of the panel: a deep green title on a green panel. Earlier
-    /// versions all tried to rescue the accent itself and produced olive, mud,
-    /// white, or plain black — none of which belonged to the palette the user
-    /// had picked. Borrowing the tint keeps the title part of that palette
-    /// while giving it the contrast the accent could not supply.
+    /// Only when neither holds does it move, and then only along lightness.
+    /// Hue and saturation are never touched, so a purple accent gives a deep
+    /// purple title that still matches the buttons. Borrowing the *tint's* hue
+    /// was tried and is worse: it matched the panel and not the accent, so a
+    /// purple app got a navy title.
     func accentText(isDark: Bool) -> NSColor {
         guard let accentChoice else {
             return isDark ? .white : .controlAccentColor
         }
-        let accent = clampedAccent(accentChoice)
         let background = Self.luminance(panelBackground(isDark: isDark))
 
-        if Self.contrast(accent.luminance, background) >= Self.minimumTitleContrast {
-            return accent.nsColor
+        if Self.contrast(accentChoice.luminance, background) >= Self.minimumTitleContrast {
+            return accentChoice.nsColor
         }
-        guard let tintChoice else { return accent.nsColor }
-        if Self.hueDistance(accent.hue, tintChoice.hue) >= Self.distinctHueDistance {
-            return accent.nsColor
+        if let tintChoice,
+           Self.hueDistance(accentChoice.hue, tintChoice.hue) >= Self.distinctHueDistance {
+            return accentChoice.nsColor
         }
+        return Self.readable(accentChoice, against: background).nsColor
+    }
 
-        // Away from the panel, not away from the accent: dark on a light
-        // panel, light on a dark one.
-        return HSLColor(
-            hue: tintChoice.hue,
-            saturation: max(tintChoice.saturation, 0.55),
-            lightness: background > 0.5 ? 0.22 : 0.84
-        ).nsColor
+    /// Walks lightness both ways and takes whichever reaches the target first,
+    /// or gets closest.
+    ///
+    /// Trying only one direction is what produced the bad results before: a
+    /// colour sitting almost exactly on the background's luminance can be
+    /// pushed either way, and guessing from which side it happens to fall on
+    /// turned a bright yellow white one time and muddy the next.
+    private static func readable(_ color: HSLColor, against background: Double) -> HSLColor {
+        var best = color
+        var bestContrast = contrast(color.luminance, background)
+        var bestDistance = Double.greatestFiniteMagnitude
+
+        for step in [0.03, -0.03] {
+            var lightness = color.lightness
+            var moved: Double = 0
+            while lightness > 0.05, lightness < 0.95 {
+                lightness += step
+                moved += 0.03
+                let candidate = HSLColor(
+                    hue: color.hue,
+                    saturation: color.saturation,
+                    lightness: lightness
+                )
+                let value = contrast(candidate.luminance, background)
+                if value >= minimumTitleContrast {
+                    if moved < bestDistance {
+                        best = candidate
+                        bestContrast = value
+                        bestDistance = moved
+                    }
+                    break
+                }
+                if bestDistance == .greatestFiniteMagnitude, value > bestContrast {
+                    best = candidate
+                    bestContrast = value
+                }
+            }
+        }
+        return best
     }
 
     /// Deliberately short of the 4.5 a body-text guideline would ask for. The
@@ -148,19 +163,6 @@ struct BuoyTheme: Equatable {
             base * (1 - alpha) + tint.red * alpha,
             base * (1 - alpha) + tint.green * alpha,
             base * (1 - alpha) + tint.blue * alpha
-        )
-    }
-
-    /// The accent with its lightness held inside the legible band — what the
-    /// fills are actually drawn in.
-    private func clampedAccent(_ choice: HSLColor) -> HSLColor {
-        HSLColor(
-            hue: choice.hue,
-            saturation: choice.saturation,
-            lightness: min(
-                max(choice.lightness, Self.legibleAccentLightness.lowerBound),
-                Self.legibleAccentLightness.upperBound
-            )
         )
     }
 

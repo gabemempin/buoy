@@ -33,13 +33,7 @@ struct AppearanceSettingsPage: View {
                         title: "Accent \(BuoyWording.colorLowercased)",
                         selection: $settings.accentColor,
                         defaultName: "System accent",
-                        defaultLightness: 0.46,
-                        // The accent fills buttons and sets the note title, so
-                        // it has to read against the panel in both appearances.
-                        // The triangle still reaches every hue and saturation;
-                        // it just stops short of white and black, which is
-                        // where an accent stops being visible at all.
-                        lightnessRange: BuoyTheme.legibleAccentLightness
+                        defaultLightness: 0.46
                     )
                 }
                 .padding(.vertical, 2)

@@ -16,10 +16,6 @@ struct ColorWheel: View {
     /// Where an untouched wheel starts, and the lightness a fresh pick on the
     /// ring lands at.
     let defaultLightness: Double
-    /// Clamps the lightness a pick can reach. The accent has to stay legible
-    /// against the panel whatever the user aims at, so its range stops short
-    /// of both white and black.
-    var lightnessRange: ClosedRange<Double> = 0...1
     var diameter: CGFloat = 112
 
     private var radius: CGFloat { diameter / 2 }
@@ -158,71 +154,7 @@ struct ColorWheel: View {
         }
         .compositingGroup()
         .clipShape(trianglePath)
-        .overlay(outOfRangeScrim)
         .overlay(trianglePath.stroke(Color.buoyOverlayStroke, lineWidth: 0.5))
-    }
-
-    /// Greys out the part of the triangle the handle will not enter.
-    ///
-    /// The accent has a legible range, so on that wheel the corners nearest
-    /// white and black are off limits. Clamping without saying so just read as
-    /// the control refusing to follow the pointer — this shows where it stops
-    /// and why, the same way a disabled control does.
-    ///
-    /// The bands are straight-edged because lightness is affine in barycentric
-    /// coordinates here: the mix is `a·hue + b·white`, whose widest and
-    /// narrowest channels average to `0.5a + b`. A line of constant lightness
-    /// is therefore a straight line across the triangle.
-    @ViewBuilder
-    private var outOfRangeScrim: some View {
-        if lightnessRange != 0...1 {
-            ZStack {
-                if lightnessRange.upperBound < 1, let region = tooLightRegion {
-                    region.fill(Color.black.opacity(0.42))
-                }
-                if lightnessRange.lowerBound > 0, let region = tooDarkRegion {
-                    region.fill(Color.black.opacity(0.42))
-                }
-            }
-            .clipShape(trianglePath)
-            .allowsHitTesting(false)
-        }
-    }
-
-    /// A point given as a mix of the three corners.
-    private func mix(hue a: Double, white b: Double) -> CGPoint {
-        let v = vertices
-        let c = 1 - a - b
-        return CGPoint(
-            x: a * v.hue.x + b * v.white.x + c * v.black.x,
-            y: a * v.hue.y + b * v.white.y + c * v.black.y
-        )
-    }
-
-    private var tooLightRegion: Path? {
-        let k = lightnessRange.upperBound
-        // Where `0.5a + b = k` meets the hue–white edge. Above L = 0.5 it
-        // does; below, the band is a different shape and not worth drawing.
-        let a = 2 * (1 - k)
-        guard a <= 1 else { return nil }
-        var path = Path()
-        path.move(to: mix(hue: a, white: 1 - a))
-        path.addLine(to: vertices.white)
-        path.addLine(to: mix(hue: 0, white: k))
-        path.closeSubpath()
-        return path
-    }
-
-    private var tooDarkRegion: Path? {
-        let k = lightnessRange.lowerBound
-        let a = 2 * k
-        guard a <= 1 else { return nil }
-        var path = Path()
-        path.move(to: mix(hue: a, white: 0))
-        path.addLine(to: vertices.black)
-        path.addLine(to: mix(hue: 0, white: k))
-        path.closeSubpath()
-        return path
     }
 
     private var triangleHandle: some View {
@@ -263,7 +195,7 @@ struct ColorWheel: View {
             selection = HSLColor(
                 hue: hue,
                 saturation: saturation,
-                lightness: clampLightness(selection == nil ? defaultLightness : current.lightness)
+                lightness: selection == nil ? defaultLightness : current.lightness
             )
         case .triangle, .none:
             selection = colorInTriangle(at: point)
@@ -299,7 +231,7 @@ struct ColorWheel: View {
         return HSLColor(
             hue: current.hue,
             saturation: mixed.saturation,
-            lightness: clampLightness(mixed.lightness)
+            lightness: mixed.lightness
         )
     }
 
@@ -322,9 +254,6 @@ struct ColorWheel: View {
         )
     }
 
-    private func clampLightness(_ value: Double) -> Double {
-        min(max(value, lightnessRange.lowerBound), lightnessRange.upperBound)
-    }
 }
 
 private extension UnitPoint {
@@ -347,7 +276,6 @@ struct ColorPickerColumn: View {
     /// What the subtitle says when nothing is chosen.
     let defaultName: String
     let defaultLightness: Double
-    var lightnessRange: ClosedRange<Double> = 0...1
 
     var body: some View {
         VStack(spacing: 9) {
@@ -360,16 +288,7 @@ struct ColorPickerColumn: View {
             }
             .multilineTextAlignment(.center)
 
-            ColorWheel(
-                selection: $selection,
-                defaultLightness: defaultLightness,
-                lightnessRange: lightnessRange
-            )
-            .help(
-                lightnessRange == 0...1
-                    ? ""
-                    : "The shaded corners are too pale or too dark to stay visible as an accent."
-            )
+            ColorWheel(selection: $selection, defaultLightness: defaultLightness)
 
             SettingsCapsuleButton("Reset", isEnabled: selection != nil) {
                 selection = nil
