@@ -72,7 +72,9 @@ final class TodoAttachment: NSTextAttachment {
                 check.stroke()
             } else {
                 let path = NSBezierPath(ovalIn: c)
-                NSColor.secondaryLabelColor.setStroke()
+                let isDark = NSAppearance.currentDrawing()
+                    .bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                BuoyTheme.current.accentText(isDark: isDark).setStroke()
                 path.lineWidth = lineWidth
                 path.stroke()
             }

@@ -68,8 +68,8 @@ struct SettingsPopover: View {
 }
 
 enum SettingsPopoverMetrics {
-    static let width: CGFloat = 360
-    static let height: CGFloat = 420
+    static let width: CGFloat = 400
+    static let height: CGFloat = 433
     /// Gap between the gear and the popover's arrow, so the two are not
     /// welded together. `.popover` has no offset of its own, so the anchor
     /// rect is widened by this instead.

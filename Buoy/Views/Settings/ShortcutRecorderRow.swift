@@ -19,6 +19,8 @@ struct ShortcutRecorderRow: View {
     /// Marks a row the user has moved off its default.
     var isCustomised: Bool = false
 
+    @Environment(\.buoyTheme) private var theme
+
     @State private var isRecording = false
     @State private var flash: String?
     @State private var keyMonitor: Any?
@@ -39,19 +41,23 @@ struct ShortcutRecorderRow: View {
 
             if isCustomised && !isRecording {
                 Circle()
-                    .fill(BuoyTheme.current.accent)
+                    .fill(theme.accent)
                     .frame(width: 5, height: 5)
                     .accessibilityHidden(true)
             }
 
             display
 
-            Button(isRecording ? "Cancel" : "Edit") {
+            Button {
                 isRecording ? stopRecording() : startRecording()
+            } label: {
+                Text(isRecording ? "Cancel" : "Edit")
+                    .font(BuoyFont.secondaryEmphasized)
+                    .foregroundStyle(.primary)
+                    .frame(width: 42, height: 22)
+                    .contentShape(Capsule())
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(BuoyTheme.current.accent)
-            .font(BuoyFont.secondaryEmphasized)
+            .buttonStyle(ShortcutEditButtonStyle(accent: theme.accent))
             .pointingHandCursor()
             // Fixed, so the row does not shift when the label swaps.
             .frame(width: 42, alignment: .trailing)
@@ -173,5 +179,20 @@ struct ShortcutReferenceRow: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(label), \(keys)")
         .accessibilityHint("This shortcut can't be changed")
+    }
+}
+
+/// Keep the small label readable even with a bright accent on a matching tint.
+private struct ShortcutEditButtonStyle: ButtonStyle {
+    let accent: Color
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(accent.opacity(configuration.isPressed ? 0.30 : 0.12),
+                        in: Capsule())
+            .overlay {
+                Capsule()
+                    .strokeBorder(accent.opacity(0.45), lineWidth: 1)
+            }
     }
 }

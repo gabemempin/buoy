@@ -847,7 +847,19 @@ struct ContentView: View {
     }
 
     private func transferToAppleNotes() {
-        let html = tvRef.value?.htmlContent() ?? ""
+        guard let textView = tvRef.value else { return }
+        if #available(macOS 26, *) {
+            let markdown = textView.markdownContent(title: noteStore.currentNote?.title ?? "Untitled")
+            AppleNotesService.transferMarkdown(markdown) { error in
+                if let error {
+                    toastState.show("Error: \(error)", style: .error)
+                } else {
+                    toastState.show("Confirm import in Apple Notes")
+                }
+            }
+            return
+        }
+        let html = textView.htmlContent()
         AppleNotesService.transfer(htmlContent: html) { error in
             if let error {
                 toastState.show("Error: \(error)", style: .error)

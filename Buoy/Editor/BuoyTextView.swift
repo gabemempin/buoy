@@ -1801,7 +1801,21 @@ final class BuoyTextView: NSTextView {
         return result
     }
 
-    // MARK: - HTML export (for Apple Notes transfer)
+    // MARK: - Apple Notes export
+
+    func markdownContent(title: String) -> String {
+        let content: NSAttributedString
+        if let textStorage {
+            content = textStorage
+        } else {
+            content = NSAttributedString(string: string)
+        }
+        return NoteMarkdown.export(
+            content,
+            title: title,
+            indentWidth: ListIndent.width
+        )
+    }
 
     func htmlContent() -> String {
         guard let storage = textStorage else { return plainTextContent() }

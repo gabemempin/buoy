@@ -189,6 +189,11 @@ final class CornerResizeOverlayController {
             dismissImmediately = true
         }
 
+        // Visibility follows proximity; click capture follows the arc itself.
+        // Update this even while staying near the same corner, and release it
+        // immediately on leaving the arc rather than waiting for its fade-out.
+        updateMouseCapture(at: screenPoint)
+
         guard nextCorner != hoveredCorner else { return }
         hoveredCorner = nextCorner
         transitionGeneration += 1
@@ -235,10 +240,19 @@ final class CornerResizeOverlayController {
         handleMouseMoved(to: NSEvent.mouseLocation)
     }
 
+    private func updateMouseCapture(at screenPoint: NSPoint) {
+        for (corner, overlay) in overlays {
+            overlay.panel.ignoresMouseEvents = !(corner == hoveredCorner
+                && overlay.view.alphaValue > 0
+                && overlay.view.containsResizeHandle(at: screenPoint))
+        }
+    }
+
     private func reveal(_ corner: ResizeCorner?, animated: Bool) {
         for (candidate, overlay) in overlays {
             let shouldReveal = candidate == corner && isEnabled
             overlay.panel.ignoresMouseEvents = !shouldReveal
+                || !overlay.view.containsResizeHandle(at: NSEvent.mouseLocation)
             overlay.view.setRevealed(shouldReveal, animated: animated)
         }
     }
@@ -425,6 +439,25 @@ private final class CornerResizeOverlayView: NSView {
         } else {
             alphaValue = targetAlpha
         }
+    }
+
+    /// A narrow band around the drawn arc, never the transparent square over
+    /// the footer. Reflect every corner into the same outward-facing quadrant.
+    func containsResizeHandle(at screenPoint: NSPoint) -> Bool {
+        guard let parentWindow, let window,
+              window.frame.contains(screenPoint) else { return false }
+        let glass = parentWindow.frame.insetBy(
+            dx: PanelLayoutMetrics.glassEdgeInset,
+            dy: PanelLayoutMetrics.glassEdgeInset
+        )
+        let cornerPoint = corner.screenPoint(in: glass)
+        let radius = PanelLayoutMetrics.windowCornerRadius
+        let outwardX = (screenPoint.x - cornerPoint.x) * (corner.isLeading ? -1 : 1) + radius
+        let outwardY = (screenPoint.y - cornerPoint.y) * (corner.isTop ? 1 : -1) + radius
+        let angle = atan2(outwardY, outwardX) * 180 / .pi
+        let trim = CornerResizeMetrics.arcTrimDegrees
+        return angle >= trim - 8 && angle <= 90 - trim + 8
+            && abs(hypot(outwardX, outwardY) - CornerResizeMetrics.arcRadius) <= 5
     }
 
     override func mouseDown(with event: NSEvent) {

@@ -72,6 +72,7 @@ private struct ShortcutKeyCapView: View {
     var fontSize: CGFloat = 15
 
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.buoyTheme) private var theme
 
     private var cornerRadius: CGFloat {
         max(7, size * 0.18)
@@ -95,6 +96,9 @@ private struct ShortcutKeyCapView: View {
                 .shadow(color: .black.opacity(colorScheme == .dark ? 0.65 : 0.22), radius: 0, x: 0, y: max(2, size * 0.06))
                 .shadow(color: .black.opacity(colorScheme == .dark ? 0.22 : 0.10), radius: max(4, size * 0.12), x: 0, y: max(3, size * 0.08))
 
+            RoundedRectangle(cornerRadius: cornerRadius)
+                .fill((theme.tint ?? theme.accent).opacity(theme.opaqueTintOpacity + 0.10))
+
             RoundedRectangle(cornerRadius: max(6, cornerRadius - 1))
                 .fill(
                     LinearGradient(
@@ -107,7 +111,7 @@ private struct ShortcutKeyCapView: View {
 
             RoundedRectangle(cornerRadius: cornerRadius)
                 .strokeBorder(
-                    colorScheme == .dark ? Color.white.opacity(0.13) : Color.black.opacity(0.10),
+                    theme.accent.opacity(colorScheme == .dark ? 0.55 : 0.40),
                     lineWidth: 1
                 )
 
