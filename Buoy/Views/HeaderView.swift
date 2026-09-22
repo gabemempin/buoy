@@ -141,6 +141,8 @@ struct HeaderView: View {
     /// True while an auto-title request is running for the current note —
     /// plays the "thinking" shimmer over the title.
     var titleThinking: Bool = false
+    var timerTitle: String? = nil
+    var onTimerTitleClick: () -> Void = {}
 
     @FocusState private var titleFocused: Bool
     @State private var isEditingTitle = false
@@ -195,66 +197,85 @@ struct HeaderView: View {
             .padding(.top, metrics.headerTopPadding)
             .background(dragEnabled ? WindowDragHandle(onDoubleClick: onHeaderDoubleClick) : nil)
 
-            ZStack {
-                TitleTextField(
-                    text: $title,
-                    placeholder: "Untitled",
-                    onSubmit: focusEditor,
-                    isFocused: titleFocused,
-                    // Not hidden while thinking: the glow layers *over* the
-                    // real text, which is what keeps the letters from
-                    // re-tracking when it starts.
-                    hidesText: isBugReport || showsReveal || showsScrollingTitle,
-                    onEditingChanged: { isEditingTitle = $0 },
-                    fontSize: metrics.titleFontSize
-                )
-                .frame(maxWidth: .infinity, minHeight: metrics.titleMinHeight)
-                // Measured *inside* the padding: the marquee below re-applies the
-                // same padding, so reading the outer width would make the overlay
-                // 24pt wider than the row and push the whole panel out of shape.
-                .background(TitleLaneWidthReader(width: $titleLaneWidth))
-                .padding(.horizontal, metrics.titleHorizontalPadding)
-
-                if isBugReport {
-                    AnimatedBugTitle(title: title, fontSize: metrics.titleFontSize)
+            Group {
+                if let timerTitle {
+                    Button(action: onTimerTitleClick) {
+                        Text(timerTitle)
+                            .font(Font(metrics.titleFont))
+                            .monospacedDigit()
+                            .foregroundStyle(Color(nsColor: TitleTextField.textColor(for: colorScheme)))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                            .frame(maxWidth: .infinity, minHeight: metrics.titleMinHeight)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, metrics.titleHorizontalPadding)
+                    .help("Return to Harbor Mode for timer controls")
+                    .pointingHandCursor()
+                } else {
+                    ZStack {
+                        TitleTextField(
+                            text: $title,
+                            placeholder: "Untitled",
+                            onSubmit: focusEditor,
+                            isFocused: titleFocused,
+                            // Not hidden while thinking: the glow layers *over* the
+                            // real text, which is what keeps the letters from
+                            // re-tracking when it starts.
+                            hidesText: isBugReport || showsReveal || showsScrollingTitle,
+                            onEditingChanged: { isEditingTitle = $0 },
+                            fontSize: metrics.titleFontSize
+                        )
                         .frame(maxWidth: .infinity, minHeight: metrics.titleMinHeight)
+                        // Measured *inside* the padding: the marquee below re-applies the
+                        // same padding, so reading the outer width would make the overlay
+                        // 24pt wider than the row and push the whole panel out of shape.
+                        .background(TitleLaneWidthReader(width: $titleLaneWidth))
                         .padding(.horizontal, metrics.titleHorizontalPadding)
-                        .allowsHitTesting(false)
-                } else if showsReveal, let titleReveal {
-                    TitleRevealText(
-                        title: titleReveal.title,
-                        color: Color(nsColor: TitleTextField.textColor(for: colorScheme)),
-                        fontSize: metrics.titleFontSize,
-                        onFinished: onRevealFinished
-                    )
-                    .id(titleReveal.id)
-                    .frame(maxWidth: .infinity, minHeight: metrics.titleMinHeight)
-                    .padding(.horizontal, metrics.titleHorizontalPadding)
-                    .allowsHitTesting(false)
-                } else if showsScrollingTitle {
-                    MarqueeText(
-                        text: title,
-                        font: metrics.titleFont,
-                        color: Color(nsColor: TitleTextField.textColor(for: colorScheme)),
-                        availableWidth: titleLaneWidth,
-                        restingAlignment: .center
-                    )
-                    .frame(minHeight: metrics.titleMinHeight)
-                    .padding(.horizontal, metrics.titleHorizontalPadding)
-                    .allowsHitTesting(false)
-                }
 
-                // Layered on top of whatever is drawing the title rather than
-                // replacing it, so starting the glow can't shift the letters.
-                if showsThinking {
-                    TitleThinkingGlow(
-                        title: title,
-                        color: TitleTextField.thinkingGlowColor(for: colorScheme),
-                        fontSize: metrics.titleFontSize
-                    )
-                    .frame(maxWidth: .infinity, minHeight: metrics.titleMinHeight)
-                    .padding(.horizontal, metrics.titleHorizontalPadding)
-                    .allowsHitTesting(false)
+                        if isBugReport {
+                            AnimatedBugTitle(title: title, fontSize: metrics.titleFontSize)
+                                .frame(maxWidth: .infinity, minHeight: metrics.titleMinHeight)
+                                .padding(.horizontal, metrics.titleHorizontalPadding)
+                                .allowsHitTesting(false)
+                        } else if showsReveal, let titleReveal {
+                            TitleRevealText(
+                                title: titleReveal.title,
+                                color: Color(nsColor: TitleTextField.textColor(for: colorScheme)),
+                                fontSize: metrics.titleFontSize,
+                                onFinished: onRevealFinished
+                            )
+                            .id(titleReveal.id)
+                            .frame(maxWidth: .infinity, minHeight: metrics.titleMinHeight)
+                            .padding(.horizontal, metrics.titleHorizontalPadding)
+                            .allowsHitTesting(false)
+                        } else if showsScrollingTitle {
+                            MarqueeText(
+                                text: title,
+                                font: metrics.titleFont,
+                                color: Color(nsColor: TitleTextField.textColor(for: colorScheme)),
+                                availableWidth: titleLaneWidth,
+                                restingAlignment: .center
+                            )
+                            .frame(minHeight: metrics.titleMinHeight)
+                            .padding(.horizontal, metrics.titleHorizontalPadding)
+                            .allowsHitTesting(false)
+                        }
+
+                        // Layered on top of whatever is drawing the title rather than
+                        // replacing it, so starting the glow can't shift the letters.
+                        if showsThinking {
+                            TitleThinkingGlow(
+                                title: title,
+                                color: TitleTextField.thinkingGlowColor(for: colorScheme),
+                                fontSize: metrics.titleFontSize
+                            )
+                            .frame(maxWidth: .infinity, minHeight: metrics.titleMinHeight)
+                            .padding(.horizontal, metrics.titleHorizontalPadding)
+                            .allowsHitTesting(false)
+                        }
+                    }
                 }
             }
             .padding(.bottom, metrics.titleBottomPadding)

@@ -184,7 +184,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func minimizedContentWidth() -> CGFloat {
-        PanelLayoutMetrics.minimizedWindowWidth(forTitle: noteStore.currentNote?.title ?? "")
+        panelPresentation.harborTimer.isActive
+            ? PanelLayoutMetrics.minimizedTimerWindowWidth
+            : PanelLayoutMetrics.minimizedWindowWidth(forTitle: noteStore.currentNote?.title ?? "")
     }
 
     private func shouldUseBottomMinimizedAnchor(for frame: NSRect, in panel: NSPanel) -> Bool {
@@ -645,6 +647,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         p.endEditing(for: nil)
         p.makeFirstResponder(nil)
 
+        panelPresentation.harborTimer.start(title: noteStore.currentNote?.title ?? "", noteID: noteStore.currentNote?.id)
         panelPresentation.minimizedContentWidth = minimizedContentWidth()
         let pillSize = NSSize(
             width: panelPresentation.minimizedContentWidth,
@@ -700,6 +703,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func updateMinimizedWidth(_ width: CGFloat) {
+        // Entry already sets its target width before the SwiftUI state changes.
+        // Avoid starting a second frame animation from the timer's onChange.
+        guard panelPresentation.minimizedContentWidth != width else { return }
         panelPresentation.minimizedContentWidth = width
         guard panelPresentation.isMinimized, let p = panel else { return }
 

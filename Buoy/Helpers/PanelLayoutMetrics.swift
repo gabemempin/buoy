@@ -129,6 +129,7 @@ enum PanelLayoutMetrics {
     static let minimizedPillHeight: CGFloat = 56
     static let minimizedWindowHeight: CGFloat = minimizedPillHeight + (glassEdgeInset * 2)
     static let minimizedWindowMinimumWidth: CGFloat = 240
+    static let minimizedTimerWindowWidth: CGFloat = 270
     /// The pill never narrows with the chrome: it is its own layout, sized to
     /// the title, and it keeps the panel's regular width as its ceiling.
     static let minimizedWindowMaximumWidth: CGFloat = regularChromeWindowWidth

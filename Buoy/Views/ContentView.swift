@@ -193,9 +193,19 @@ struct ContentView: View {
                     guard !showOnboarding, !showWhatsNew else { return }
                     focusEditor()
                 }
+                if panelPresentation.harborTimer.isActive {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + PanelLayoutMetrics.minimizedFrameAnimationDuration + 0.12) {
+                        guard !panelPresentation.isMinimized, panelPresentation.harborTimer.isActive else { return }
+                        toastState.show("Return to Harbor Mode for timer controls")
+                    }
+                }
             }
         }
         .onChange(of: displayTitle) { _, _ in
+            onMinimizedWidthChange?(minimizedWidth)
+        }
+        .onChange(of: panelPresentation.harborTimer.isActive) { _, _ in
+            guard panelPresentation.isMinimized else { return }
             onMinimizedWidthChange?(minimizedWidth)
         }
         .onChange(of: noteStore.currentNote?.id) { _, noteID in
@@ -345,7 +355,10 @@ struct ContentView: View {
                     isBugReport: isBugReport,
                     titleReveal: noteStore.titleReveal,
                     onRevealFinished: { noteStore.titleReveal = nil },
-                    titleThinking: noteStore.titleThinking != nil && noteStore.titleThinking == noteStore.currentNote?.id
+                    titleThinking: noteStore.titleThinking != nil && noteStore.titleThinking == noteStore.currentNote?.id,
+                    timerTitle: panelPresentation.harborTimer.isActive && panelPresentation.harborTimer.noteID == noteStore.currentNote?.id
+                        ? panelPresentation.harborTimer.displayText : nil,
+                    onTimerTitleClick: { toastState.show("Return to Harbor Mode for timer controls") }
                 )
 
                 formattingToolbar
@@ -409,8 +422,6 @@ struct ContentView: View {
             }
             .opacity(showMainContent ? 1 : 0)
 
-            ToastContainer(state: toastState)
-
             if showAllNotes {
                 Color.clear
                     .contentShape(Rectangle())
@@ -460,6 +471,9 @@ struct ContentView: View {
                     .transition(.opacity)
                     .onAppear { tvRef.value?.window?.makeFirstResponder(nil) }
             }
+        }
+        .overlay {
+            ToastContainer(state: toastState)
         }
     }
 
@@ -522,6 +536,7 @@ struct ContentView: View {
         MinimizedNotePillView(
             title: displayTitle,
             theme: settings.theme,
+            timer: panelPresentation.harborTimer,
             onRestore: onRestoreFromMinimized
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
@@ -541,7 +556,9 @@ struct ContentView: View {
     }
 
     private var minimizedWidth: CGFloat {
-        PanelLayoutMetrics.minimizedWindowWidth(forTitle: noteStore.currentNote?.title ?? "")
+        panelPresentation.harborTimer.isActive
+            ? PanelLayoutMetrics.minimizedTimerWindowWidth
+            : PanelLayoutMetrics.minimizedWindowWidth(forTitle: noteStore.currentNote?.title ?? "")
     }
 
     /// Any overlay panel that covers the editor and should block window drags.
@@ -672,6 +689,7 @@ struct ContentView: View {
         selectionLinkPopoverController.dismiss()
         showSelectionLinkDialog = false
         showLinkDialog = false
+        toastState.dismiss()
         withAnimation(BuoyMotion.easeOut(0.16)) { showAllNotes = false }
     }
 

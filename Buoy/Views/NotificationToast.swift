@@ -85,7 +85,7 @@ struct NotificationToast: View {
                 .font(BuoyFont.secondaryEmphasized)
                 .foregroundStyle(.primary)
                 .lineLimit(1)
-                .fixedSize()
+                .minimumScaleFactor(0.85)
 
             if let action {
                 Rectangle()
@@ -148,29 +148,25 @@ final class ToastState {
         } else {
             self.action = nil
         }
-        withAnimation(BuoyMotion.easeIn(0.15)) {
-            isShowing = true
-        }
+        isShowing = true
         hideTask = Task { @MainActor in
             try? await Task.sleep(for: .seconds(duration))
             guard !Task.isCancelled else { return }
-            withAnimation(BuoyMotion.easeOut(0.3)) {
-                isShowing = false
-            }
+            isShowing = false
         }
     }
 
     func dismiss() {
         hideTask?.cancel()
         hideTask = nil
-        withAnimation(BuoyMotion.easeOut(0.2)) { isShowing = false }
+        isShowing = false
     }
 }
 
 // MARK: - Toast Container
 
 struct ToastContainer: View {
-    @State var state: ToastState
+    var state: ToastState
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -180,13 +176,15 @@ struct ToastContainer: View {
                     // its shadow ring; subtract it so the visible capsule sits
                     // on the same line as the update bubble, just above the footer.
                     .padding(.bottom, PanelLayoutMetrics.footerOverlayBottomInset - PanelLayoutMetrics.glassEdgeInset)
-                    .transition(BuoyMotion.transition(.opacity.combined(with: .move(edge: .bottom))))
+                    .transition(.opacity)
                     // Spoken as soon as it appears; it is the only feedback
                     // for actions like Copy and Transfer.
                     .accessibilityAddTraits(.isStaticText)
             }
         }
+        .padding(.horizontal, 8)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        .animation(BuoyMotion.easeInOut(0.18), value: state.isShowing)
         // An informational pill must never swallow a click meant for the
         // editor or footer beneath it. One carrying an action has to be
         // clickable, so hit testing follows the action rather than being off

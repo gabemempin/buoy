@@ -8,6 +8,7 @@ enum PanelFullSizeMode: Equatable {
 
 @Observable
 final class PanelPresentationModel {
+    let harborTimer = HarborTimer()
     var isMinimized = false
     var fullSizeMode: PanelFullSizeMode = .compact
     var minimizedContentWidth: CGFloat = PanelLayoutMetrics.minimizedWindowMinimumWidth

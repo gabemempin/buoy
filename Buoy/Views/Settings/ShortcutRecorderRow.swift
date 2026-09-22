@@ -33,7 +33,7 @@ struct ShortcutRecorderRow: View {
         // half-empty blocks.
         HStack(spacing: 8) {
             Text(label)
-                .font(BuoyFont.control)
+                .font(.body)
                 .lineLimit(1)
                 .layoutPriority(1)
 
@@ -52,18 +52,18 @@ struct ShortcutRecorderRow: View {
                 isRecording ? stopRecording() : startRecording()
             } label: {
                 Text(isRecording ? "Cancel" : "Edit")
-                    .font(BuoyFont.secondaryEmphasized)
+                    .font(.body.weight(.medium))
                     .foregroundStyle(.primary)
-                    .frame(width: 42, height: 22)
+                    .frame(width: 58, height: 24)
                     .contentShape(Capsule())
             }
             .buttonStyle(ShortcutEditButtonStyle(accent: theme.accent))
             .pointingHandCursor()
             // Fixed, so the row does not shift when the label swaps.
-            .frame(width: 42, alignment: .trailing)
+            .frame(width: 58, alignment: .trailing)
             .accessibilityLabel(isRecording ? "Cancel recording \(label)" : "Change shortcut for \(label)")
         }
-        .frame(height: 22)
+        .frame(height: 24)
         // The conflict message replaces the key caps in place rather than
         // adding a line under them, so nothing reflows while recording.
         .overlay(alignment: .trailing) {
@@ -72,7 +72,7 @@ struct ShortcutRecorderRow: View {
                     .font(BuoyFont.caption)
                     .foregroundStyle(.red)
                     .lineLimit(1)
-                    .padding(.trailing, 50)
+                    .padding(.trailing, 66)
                     .transition(.opacity)
             }
         }
@@ -84,10 +84,10 @@ struct ShortcutRecorderRow: View {
     @ViewBuilder
     private var display: some View {
         if isRecording {
-            ShimmeringShortcutPromptView(text: "Type shortcut…", fontSize: 10, minHeight: 20)
-                .frame(width: 92)
+            ShimmeringShortcutPromptView(text: "Type shortcut…", fontSize: 12, minHeight: 24)
+                .frame(width: 104)
         } else {
-            ShortcutKeyCapsView(shortcut: shortcut, keySize: 20, spacing: 3, fontSize: 10)
+            ShortcutKeyCapsView(shortcut: shortcut, keySize: 22, spacing: 3, fontSize: 12)
                 .opacity(flash == nil ? 1 : 0)
         }
     }
@@ -163,19 +163,16 @@ struct ShortcutReferenceRow: View {
             // Dimmed to match its keys. A fixed row that looks exactly like an
             // editable one, minus the button, invites a hunt for the button.
             Text(label)
-                .font(BuoyFont.control)
+                .font(.body)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
             Spacer(minLength: 4)
             Text(keys)
-                .font(BuoyFont.secondaryEmphasized)
+                .font(.body.weight(.medium))
                 .foregroundStyle(.tertiary)
                 .monospacedDigit()
-            // Lines its keys up with the editable rows' key caps, which sit
-            // inside a 42pt button lane.
-            Color.clear.frame(width: 42, height: 1)
         }
-        .frame(height: 20)
+        .frame(height: 24)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(label), \(keys)")
         .accessibilityHint("This shortcut can't be changed")

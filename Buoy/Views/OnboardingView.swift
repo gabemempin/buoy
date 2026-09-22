@@ -587,6 +587,7 @@ private struct HarborModeSlide: View {
     var isDemoMinimized: Bool
     var onToggleDemo: () -> Void
     @State private var hasTriggeredOnce = false
+    @State private var demoTimer = HarborTimer()
 
     var body: some View {
         VStack(spacing: 10) {
@@ -599,6 +600,7 @@ private struct HarborModeSlide: View {
                     MinimizedNotePillView(
                         title: "My note",
                         theme: .system,
+                        timer: demoTimer,
                         onRestore: onToggleDemo
                     )
                     .shadow(color: .black.opacity(0.18), radius: 14, y: 5)

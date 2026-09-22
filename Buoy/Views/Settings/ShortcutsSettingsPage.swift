@@ -32,25 +32,24 @@ struct ShortcutsSettingsPage: View {
                     ShortcutReferenceRow(label: item.title, keys: item.keys)
                 }
             } header: {
-                HStack(spacing: 5) {
-                    Image(systemName: "lock.fill")
-                        .font(.system(size: 10))
-                        .accessibilityHidden(true)
-                    Text("Formatting and Editing")
+                VStack(alignment: .leading, spacing: 5) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 10))
+                            .accessibilityHidden(true)
+                        Text("Formatting and Editing")
+                    }
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.primary)
+
+                    Text("These match the shortcuts every Mac app uses and can't be changed.")
+                        .font(BuoyFont.secondary)
+                        .foregroundStyle(.secondary)
                 }
                 // Matches `SettingsSection`, which this one cannot use because
                 // its header carries a glyph as well as a title.
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.primary)
                 .textCase(nil)
                 .padding(.bottom, 1)
-            } footer: {
-                // Every row above this section carries an Edit button, so
-                // without saying otherwise these read as ones nobody has got
-                // round to making editable yet.
-                Text("These match the shortcuts every Mac app uses and can't be changed.")
-                    .font(BuoyFont.secondary)
-                    .foregroundStyle(.secondary)
             }
 
             Section {
