@@ -193,10 +193,13 @@ struct ContentView: View {
                     guard !showOnboarding, !showWhatsNew else { return }
                     focusEditor()
                 }
-                if panelPresentation.harborTimer.isActive {
+                if currentHarborTimer.isActive {
+                    let timerNoteID = noteStore.currentNote?.id
                     DispatchQueue.main.asyncAfter(deadline: .now() + PanelLayoutMetrics.minimizedFrameAnimationDuration + 0.12) {
-                        guard !panelPresentation.isMinimized, panelPresentation.harborTimer.isActive else { return }
-                        toastState.show("Return to Harbor Mode for timer controls")
+                        guard !panelPresentation.isMinimized,
+                              noteStore.currentNote?.id == timerNoteID,
+                              currentHarborTimer.isActive else { return }
+                        toastState.show("Manage timers in Harbor Mode")
                     }
                 }
             }
@@ -204,12 +207,17 @@ struct ContentView: View {
         .onChange(of: displayTitle) { _, _ in
             onMinimizedWidthChange?(minimizedWidth)
         }
-        .onChange(of: panelPresentation.harborTimer.isActive) { _, _ in
+        .onChange(of: currentHarborTimer.isActive) { _, _ in
             guard panelPresentation.isMinimized else { return }
             onMinimizedWidthChange?(minimizedWidth)
         }
         .onChange(of: noteStore.currentNote?.id) { _, noteID in
             persistCurrentNoteSelection(noteID)
+            toastState.dismiss()
+            onMinimizedWidthChange?(minimizedWidth)
+        }
+        .onChange(of: Set(noteStore.notes.map(\.id))) { _, noteIDs in
+            panelPresentation.removeHarborTimers(except: noteIDs)
         }
         .onChange(of: activeFooterOverlayHeight) { _, height in
             onOverrideHeight?(height)
@@ -356,9 +364,9 @@ struct ContentView: View {
                     titleReveal: noteStore.titleReveal,
                     onRevealFinished: { noteStore.titleReveal = nil },
                     titleThinking: noteStore.titleThinking != nil && noteStore.titleThinking == noteStore.currentNote?.id,
-                    timerTitle: panelPresentation.harborTimer.isActive && panelPresentation.harborTimer.noteID == noteStore.currentNote?.id
-                        ? panelPresentation.harborTimer.displayText : nil,
-                    onTimerTitleClick: { toastState.show("Return to Harbor Mode for timer controls") }
+                    timerTitle: currentHarborTimer.isActive && currentHarborTimer.noteID == noteStore.currentNote?.id
+                        ? currentHarborTimer.displayText : nil,
+                    onTimerTitleClick: { toastState.show("Manage timers in Harbor Mode") }
                 )
 
                 formattingToolbar
@@ -536,7 +544,7 @@ struct ContentView: View {
         MinimizedNotePillView(
             title: displayTitle,
             theme: settings.theme,
-            timer: panelPresentation.harborTimer,
+            timer: currentHarborTimer,
             onRestore: onRestoreFromMinimized
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
@@ -555,8 +563,12 @@ struct ContentView: View {
         PanelLayoutMetrics.minimizedDisplayTitle(noteStore.currentNote?.title ?? "")
     }
 
+    private var currentHarborTimer: HarborTimer {
+        panelPresentation.harborTimer(for: noteStore.currentNote?.id)
+    }
+
     private var minimizedWidth: CGFloat {
-        panelPresentation.harborTimer.isActive
+        currentHarborTimer.isActive
             ? PanelLayoutMetrics.minimizedTimerWindowWidth
             : PanelLayoutMetrics.minimizedWindowWidth(forTitle: noteStore.currentNote?.title ?? "")
     }

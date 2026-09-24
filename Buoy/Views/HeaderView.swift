@@ -211,7 +211,7 @@ struct HeaderView: View {
                     }
                     .buttonStyle(.plain)
                     .padding(.horizontal, metrics.titleHorizontalPadding)
-                    .help("Return to Harbor Mode for timer controls")
+                    .help("Manage timers in Harbor Mode")
                     .pointingHandCursor()
                 } else {
                     ZStack {

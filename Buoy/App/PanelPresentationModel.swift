@@ -8,7 +8,32 @@ enum PanelFullSizeMode: Equatable {
 
 @Observable
 final class PanelPresentationModel {
-    let harborTimer = HarborTimer()
+    private var harborTimers: [String: HarborTimer] = [:]
+    private let inactiveHarborTimer = HarborTimer()
+
+    /// Reading a note's timer never creates or starts one during view rendering.
+    func harborTimer(for noteID: String?) -> HarborTimer {
+        guard let noteID else { return inactiveHarborTimer }
+        return harborTimers[noteID] ?? inactiveHarborTimer
+    }
+
+    func startHarborTimer(for note: Note?) {
+        guard let note else { return }
+        if let timer = harborTimers[note.id] {
+            timer.start(title: note.title, noteID: note.id)
+        } else if HarborTimer.duration(in: note.title) != nil {
+            let timer = HarborTimer()
+            timer.start(title: note.title, noteID: note.id)
+            harborTimers[note.id] = timer
+        }
+    }
+
+    func removeHarborTimers(except noteIDs: Set<String>) {
+        for noteID in Array(harborTimers.keys) where !noteIDs.contains(noteID) {
+            harborTimers.removeValue(forKey: noteID)?.stop()
+        }
+    }
+
     var isMinimized = false
     var fullSizeMode: PanelFullSizeMode = .compact
     var minimizedContentWidth: CGFloat = PanelLayoutMetrics.minimizedWindowMinimumWidth

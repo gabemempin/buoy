@@ -184,7 +184,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func minimizedContentWidth() -> CGFloat {
-        panelPresentation.harborTimer.isActive
+        panelPresentation.harborTimer(for: noteStore.currentNote?.id).isActive
             ? PanelLayoutMetrics.minimizedTimerWindowWidth
             : PanelLayoutMetrics.minimizedWindowWidth(forTitle: noteStore.currentNote?.title ?? "")
     }
@@ -647,7 +647,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         p.endEditing(for: nil)
         p.makeFirstResponder(nil)
 
-        panelPresentation.harborTimer.start(title: noteStore.currentNote?.title ?? "", noteID: noteStore.currentNote?.id)
+        panelPresentation.startHarborTimer(for: noteStore.currentNote)
         panelPresentation.minimizedContentWidth = minimizedContentWidth()
         let pillSize = NSSize(
             width: panelPresentation.minimizedContentWidth,

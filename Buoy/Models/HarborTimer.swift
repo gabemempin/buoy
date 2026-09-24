@@ -11,6 +11,11 @@ final class HarborTimer {
     @ObservationIgnored private var deadline: ContinuousClock.Instant?
     @ObservationIgnored private var pausedDuration: Duration = .zero
     @ObservationIgnored private var ticker: Timer?
+    // Retain the sound for asynchronous playback, independently for each note.
+    @ObservationIgnored private var completionSound: NSSound? = {
+        guard let url = Bundle.main.url(forResource: "TimerComplete", withExtension: "aiff") else { return nil }
+        return NSSound(contentsOf: url, byReference: false)
+    }()
 
     var isFinished: Bool { isActive && remainingSeconds == 0 }
 
@@ -96,7 +101,9 @@ final class HarborTimer {
             ticker?.invalidate()
             ticker = nil
             self.deadline = nil
-            NSSound.beep()
+            if completionSound?.play() != true {
+                NSSound.beep()
+            }
         }
     }
 
