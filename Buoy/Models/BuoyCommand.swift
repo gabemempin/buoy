@@ -14,6 +14,7 @@ enum BuoyCommand: String, CaseIterable, Codable, Hashable {
     case nextNote
     case allNotes
     case insertLink
+    case findInNote
     case harborMode
     case openSettings
     case hidePanel
@@ -27,6 +28,7 @@ enum BuoyCommand: String, CaseIterable, Codable, Hashable {
         case .nextNote:     return "Next Note"
         case .allNotes:     return "All Notes"
         case .insertLink:   return "Insert Link"
+        case .findInNote:   return "Find in Note"
         case .harborMode:   return "Harbor Mode"
         case .openSettings: return "Settings"
         case .hidePanel:    return "Hide Buoy"
@@ -44,6 +46,7 @@ enum BuoyCommand: String, CaseIterable, Codable, Hashable {
         // "list".
         case .allNotes:     return KeyCombo(keyCode: 37, modifiers: .command)   // L
         case .insertLink:   return KeyCombo(keyCode: 40, modifiers: .command)   // K
+        case .findInNote:   return KeyCombo(keyCode: 3, modifiers: .command)    // F
         case .harborMode:   return KeyCombo(keyCode: 46, modifiers: .command)   // M
         case .openSettings: return KeyCombo(keyCode: 43, modifiers: .command)   // Comma
         case .hidePanel:    return KeyCombo(keyCode: 13, modifiers: .command)   // W
@@ -61,7 +64,7 @@ enum BuoyCommand: String, CaseIterable, Codable, Hashable {
         switch self {
         case .newNote, .deleteNote, .copyNote, .previousNote, .nextNote, .allNotes:
             return .notes
-        case .insertLink:
+        case .insertLink, .findInNote:
             return .editing
         case .harborMode, .openSettings, .hidePanel:
             return .window

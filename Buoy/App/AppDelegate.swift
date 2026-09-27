@@ -231,6 +231,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         isMinimizeAnimating = false
         panelPresentation.harborTransitionGlassSize = nil
         publishPanelSize()
+        cornerResizeOverlayController.updateFrames()
         guard let restoredFrame, !panelPresentation.isMinimized else { return }
         if overlayOverrideHeight == 0 {
             lastFullSizeFrame = restoredFrame
@@ -290,6 +291,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         BuoyTheme.setCurrent(BuoyTheme(settings: settingsStore.value))
         ShortcutRegistry.update(from: settingsStore.value)
         noteStore.restoreSelection(noteID: settingsStore.value.lastSelectedNoteID)
+        NoteIntentBridge.install(
+            noteStore: noteStore,
+            fontSize: { [weak self] in self?.settingsStore.value.fontSize ?? 14 },
+            showPanel: { [weak self] in self?.showPanel() }
+        )
         setupPanel()
         installOutsideClickMonitor()
         applyTheme(settingsStore.value.theme)
@@ -679,17 +685,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         // The outgoing panel keeps its current size while the window shrinks
         // around it toward the pill.
         holdHarborTransitionLayout(at: p.frame, from: targetFrame, in: p)
+        // Hidden up front rather than when SwiftUI's onChange gets round to
+        // it, so their fade-out does not overlap the sweep.
+        cornerResizeOverlayController.setEnabled(false)
 
         withAnimation(BuoyMotion.easeInOut(PanelLayoutMetrics.minimizedTransitionDuration)) {
             panelPresentation.isMinimized = true
         }
         refreshMinimizeMenuItem()
-        animatePanel(
-            to: targetFrame,
-            duration: PanelLayoutMetrics.minimizedFrameAnimationDuration,
-            timingName: .easeInEaseOut
-        ) { [weak self] in
-            self?.finishMinimizeAnimation(generation: generation)
+        // One runloop tick later, as on exit. This tick already holds the
+        // expensive part — resigning the editor, building the pill, starting
+        // the SwiftUI transition — and a frame animation started alongside it
+        // lost its first frames to that work, which read as a stutter at the
+        // start of the fold.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.minimizeAnimationGeneration == generation else { return }
+            self.animatePanel(
+                to: targetFrame,
+                duration: PanelLayoutMetrics.minimizedFrameAnimationDuration,
+                timingName: .easeInEaseOut
+            ) { [weak self] in
+                self?.finishMinimizeAnimation(generation: generation)
+            }
         }
     }
 
@@ -927,7 +944,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         recordCurrentFullSizeFrame()
         // The Harbor sweep's intermediate sizes mean nothing to the chrome
         // density; `finishMinimizeAnimation` publishes the size it lands on.
-        if !isMinimizeAnimating { publishPanelSize() }
+        // The corner overlays are four windows of their own; moving them on
+        // every step of the sweep is four extra window-server frame changes
+        // per frame, for handles that are hidden in Harbor Mode anyway.
+        guard !isMinimizeAnimating else { return }
+        publishPanelSize()
         cornerResizeOverlayController.updateFrames()
     }
 

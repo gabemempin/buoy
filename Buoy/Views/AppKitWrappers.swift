@@ -7,6 +7,17 @@ import SwiftUI
 struct SearchFieldWrapper: NSViewRepresentable {
     @Binding var text: String
     var placeholder: String
+    var accessibilityLabel = "Search notes"
+    /// Takes keyboard focus as soon as it is on screen, so the panel it opens
+    /// with can be searched by just typing.
+    var focusesOnAppear = false
+    /// Keys the field forwards instead of handling itself. Each returns
+    /// whether it used the key; `false` falls back to the field's default.
+    var onMoveUp: (() -> Bool)?
+    var onMoveDown: (() -> Bool)?
+    /// Return. The flag is true when Shift is held.
+    var onSubmit: ((Bool) -> Bool)?
+    var onCancel: (() -> Bool)?
 
     func makeNSView(context: Context) -> NSSearchField {
         let searchField = NSSearchField()
@@ -17,7 +28,7 @@ struct SearchFieldWrapper: NSViewRepresentable {
         // drawn substitute read as clutter. The caret marks focus, and the
         // accessibility label carries it for VoiceOver.
         searchField.focusRingType = .none
-        searchField.setAccessibilityLabel("Search notes")
+        searchField.setAccessibilityLabel(accessibilityLabel)
         searchField.isBordered = false
         searchField.drawsBackground = false
         searchField.font = NSFont.systemFont(ofSize: 12)
@@ -30,10 +41,19 @@ struct SearchFieldWrapper: NSViewRepresentable {
         // worth fighting the cell's layout for.
         (searchField.cell as? NSSearchFieldCell)?.searchButtonCell = nil
 
+        if focusesOnAppear {
+            // The panel is non-activating, so focus has to be taken explicitly
+            // through the window, and only once the field is in it.
+            DispatchQueue.main.async {
+                searchField.window?.makeFirstResponder(searchField)
+            }
+        }
+
         return searchField
     }
 
     func updateNSView(_ nsView: NSSearchField, context: Context) {
+        context.coordinator.parent = self
         if nsView.stringValue != text {
             nsView.stringValue = text
         }
@@ -53,6 +73,26 @@ struct SearchFieldWrapper: NSViewRepresentable {
         func controlTextDidChange(_ obj: Notification) {
             if let field = obj.object as? NSSearchField {
                 parent.text = field.stringValue
+            }
+        }
+
+        func control(
+            _ control: NSControl,
+            textView: NSTextView,
+            doCommandBy commandSelector: Selector
+        ) -> Bool {
+            switch commandSelector {
+            case #selector(NSResponder.moveUp(_:)):
+                return parent.onMoveUp?() ?? false
+            case #selector(NSResponder.moveDown(_:)):
+                return parent.onMoveDown?() ?? false
+            case #selector(NSResponder.insertNewline(_:)):
+                let shift = NSApp.currentEvent?.modifierFlags.contains(.shift) ?? false
+                return parent.onSubmit?(shift) ?? false
+            case #selector(NSResponder.cancelOperation(_:)):
+                return parent.onCancel?() ?? false
+            default:
+                return false
             }
         }
     }

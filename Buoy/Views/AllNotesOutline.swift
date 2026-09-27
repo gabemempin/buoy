@@ -30,6 +30,55 @@ struct AllNotesActions {
     var setRenamingFolder: (String?) -> Void
 }
 
+// MARK: - Keyboard
+
+/// Lets keys typed into the All Notes search field drive the list.
+///
+/// The list itself never takes focus (`refusesFirstResponder`): the panel is
+/// non-activating and a click must not pull focus from the editor. So the
+/// search field keeps the caret, the arrow keys move a highlight through the
+/// rows, Return opens the highlighted row, and ⌘⌫ deletes it — the Spotlight
+/// model, which also makes type-to-search free. `ContentView` owns one so ⌘⌫
+/// (a rebindable command, dispatched before the field sees it) can find out
+/// which note is highlighted.
+final class AllNotesKeyboardController {
+    fileprivate weak var coordinator: NotesOutlineViewWrapper.Coordinator?
+
+    var highlightedNote: Note? { coordinator?.keyboardHighlightedNote }
+
+    /// `false` when there was nothing to move through, so the key falls back
+    /// to the field.
+    func move(by delta: Int) -> Bool {
+        coordinator?.moveKeyboardHighlight(by: delta) ?? false
+    }
+
+    func activate() -> Bool {
+        coordinator?.activateKeyboardHighlight() ?? false
+    }
+}
+
+/// A menu item that runs a closure. The item is its own target, which is safe
+/// because the menu retains its items for as long as it can be shown.
+private final class ClosureMenuItem: NSMenuItem {
+    private let handler: () -> Void
+
+    init(_ title: String, symbol: String? = nil, handler: @escaping () -> Void) {
+        self.handler = handler
+        super.init(title: title, action: #selector(fire), keyEquivalent: "")
+        target = self
+        if let symbol {
+            image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+        }
+    }
+
+    @available(*, unavailable)
+    required init(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    @objc private func fire() { handler() }
+}
+
 // MARK: - AllNotesNode
 
 /// One row in the All Notes outline.
@@ -275,6 +324,16 @@ final class NotesRowView: NSTableRowView {
 /// so anything that reaches the end of tracking without one is a click.
 final class NotesOutlineView: NSOutlineView {
     var onRowClicked: ((Int) -> Void)?
+    /// Builds the right-click menu for a row. The row's hover buttons are the
+    /// only other way to reach pin, file and delete, and they need a mouse
+    /// that is already over the row.
+    var menuProvider: ((Int) -> NSMenu?)?
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let clickedRow = row(at: convert(event.locationInWindow, from: nil))
+        guard clickedRow >= 0 else { return nil }
+        return menuProvider?(clickedRow)
+    }
     var didStartDragDuringTracking = false
 
     /// When the last drag session finished. A press that lands while the
@@ -343,6 +402,7 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
     var currentNoteID: String?
     var renamingFolderID: String?
     var actions: AllNotesActions
+    var keyboard: AllNotesKeyboardController?
 
     var isSearching: Bool { searchMatches != nil }
 
@@ -406,6 +466,10 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
         outlineView.onRowClicked = { [weak coordinator = context.coordinator] row in
             coordinator?.handleRowClick(row)
         }
+        outlineView.menuProvider = { [weak coordinator = context.coordinator] row in
+            coordinator?.contextMenu(forRow: row)
+        }
+        keyboard?.coordinator = context.coordinator
 
         scrollView.documentView = outlineView
         context.coordinator.outlineView = outlineView
@@ -424,10 +488,12 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
 
         coordinator.adopt(self)
         coordinator.rebuildTree()
+        keyboard?.coordinator = coordinator
 
         guard let outlineView = coordinator.outlineView else { return }
 
         if coordinator.tree.signature != previousSignature {
+            coordinator.reconcileKeyboardHighlight()
             // Structure changed in a way no drop handler already animated
             // (a new note, a delete, a pin toggle, a search edit).
             outlineView.reloadData()
@@ -462,6 +528,14 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
         private(set) var renderSignatures: [String: String] = [:]
         private var nodeCache: [String: AllNotesNode] = [:]
         private var hoveredKey: String?
+        /// The row the arrow keys have highlighted. Separate from hover and
+        /// from the open note, and drawn differently from both.
+        private var keyboardKey: String?
+        /// Rebuilt once per update. `renderSignature` runs for every row on
+        /// every update, and a linear scan of `notes` there made the diff
+        /// O(rows × notes) — about 4ms per update at 500 notes.
+        private var notesByID: [String: Note] = [:]
+        private var foldersFingerprint = ""
         private var lastRenamingFolderID: String?
         private var dimmedRowKeys: [String] = []
         private var isRestoringExpansion = false
@@ -480,7 +554,15 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
         func adopt(_ parent: NotesOutlineViewWrapper) {
             self.parent = parent
             self.notes = parent.notes
+            self.notesByID = Dictionary(
+                parent.notes.map { ($0.id, $0) },
+                uniquingKeysWith: { first, _ in first }
+            )
             self.folders = parent.folders
+            // Changes whenever the set of folders or their names change.
+            self.foldersFingerprint = parent.folders
+                .map { "\($0.id):\($0.name)" }
+                .joined(separator: ",")
             self.searchMatches = parent.searchMatches
             self.currentNoteID = parent.currentNoteID
             self.renamingFolderID = parent.renamingFolderID
@@ -647,7 +729,7 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
         }
 
         private func note(for id: String) -> Note? {
-            notes.first { $0.id == id }
+            notesByID[id]
         }
 
         private func folder(for id: String) -> Folder? {
@@ -674,11 +756,6 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
             guard let node = item as? AllNotesNode else { return tree.topLevel.count }
             guard let folderID = node.folderID else { return node.children.count }
             return isFolderExpanded(folderID) ? node.children.count : 0
-        }
-
-        /// Changes whenever the set of folders or their names change.
-        private var foldersFingerprint: String {
-            folders.map { "\($0.id):\($0.name)" }.joined(separator: ",")
         }
 
         private func isFolderExpanded(_ folderID: String) -> Bool {
@@ -817,6 +894,7 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
                         note: note,
                         isActive: note.id == currentNoteID,
                         isHovering: hoveredKey == node.key,
+                        isKeyboardHighlighted: keyboardKey == node.key,
                         isIndented: node.parentFolderID != nil,
                         folders: folders,
                         onSelect: { [weak self] in self?.actions.selectNote(note) },
@@ -849,6 +927,7 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
                         noteCount: node.children.count,
                         isExpanded: isExpanded,
                         isHovering: hoveredKey == node.key,
+                        isKeyboardHighlighted: keyboardKey == node.key,
                         isRenaming: renamingFolderID == folder.id,
                         onToggleExpanded: { [weak self] in self?.toggleExpansion(node) },
                         onBeginRename: { [weak self] in self?.actions.setRenamingFolder(folder.id) },
@@ -880,6 +959,7 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
                     note.isPinned ? "1" : "0",
                     note.id == currentNoteID ? "1" : "0",
                     hoveredKey == node.key ? "1" : "0",
+                    keyboardKey == node.key ? "1" : "0",
                     node.parentFolderID ?? "-",
                     // The row carries a menu listing every folder, so a rename
                     // or a new folder has to repaint it.
@@ -893,6 +973,7 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
                     String(node.children.count),
                     folder.isExpanded ? "1" : "0",
                     hoveredKey == node.key ? "1" : "0",
+                    keyboardKey == node.key ? "1" : "0",
                     renamingFolderID == folderID ? "1" : "0"
                 ].joined(separator: "|")
             }
@@ -950,6 +1031,154 @@ struct NotesOutlineViewWrapper: NSViewRepresentable {
             hoveredKey = newKey
             if let previous, let node = nodeCache[previous] { refreshRow(node) }
             if let newKey, let node = nodeCache[newKey] { refreshRow(node) }
+        }
+
+        // MARK: Keyboard
+
+        var keyboardHighlightedNote: Note? {
+            guard let keyboardKey, let id = nodeCache[keyboardKey]?.noteID else { return nil }
+            return note(for: id)
+        }
+
+        /// Called after a structural change. While searching, the first match
+        /// is highlighted so Return opens it; otherwise a highlight survives
+        /// only if its row still exists.
+        func reconcileKeyboardHighlight() {
+            if isSearching {
+                keyboardKey = tree.topLevel.first?.key
+            } else if let keyboardKey, nodeCache[keyboardKey] == nil {
+                self.keyboardKey = nil
+            }
+        }
+
+        func moveKeyboardHighlight(by delta: Int) -> Bool {
+            guard let outlineView else { return false }
+            let rows = (0..<outlineView.numberOfRows).filter { row in
+                guard let node = outlineView.item(atRow: row) as? AllNotesNode else { return false }
+                return !node.isHeader
+            }
+            guard let first = rows.first, let last = rows.last else { return false }
+
+            // Start from the highlight, or failing that from the open note's
+            // All Notes row, so the first ↓ lands next to where the user is.
+            let anchorKey = keyboardKey
+                ?? currentNoteID.map { AllNotesNode.allNotesKey($0) }
+            let anchorRow = anchorKey
+                .flatMap { nodeCache[$0] }
+                .map { outlineView.row(forItem: $0) } ?? -1
+
+            let target: Int
+            if let position = rows.firstIndex(of: anchorRow) {
+                target = rows[min(max(position + delta, 0), rows.count - 1)]
+            } else {
+                target = delta > 0 ? first : last
+            }
+            setKeyboardHighlight(outlineView.item(atRow: target) as? AllNotesNode)
+            outlineView.scrollRowToVisible(target)
+            return true
+        }
+
+        func activateKeyboardHighlight() -> Bool {
+            guard let keyboardKey, let node = nodeCache[keyboardKey] else { return false }
+            switch node.kind {
+            case .header:
+                return false
+            case .note(let noteID):
+                guard let note = note(for: noteID) else { return false }
+                actions.selectNote(note)
+            case .folder(let folderID):
+                guard renamingFolderID != folderID else { return false }
+                toggleExpansion(node)
+            }
+            return true
+        }
+
+        private func setKeyboardHighlight(_ node: AllNotesNode?) {
+            guard node?.key != keyboardKey else { return }
+            let previous = keyboardKey.flatMap { nodeCache[$0] }
+            keyboardKey = node?.key
+            if let previous { refreshRow(previous) }
+            if let node { refreshRow(node) }
+        }
+
+        // MARK: Context menu
+
+        func contextMenu(forRow row: Int) -> NSMenu? {
+            guard let outlineView,
+                  let node = outlineView.item(atRow: row) as? AllNotesNode
+            else { return nil }
+            switch node.kind {
+            case .header:
+                return nil
+            case .note(let noteID):
+                guard let note = note(for: noteID) else { return nil }
+                return noteMenu(for: note)
+            case .folder(let folderID):
+                guard let folder = folder(for: folderID) else { return nil }
+                return folderMenu(for: folder, node: node)
+            }
+        }
+
+        private func noteMenu(for note: Note) -> NSMenu {
+            let menu = NSMenu()
+            let actions = self.actions
+            menu.addItem(ClosureMenuItem("Open Note") { actions.selectNote(note) })
+            menu.addItem(.separator())
+            menu.addItem(ClosureMenuItem(
+                note.isPinned ? "Unpin" : "Pin",
+                symbol: note.isPinned ? "pin.slash" : "pin"
+            ) { actions.togglePin(note) })
+
+            let moveItem = NSMenuItem(title: "Move to Folder", action: nil, keyEquivalent: "")
+            moveItem.image = NSImage(systemSymbolName: "folder", accessibilityDescription: nil)
+            let submenu = NSMenu()
+            for folder in folders {
+                let item = ClosureMenuItem(folder.displayName) {
+                    actions.fileNote(note.id, folder.id, nil)
+                }
+                item.state = note.folderID == folder.id ? .on : .off
+                // Filing a note where it already is would only renumber it.
+                item.isEnabled = note.folderID != folder.id
+                submenu.addItem(item)
+            }
+            if !folders.isEmpty { submenu.addItem(.separator()) }
+            let newFolder = ClosureMenuItem("New Folder…") {
+                actions.fileNoteInNewFolder(note.id)
+            }
+            // The list is flattened while searching, so the new folder's row
+            // would not exist and its rename would sit armed off screen.
+            newFolder.isEnabled = !isSearching
+            submenu.addItem(newFolder)
+            submenu.autoenablesItems = false
+            moveItem.submenu = submenu
+            menu.addItem(moveItem)
+
+            if note.folderID != nil {
+                menu.addItem(ClosureMenuItem("Remove from Folder") {
+                    actions.unfileNote(note.id)
+                })
+            }
+            menu.addItem(.separator())
+            menu.addItem(ClosureMenuItem("Delete Note…", symbol: "trash") {
+                actions.deleteNote(note)
+            })
+            return menu
+        }
+
+        private func folderMenu(for folder: Folder, node: AllNotesNode) -> NSMenu {
+            let menu = NSMenu()
+            let actions = self.actions
+            menu.addItem(ClosureMenuItem(folder.isExpanded ? "Collapse" : "Expand") { [weak self] in
+                self?.toggleExpansion(node)
+            })
+            menu.addItem(ClosureMenuItem("Rename…", symbol: "pencil") {
+                actions.setRenamingFolder(folder.id)
+            })
+            menu.addItem(.separator())
+            menu.addItem(ClosureMenuItem("Delete Folder…", symbol: "folder.badge.minus") {
+                actions.requestDeleteFolder(folder)
+            })
+            return menu
         }
 
         // MARK: Clicks

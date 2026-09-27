@@ -103,8 +103,14 @@ extension AppDelegate {
         menu.addItem(title: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
         menu.addItem(.separator())
 
-        // No Find submenu — see BuoyTextView.commonInit for why the AppKit find
-        // bar cannot be used in this panel.
+        // Buoy's own find bar, not AppKit's — see BuoyTextView.commonInit for
+        // why the system one cannot be used in this panel.
+        menu.addItem(
+            title: "Find in Note…",
+            action: #selector(BuoyTextView.findInNoteAction(_:)),
+            command: .findInNote
+        )
+        menu.addItem(.separator())
         menu.addItem(submenu: buildSpellingMenu())
         menu.addItem(submenu: buildSubstitutionsMenu())
         menu.addItem(submenu: buildTransformationsMenu())

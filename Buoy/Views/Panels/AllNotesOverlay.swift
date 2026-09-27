@@ -9,6 +9,7 @@ import SwiftUI
 struct AllNotesOverlay: View {
     @Binding var isShowing: Bool
     var noteStore: NoteStore
+    var keyboard: AllNotesKeyboardController
     @Binding var renamingFolderID: String?
     var onDeleteNote: (Note) -> Void
     var onDeleteFolder: (Folder) -> Void
@@ -30,7 +31,9 @@ struct AllNotesOverlay: View {
                         currentNoteID: noteStore.currentNote?.id,
                         renamingFolderID: renamingFolderID,
                         onCreateFolder: createFolder,
-                        actions: actions
+                        actions: actions,
+                        keyboard: keyboard,
+                        onFocusEditor: onFocusEditor
                     )
                     .frame(
                         width: max(

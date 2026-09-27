@@ -336,6 +336,12 @@ private enum ResizeCorner: CaseIterable, Hashable {
 private final class CornerResizePanel: NSPanel {
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
+
+    /// The overlay reaches 28pt past the glass. With the panel under the menu
+    /// bar, AppKit would push it down and the arc would miss the corner.
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
+        frameRect
+    }
 }
 
 private final class CornerResizeOverlayView: NSView {
@@ -482,7 +488,11 @@ private final class CornerResizeOverlayView: NSView {
             height: corner.isTop ? start.height + deltaY : start.height - deltaY
         )
 
-        if let visibleFrame = (parentWindow.screen ?? NSScreen.main)?.visibleFrame {
+        // Clamp the glass, not the window, so a corner drag can reach the edge.
+        if let visibleFrame = (parentWindow.screen ?? NSScreen.main)?.visibleFrame.insetBy(
+            dx: -PanelLayoutMetrics.glassEdgeInset,
+            dy: -PanelLayoutMetrics.glassEdgeInset
+        ) {
             size.width = min(size.width, corner.isLeading
                 ? start.maxX - visibleFrame.minX : visibleFrame.maxX - start.minX)
             size.height = min(size.height, corner.isTop

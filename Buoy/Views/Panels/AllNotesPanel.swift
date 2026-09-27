@@ -9,6 +9,10 @@ struct AllNotesPanel: View {
     var renamingFolderID: String?
     var onCreateFolder: () -> Void
     var actions: AllNotesActions
+    var keyboard: AllNotesKeyboardController
+    /// Escape closes the panel from the search field, which then leaves the
+    /// window with nothing focused unless the editor takes it back.
+    var onFocusEditor: () -> Void = {}
 
     @State private var searchText = ""
 
@@ -35,7 +39,23 @@ struct AllNotesPanel: View {
 
             Divider()
 
-            SearchFieldWrapper(text: $searchText, placeholder: "Search notes...")
+            // Focused on open, with ↑/↓/Return driving the list: the panel can
+            // be searched and walked without leaving the keyboard.
+            SearchFieldWrapper(
+                text: $searchText,
+                placeholder: "Search notes...",
+                focusesOnAppear: true,
+                onMoveUp: { keyboard.move(by: -1) },
+                onMoveDown: { keyboard.move(by: 1) },
+                onSubmit: { _ in keyboard.activate() },
+                onCancel: {
+                    // Escape clears a search first, then closes the panel.
+                    guard searchText.isEmpty else { return false }
+                    withAnimation(BuoyMotion.easeOut(0.16)) { isShowing = false }
+                    onFocusEditor()
+                    return true
+                }
+            )
                 .frame(height: 22)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
@@ -56,7 +76,8 @@ struct AllNotesPanel: View {
                     searchMatches: searchMatches,
                     currentNoteID: currentNoteID,
                     renamingFolderID: renamingFolderID,
-                    actions: listActions
+                    actions: listActions,
+                    keyboard: keyboard
                 )
                 .frame(maxHeight: PanelLayoutMetrics.allNotesListMaxHeight)
             }
@@ -171,7 +192,8 @@ struct AllNotesSectionHeader: View {
         .padding(.top, showsRule ? 4 : 2)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(title) section")
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(.isHeader)
     }
 }
 
@@ -314,6 +336,8 @@ struct NoteRow: View {
     /// Driven by the row's AppKit tracking area, not SwiftUI's `onHover`: the
     /// row content is not hit-testable, so AppKit is the layer that knows.
     let isHovering: Bool
+    /// The row the arrow keys are on in the search field.
+    var isKeyboardHighlighted = false
     /// True for a note shown inside a folder.
     let isIndented: Bool
     let folders: [Folder]
@@ -376,6 +400,8 @@ struct NoteRow: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(isActive ? Color.buoySelectionFill : Color.clear)
         )
+        .background(KeyboardHighlight(isVisible: isKeyboardHighlighted && !isActive))
+        .overlay(KeyboardHighlightRing(isVisible: isKeyboardHighlighted))
         .padding(
             .leading,
             max(0, 4 - PanelLayoutMetrics.allNotesListLeadingInset)
@@ -383,14 +409,62 @@ struct NoteRow: View {
         )
         .padding(.trailing, 4)
         .animation(BuoyMotion.easeInOut(0.1), value: isHovering)
-        .accessibilityElement(children: .contain)
+        // One element per row. `.contain` left the title's own Text as a second
+        // element saying the same words, and the hover buttons came and went as
+        // children only while a mouse was over the row — so VoiceOver could
+        // never reach them. They are offered as named actions instead.
+        .accessibilityElement(children: .ignore)
         .accessibilityAddTraits(isActive ? [.isButton, .isSelected] : .isButton)
         .accessibilityLabel(note.title.isEmpty ? "Untitled" : note.title)
-        .accessibilityValue(note.isPinned ? "Pinned" : "")
+        .accessibilityValue(accessibilityValue)
         // The row carries no tap gesture — that would swallow the mouseDown the
         // outline view needs to start a drag — so VoiceOver's press action has
         // to be supplied explicitly or the row is unopenable without a mouse.
         .accessibilityAction { onSelect() }
+        .accessibilityAction(named: note.isPinned ? "Unpin" : "Pin") { onTogglePin() }
+        .accessibilityActions {
+            ForEach(folders.filter { $0.id != note.folderID }) { folder in
+                Button("Move to \(folder.displayName)") { onMoveToFolder(folder.id) }
+            }
+            Button("Move to New Folder") { onMoveToNewFolder() }
+            if note.folderID != nil {
+                Button("Remove from Folder") { onRemoveFromFolder() }
+            }
+        }
+        .accessibilityAction(named: "Delete") { onDelete() }
+    }
+
+    private var accessibilityValue: String {
+        var parts: [String] = []
+        if note.isPinned { parts.append("Pinned") }
+        if let folderID = note.folderID,
+           let folder = folders.first(where: { $0.id == folderID }) {
+            parts.append("in \(folder.displayName)")
+        }
+        return parts.joined(separator: ", ")
+    }
+}
+
+/// The arrow-key highlight: a faint fill plus an accent ring, so it can be told
+/// apart from both the open note's pill and plain hover.
+private struct KeyboardHighlight: View {
+    let isVisible: Bool
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .fill(Color.buoyControlFill)
+            .opacity(isVisible ? 1 : 0)
+    }
+}
+
+private struct KeyboardHighlightRing: View {
+    let isVisible: Bool
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .strokeBorder(BuoyTheme.current.accent.opacity(0.7), lineWidth: 1.5)
+            .opacity(isVisible ? 1 : 0)
+            .allowsHitTesting(false)
     }
 }
 
@@ -401,6 +475,7 @@ struct FolderRow: View {
     let noteCount: Int
     let isExpanded: Bool
     let isHovering: Bool
+    var isKeyboardHighlighted = false
     let isRenaming: Bool
     let onToggleExpanded: () -> Void
     let onBeginRename: () -> Void
@@ -469,11 +544,15 @@ struct FolderRow: View {
         .padding(.leading, 6)
         .padding(.trailing, 2)
         .padding(.vertical, 4)
+        .background(KeyboardHighlight(isVisible: isKeyboardHighlighted))
+        .overlay(KeyboardHighlightRing(isVisible: isKeyboardHighlighted))
         .padding(.leading, max(0, 4 - PanelLayoutMetrics.allNotesListLeadingInset))
         .padding(.trailing, 4)
         .animation(BuoyMotion.easeInOut(0.1), value: isHovering)
         .animation(BuoyMotion.easeOut(0.18), value: isExpanded)
-        .accessibilityElement(children: .contain)
+        // One element, with rename and delete as named actions (see NoteRow).
+        // While renaming, the field has to stay reachable, so it is kept.
+        .accessibilityElement(children: isRenaming ? .contain : .ignore)
         .accessibilityAddTraits(.isButton)
         .accessibilityLabel("Folder \(folder.displayName)")
         .accessibilityValue(
@@ -481,6 +560,8 @@ struct FolderRow: View {
                 + (isExpanded ? "expanded" : "collapsed")
         )
         .accessibilityAction { onToggleExpanded() }
+        .accessibilityAction(named: "Rename") { onBeginRename() }
+        .accessibilityAction(named: "Delete") { onDelete() }
     }
 }
 

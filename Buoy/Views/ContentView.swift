@@ -70,6 +70,13 @@ struct ContentView: View {
     // Toast
     @State private var toastState = ToastState()
 
+    // Find in note (⌘F)
+    @State private var findController = NoteFindController()
+
+    /// Which All Notes row the arrow keys have highlighted, so ⌘⌫ can delete
+    /// that note instead of the one open in the editor.
+    @State private var allNotesKeyboard = AllNotesKeyboardController()
+
     // Text view reference for toolbar actions — @StateObject persists across all re-renders
     @State private var tvRef = TextViewRef()
 
@@ -129,7 +136,14 @@ struct ContentView: View {
                     .transition(BuoyMotion.transition(.opacity.combined(with: .scale(scale: 0.96))))
             } else {
                 fullPanelContent
-                    .transition(BuoyMotion.transition(.scale(scale: 0.7, anchor: .center).combined(with: .opacity)))
+                    // Folding in, the window's own shrink is the motion; the
+                    // outgoing panel only fades. Scaling it as well stacked a
+                    // second movement on the crop and put the editor's AppKit
+                    // views under a per-frame transform.
+                    .transition(.asymmetric(
+                        insertion: BuoyMotion.transition(.scale(scale: 0.7, anchor: .center).combined(with: .opacity)),
+                        removal: .opacity
+                    ))
             }
         }
         .animation(BuoyMotion.easeInOut(PanelLayoutMetrics.minimizedTransitionDuration), value: panelPresentation.isMinimized)
@@ -140,9 +154,8 @@ struct ContentView: View {
             // An opaque splash owns the panel; don't hand focus to the editor
             // hidden behind it.
             guard !showOnboarding, !showWhatsNew else { return }
-            let fr = tvRef.value?.window?.firstResponder
             // Only steal focus if nothing meaningful is already focused
-            if !(fr is BuoyTextView || fr is NSTextField) {
+            if !Self.isTextInputFocused(tvRef.value?.window?.firstResponder) {
                 focusEditor()
             }
         }
@@ -158,6 +171,7 @@ struct ContentView: View {
             .buoyNextNote:        { navigateNote(forward: true) },
             .buoyToggleAllNotes:  { toggleAllNotes() },
             .buoyInsertLink:      { showLinkDialogFromToolbar() },
+            .buoyFindInNote:      { presentFind() },
             .openSettings:        { toggleSettings() },
             // Posted by AppDelegate once the restore's frame animation lands.
             .buoyHarborRestoreFinished: {
@@ -165,7 +179,9 @@ struct ContentView: View {
                 focusEditor()
             },
             .buoyAutoTitleFailed: { toastState.show("Couldn't name this note", style: .warning) },
-            .buoyAutoTitleUnsupportedLanguage: { toastState.show("Auto-naming isn't available for this note", style: .warning) }
+            .buoyAutoTitleUnsupportedLanguage: { toastState.show("Auto-naming isn't available for this note", style: .warning) },
+            .buoyBackupFailed: { toastState.show("Couldn't back up notes before updating", style: .warning, duration: 6) },
+            .buoyMigrationFailed: { toastState.show("Buoy couldn't update its notes database", style: .error, duration: 8) }
         ]))
         .onReceive(NotificationCenter.default.publisher(for: .showLinkDialog)) { notif in
             guard !panelPresentation.isMinimized else { return }
@@ -212,6 +228,7 @@ struct ContentView: View {
         .onChange(of: noteStore.currentNote?.id) { _, noteID in
             persistCurrentNoteSelection(noteID)
             toastState.dismiss()
+            findController.dismiss(focusingEditor: false)
             onMinimizedWidthChange?(minimizedWidth)
         }
         .onChange(of: Set(noteStore.notes.map(\.id))) { _, noteIDs in
@@ -388,6 +405,7 @@ struct ContentView: View {
                         },
                         textViewRef: { tv in
                             tvRef.value = tv
+                            NoteIntentBridge.editor = tv
                             tv.suppressesIBeamCursor = suppressesEditorCursor
                         }
                     )
@@ -420,7 +438,9 @@ struct ContentView: View {
                     onCopy: copyToClipboard,
                     isBugReport: isBugReport,
                     onSendBugReport: sendBugReport,
-                    onCancelBugReport: cancelBugReport
+                    onCancelBugReport: cancelBugReport,
+                    folderName: currentFolderName,
+                    onFolderClick: toggleAllNotes
                 )
                 .onChange(of: noteStore.currentNote?.id) { _, _ in
                     editorSelectedText = ""
@@ -440,6 +460,7 @@ struct ContentView: View {
             AllNotesOverlay(
                 isShowing: $showAllNotes,
                 noteStore: noteStore,
+                keyboard: allNotesKeyboard,
                 renamingFolderID: $renamingFolderID,
                 onDeleteNote: { note in requestDeleteNote(note) },
                 onDeleteFolder: { folder in requestDeleteFolder(folder) },
@@ -485,7 +506,23 @@ struct ContentView: View {
 
     /// Kept out of `fullContent` so the native popover's generic view tree does
     /// not push `ContentView.body` back over Swift's type-checking time limit.
+    ///
+    /// The find bar takes the toolbar's place while it is open rather than
+    /// stacking above the editor: the note doesn't jump down by a row, and
+    /// nobody formats text mid-search.
+    @ViewBuilder
     private var formattingToolbar: some View {
+        if findController.isPresented {
+            NoteFindBar(controller: findController)
+                .padding(.horizontal, 8)
+                .transition(.opacity)
+        } else {
+            editingToolbar
+                .transition(.opacity)
+        }
+    }
+
+    private var editingToolbar: some View {
         ToolbarView(
             onBold:      { applyEditorFormat { $0.applyBold() } },
             onItalic:    { applyEditorFormat { $0.applyItalic() } },
@@ -558,6 +595,12 @@ struct ContentView: View {
             get: { noteStore.currentNote?.title ?? "" },
             set: { noteStore.saveTitle($0) }
         )
+    }
+
+    /// The folder the open note is filed in, for the footer's folder label.
+    private var currentFolderName: String? {
+        guard let folderID = noteStore.currentNote?.folderID, !isBugReport else { return nil }
+        return noteStore.folders.first { $0.id == folderID }?.displayName
     }
 
     private var displayTitle: String {
@@ -703,7 +746,25 @@ struct ContentView: View {
         showSelectionLinkDialog = false
         showLinkDialog = false
         toastState.dismiss()
+        findController.dismiss(focusingEditor: false)
         withAnimation(BuoyMotion.easeOut(0.16)) { showAllNotes = false }
+    }
+
+    /// Field editors count: the title, the All Notes search and the find bar
+    /// are all edited through one, and none of them is an `NSTextField`.
+    private static func isTextInputFocused(_ responder: NSResponder?) -> Bool {
+        if responder is BuoyTextView || responder is NSTextField { return true }
+        return (responder as? NSTextView)?.isFieldEditor == true
+    }
+
+    private func presentFind() {
+        guard !showWhatsNew, !showOnboarding, !panelPresentation.isMinimized else { return }
+        if showAllNotes {
+            withAnimation(BuoyMotion.easeOut(0.16)) { showAllNotes = false }
+        }
+        withAnimation(BuoyMotion.easeOut(0.16)) {
+            findController.present(for: tvRef.value)
+        }
     }
 
     private func toggleSettings() {
@@ -719,6 +780,12 @@ struct ContentView: View {
 
     private func deleteCurrentNote() {
         guard !showWhatsNew else { return }
+        // In All Notes, ⌘⌫ means the row the arrow keys are on, the same way
+        // it means the selected file in Finder.
+        if showAllNotes, let highlighted = allNotesKeyboard.highlightedNote {
+            requestDeleteNote(highlighted)
+            return
+        }
         guard let note = noteStore.currentNote else { return }
         requestDeleteNote(note)
     }

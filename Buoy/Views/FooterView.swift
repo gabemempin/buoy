@@ -14,6 +14,10 @@ struct FooterView: View {
     var isBugReport: Bool = false
     var onSendBugReport: (() -> Void)? = nil
     var onCancelBugReport: (() -> Void)? = nil
+    /// The folder the note is filed in, shown at the left of the info row,
+    /// above the gear. Clicking it opens All Notes.
+    var folderName: String? = nil
+    var onFolderClick: () -> Void = {}
 
     private enum InfoMode: Int, CaseIterable {
         case lastEdited, created, characters, words
@@ -69,7 +73,26 @@ struct FooterView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Spacer()
+                if let folderName, !isBugReport {
+                    Button(action: onFolderClick) {
+                        HStack(spacing: 3) {
+                            Image(systemName: "folder")
+                                .font(.system(size: 9, weight: .medium))
+                            Text(folderName)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                        }
+                        .font(metrics.footerInfoFont)
+                        .foregroundStyle(.tertiary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("In folder \(folderName). Click to show All Notes.")
+                    .accessibilityLabel("In folder \(folderName)")
+                    .accessibilityHint("Shows All Notes")
+                    .pointingHandCursor()
+                    .transition(.opacity)
+                }
+                Spacer(minLength: 8)
                 Button {
                     withAnimation(BuoyMotion.easeInOut(0.12)) {
                         let all = InfoMode.allCases

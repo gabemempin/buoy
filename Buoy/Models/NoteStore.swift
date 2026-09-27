@@ -252,7 +252,84 @@ final class NoteStore {
             }
         }
 
-        try? migrator.migrate(db)
+        backUpBeforeMigrating(db, with: migrator)
+        do {
+            try migrator.migrate(db)
+        } catch {
+            // Was a silent `try?`: a failed migration (disk full, locked file)
+            // left the app querying columns that did not exist, which showed as
+            // an empty list and a fresh "Note 1" with nothing logged.
+            print("[NoteStore] Migration failed: \(error)")
+            Self.postLaunchWarning(.buoyMigrationFailed)
+        }
+    }
+
+    // MARK: - Backups
+
+    /// How many pre-migration copies to keep in `~/.buoy/backups`.
+    private static let backupsToKeep = 3
+
+    /// Copies `notes.db` aside before a migration touches it.
+    ///
+    /// Silent: it only runs when an update brings a migration this database
+    /// has not had, and never on a fresh install. The only thing the user ever
+    /// sees is a warning if the copy could not be made.
+    private func backUpBeforeMigrating(_ db: DatabaseQueue, with migrator: DatabaseMigrator) {
+        let needsBackup: Bool
+        do {
+            needsBackup = try db.read { db in
+                try db.tableExists("notes") && !migrator.hasCompletedMigrations(db)
+            }
+        } catch {
+            needsBackup = true
+        }
+        guard needsBackup else { return }
+
+        let dir = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".buoy/backups")
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
+        let stamp = ISO8601DateFormatter().string(from: Date())
+            .replacingOccurrences(of: ":", with: "-")
+        let destination = dir.appendingPathComponent("notes-before-\(version)-\(stamp).db")
+
+        do {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            // GRDB's online backup, not a file copy: it is consistent even with
+            // the WAL/journal files alongside, which a copy of notes.db is not.
+            let backup = try DatabaseQueue(path: destination.path)
+            try db.backup(to: backup)
+            try backup.close()
+            pruneBackups(in: dir)
+        } catch {
+            print("[NoteStore] Backup before migration failed: \(error)")
+            try? FileManager.default.removeItem(at: destination)
+            Self.postLaunchWarning(.buoyBackupFailed)
+        }
+    }
+
+    private func pruneBackups(in dir: URL) {
+        let files = (try? FileManager.default.contentsOfDirectory(
+            at: dir,
+            includingPropertiesForKeys: [.contentModificationDateKey]
+        )) ?? []
+        let backups = files
+            .filter { $0.lastPathComponent.hasPrefix("notes-before-") && $0.pathExtension == "db" }
+            .sorted {
+                let lhs = (try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                let rhs = (try? $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                return lhs > rhs
+            }
+        for old in backups.dropFirst(Self.backupsToKeep) {
+            try? FileManager.default.removeItem(at: old)
+        }
+    }
+
+    /// The store is built before any view exists, so a warning is posted a
+    /// beat later, once `ContentView` is subscribed to show it as a toast.
+    private static func postLaunchWarning(_ name: Notification.Name) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            NotificationCenter.default.post(name: name, object: nil)
+        }
     }
 
     // MARK: - CRUD
@@ -737,6 +814,32 @@ final class NoteStore {
     /// a cleared note stuck with its AI title.
     private static let nearEmptyRTFSizeThreshold = 1500
 
+    /// Replaces a note's content from outside the editor (a Shortcuts action).
+    ///
+    /// Written at once rather than debounced, and any pending edit is flushed
+    /// first so a save scheduled earlier cannot land afterwards and undo this.
+    /// Never use it for the note open in a mounted editor: the editor owns that
+    /// content and its next save would overwrite this write.
+    func replaceContent(_ rtfData: Data, forNoteID noteID: String) {
+        flushPendingSaves()
+        guard let db else { return }
+        let now = Note.currentTimestamp()
+        _ = try? db.write { db in
+            try db.execute(
+                sql: "UPDATE notes SET contentRTF = ?, updatedAt = ? WHERE id = ?",
+                arguments: [rtfData, now, noteID]
+            )
+        }
+        if let index = notes.firstIndex(where: { $0.id == noteID }) {
+            notes[index].contentRTF = rtfData
+            notes[index].updatedAt = now
+        }
+        if currentNote?.id == noteID {
+            currentNote?.contentRTF = rtfData
+            currentNote?.updatedAt = now
+        }
+    }
+
     func saveContent(_ rtfData: Data) {
         saveContentWork?.cancel()
         // Capture the target note *now*; the write must land on the note being
@@ -940,4 +1043,9 @@ final class NoteStore {
         saveTitleWork?.cancel()
         saveTitleWork = nil
     }
+}
+
+extension Notification.Name {
+    static let buoyBackupFailed = Notification.Name("BuoyBackupFailed")
+    static let buoyMigrationFailed = Notification.Name("BuoyMigrationFailed")
 }

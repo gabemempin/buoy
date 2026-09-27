@@ -66,8 +66,16 @@ manually and reports any failures. Static inspection is the default verification
 |------|----------|--------|
 | Notes | `~/.buoy/notes.db` | GRDB SQLite (RTF binary) |
 | Settings | `~/.buoy/settings.json` | JSON (Codable) |
+| Pre-migration backups | `~/.buoy/backups/notes-before-<version>-<time>.db` | GRDB online backup, newest 3 kept |
 
 GRDB migrations are defined in `NoteStore.swift` (`v1_initial`, `v2_contentRTF`, `v3_isPinned`, `v4_pinnedOrder`, `v5_autoTitlePending`, `v6_autoTitleStages`, `v7_autoTitleRestage`, `v8_folders`, `v9_noteSortOrder`).
+
+Before `migrator.migrate` runs, `backUpBeforeMigrating` copies the database aside
+if it has migrations it hasn't had yet (never on a fresh install). It is silent;
+a failed backup or a failed migration posts `.buoyBackupFailed` /
+`.buoyMigrationFailed`, shown as toasts 1.5s after launch because the store is
+built before any view exists. Migration errors are caught and logged, never
+`try?`.
 
 ### Key Services
 
@@ -107,15 +115,6 @@ the All Notes section, and a pinned + filed note appears in all three sections
 at once. One note belongs to at most one folder. `Folder` rows carry no foreign
 key to `notes` on purpose — deleting a folder is one `UPDATE ... SET folderID =
 NULL` and never deletes a note.
-
-**Dragging is confined to the grip.** A drag can only begin inside the leading
-`allNotesDragHandleWidth` gutter, where `RowDragHandle` draws its dots on hover.
-`NotesOutlineView.mouseDown` records whether the press landed there and
-`pasteboardWriterForItem` refuses otherwise, so the row keeps the whole of its
-width for clicking, scrolling and its buttons. The grip is deliberately **not**
-an `.interactiveRegion` — the press has to fall through to the outline view,
-which is the only thing that starts drags. A press on the grip that never
-becomes a drag opens nothing.
 
 **One drag source, always.** Every drag starts from
 `outlineView(_:pasteboardWriterForItem:)` and nothing else. The previous
@@ -186,10 +185,44 @@ two-item swap look broken.
 **Search flattens everything**: sections, folders and all dragging are off while
 `searchText` is non-empty (`searchMatches != nil`).
 
+**Keyboard and context menus.** The list never takes focus
+(`refusesFirstResponder`); the search field does, on open. ↑/↓ in it move a
+highlight (`Coordinator.keyboardKey`, drawn as an accent ring), Return opens
+it, Escape clears the search and then closes the panel. While searching, the
+first match is highlighted so Return opens it. ⌘⌫ is a rebindable command that
+fires before the field sees it, so `ContentView.deleteCurrentNote` asks
+`AllNotesKeyboardController.highlightedNote` first. Right-click menus come from
+`NotesOutlineView.menu(for:)` → `Coordinator.contextMenu(forRow:)`; row actions
+are also VoiceOver named actions on a single `.ignore` element per row, because
+the hover buttons only exist while a mouse is over the row.
+
+**Look notes up through `notesByID`, never `notes.first { }`.**
+`renderSignature` runs for every row on every update; a linear scan there made
+the diff O(rows × notes).
+
 **Panel width** is the window content width minus `overlayHorizontalInset * 2`,
 set by `AllNotesOverlay`, not a literal. `AllNotesOverlay` exists because
 `ContentView.body` is at the type-checker limit and the panel needs a dozen
 closures — keep new All Notes wiring in that file.
+
+### Find in Note (⌘F)
+
+`NoteFindController` + `NoteFindBar` (`Views/NoteFindBar.swift`). The bar
+replaces the formatting toolbar while open, so the note never jumps. Matches are
+recomputed on every step (never cached) and highlighted with layout-manager
+*temporary* attributes, so they are never saved or undone. It closes on a note
+switch and in `dismissTransientUI`. `findInNote` is a `BuoyCommand`, so it is
+rebindable and routed through `BuoyPanel.performKeyEquivalent` like the others.
+
+### Shortcuts Actions
+
+`Services/BuoyIntents.swift`: Create, Add to, Get Text, Open. `NoteIntentBridge`
+is installed by `AppDelegate` at launch; `ContentView` keeps `editor` pointed at
+the live editor. **Appending to the open note must go through the editor**
+(`appendExternalText`): the editor only reloads on a note switch, and its next
+debounced save would overwrite a direct DB write. Other notes are rendered in an
+offscreen `BuoyTextView` and written with `NoteStore.replaceContent`, which
+flushes pending saves first.
 
 ### Bug Report Mode
 
@@ -247,7 +280,7 @@ The phrases **"invoke onboarding"** or **"reset onboarding"** mean run this comm
 **Critical bug pattern (fixed in 1.1.3).** `exitMinimizedMode()` ran the SwiftUI pill→editor swap (`withAnimation { panelPresentation.isMinimized = false }`) and the animated `animatePanel(... setFrame(display: true))` in the **same runloop iteration**. Restoring remounts the full `NSTextView` (heavier with `TodoAttachment`s) while AppKit is mid-resize → re-enters the window's constraint pass → `-[NSWindow _postWindowNeedsUpdateConstraints]` assertion kills the app. This was latent for months; a recent macOS point update (Sequoia/macOS 26 line) promoted the re-entrancy from a logged warning to a hard assertion, so it began crashing all users at once. **Fix:** defer the frame animation one runloop tick via `DispatchQueue.main.async`, guarded by `minimizeAnimationGeneration == generation` so spam-toggling can't fire a stale animation. The earlier 1.1.2 fix (`hosting.sizingOptions = []`) only closed the *re-enter* path, not the *exit* path. Rule: never run `setFrame(display: true)` inside (or in the same iteration as) a SwiftUI `withAnimation` transaction that swaps the panel's content.
 
 ### Harbor Mode Transition Layout
-`enterMinimizedMode`/`exitMinimizedMode` call `holdHarborTransitionLayout` before flipping `isMinimized`: it sets `PanelPresentationModel.harborTransitionGlassSize` (the outgoing size on enter, the target size on exit) and the edge the window keeps still. `HarborTransitionLayout` lays the full panel out once at that size, clipped to the glass's rounded shape, so the window reveals or covers it instead of re-wrapping the editor every frame. It must stay one modifier chain with `nil` meaning unconstrained: an `if let` branch changes the content's identity, which rebuilt the whole panel (editor included) at the start of a fold, leaving an empty glass rectangle for a moment, and again at the end of a restore. `finishMinimizeAnimation` (generation-guarded) clears it, publishes the final window size, and on a restore posts `.buoyHarborRestoreFinished`, which focuses the editor. Never end the transition on an `asyncAfter` in the view: a stale timer from an earlier toggle clears it mid-sweep. The SwiftUI swap and the frame animation share one duration (`minimizedTransitionDuration == minimizedFrameAnimationDuration`) and curve.
+`enterMinimizedMode`/`exitMinimizedMode` call `holdHarborTransitionLayout` before flipping `isMinimized`: it sets `PanelPresentationModel.harborTransitionGlassSize` (the outgoing size on enter, the target size on exit) and the edge the window keeps still. `HarborTransitionLayout` lays the full panel out once at that size, clipped to the glass's rounded shape, so the window reveals or covers it instead of re-wrapping the editor every frame. It must stay one modifier chain with `nil` meaning unconstrained: an `if let` branch changes the content's identity, which rebuilt the whole panel (editor included) at the start of a fold, leaving an empty glass rectangle for a moment, and again at the end of a restore. `finishMinimizeAnimation` (generation-guarded) clears it, publishes the final window size, and on a restore posts `.buoyHarborRestoreFinished`, which focuses the editor. Never end the transition on an `asyncAfter` in the view: a stale timer from an earlier toggle clears it mid-sweep. The SwiftUI swap and the frame animation share one duration (`minimizedTransitionDuration == minimizedFrameAnimationDuration`) and curve. Entry defers its frame animation one runloop tick, like exit, so the swap's first-frame work doesn't eat the sweep's opening frames; the outgoing panel only fades (the window shrink is the motion), and the corner-resize overlays are hidden up front and not moved per frame during the sweep.
 
 ### Harbor Timer
 A note whose *whole* title is a duration (`HarborTimer.duration(in:)`: `5m`, `1h30`, `1 hr 30 min`, `half an hour`, `1:30`, optional "timer", …) starts a countdown when it enters Harbor Mode. Timers are per note (`PanelPresentationModel.harborTimers`), in memory only. While one runs, the header shows the countdown as a button that folds the panel into Harbor Mode, where pause/stop live. At "Time's up" the header gives the title back for editing; renaming the note stops the finished timer. `updateRemaining` ticks at 0.2s but only publishes when the displayed second changes.

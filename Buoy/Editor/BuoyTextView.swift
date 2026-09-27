@@ -1197,10 +1197,205 @@ final class BuoyTextView: NSTextView {
         storage.removeAttribute(.backgroundColor, range: range)
         storage.removeAttribute(.baselineOffset, range: range)
         storage.removeAttribute(NSAttributedString.Key("NSSuperscript"), range: range)
+        stripPresentationalAttributes(in: storage, range: range)
         normalizeParagraphSpacing(in: storage, range: range)
         canonicalizeExternalBulletLists(in: storage, range: range)
         storage.endEditing()
         notifyChange()
+    }
+
+    /// Attribute-level styling from web pages and word processors that Buoy
+    /// has no control for. Once pasted it would stay forever: nothing in the
+    /// editor can un-centre a paragraph or take a shadow off a word. Only bold,
+    /// italic, underline, strikethrough, lists and links survive a paste.
+    ///
+    /// Attributes only, never characters. The paste has already been registered
+    /// for undo with its inserted length, so removing characters here (a pasted
+    /// image, say) would leave undo replacing a range that no longer exists.
+    private static let strippedPasteAttributes: [NSAttributedString.Key] = [
+        .shadow, .kern, .tracking, .expansion, .obliqueness,
+        .strokeWidth, .strokeColor, .underlineColor, .strikethroughColor,
+        .toolTip, .cursor, .textEffect, .ligature
+    ]
+
+    private func stripPresentationalAttributes(
+        in storage: NSMutableAttributedString,
+        range: NSRange
+    ) {
+        for key in Self.strippedPasteAttributes {
+            storage.removeAttribute(key, range: range)
+        }
+
+        // Keep only links a click can safely open. Web pages carry relative
+        // links, `javascript:` handlers and anchors that mean nothing here.
+        storage.enumerateAttribute(.link, in: range) { value, linkRange, _ in
+            if let url = Self.pastedLinkURL(value) {
+                storage.addAttribute(.link, value: url, range: linkRange)
+            } else {
+                storage.removeAttribute(.link, range: linkRange)
+            }
+        }
+
+        // Centred and right-aligned web headings would otherwise be stuck that
+        // way, since Buoy has no alignment control.
+        storage.enumerateAttribute(.paragraphStyle, in: range) { value, styleRange, _ in
+            guard let style = value as? NSParagraphStyle,
+                  style.alignment != .natural,
+                  let mutable = style.mutableCopy() as? NSMutableParagraphStyle
+            else { return }
+            mutable.alignment = .natural
+            storage.addAttribute(.paragraphStyle, value: mutable, range: styleRange)
+        }
+    }
+
+    private static func pastedLinkURL(_ value: Any?) -> URL? {
+        let url: URL?
+        switch value {
+        case let value as URL: url = value
+        case let value as String: url = URL(string: value)
+        default: url = nil
+        }
+        guard let url, let scheme = url.scheme?.lowercased(),
+              ["http", "https", "mailto"].contains(scheme)
+        else { return nil }
+        return url
+    }
+
+    // MARK: - External text (Shortcuts)
+
+    /// Appends text that arrived from outside the editor, such as a Shortcuts
+    /// action, formatted as if it had been typed here.
+    ///
+    /// Plain text only, with the list syntax people actually send: `- ` or
+    /// `* ` becomes a bullet, `- [ ]` / `[] ` an open todo, `- [x]` a checked
+    /// one, and two leading spaces (or a tab) nest one level. Goes through
+    /// `shouldChangeText` so it is a single undoable edit, and through
+    /// `notifyChange` so it is saved like typing.
+    func appendExternalText(_ text: String) {
+        guard let storage = textStorage else { return }
+        let normalized = text
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+        guard !normalized.isEmpty else { return }
+
+        let base = normalizedTypingAttributesForEscapedList(basedOn: normalizedTypingAttributes())
+        let insertion = NSMutableAttributedString()
+        if storage.length > 0, !storage.string.hasSuffix("\n") {
+            insertion.append(NSAttributedString(string: "\n", attributes: base))
+        }
+        for (index, line) in normalized.components(separatedBy: "\n").enumerated() {
+            if index > 0 { insertion.append(NSAttributedString(string: "\n", attributes: base)) }
+            insertion.append(externalLine(line, base: base))
+        }
+
+        let end = NSRange(location: storage.length, length: 0)
+        guard replaceText(in: end, with: insertion) else { return }
+        notifyChange()
+    }
+
+    private func externalLine(
+        _ rawLine: String,
+        base: [NSAttributedString.Key: Any]
+    ) -> NSAttributedString {
+        var line = Substring(rawLine)
+        var level = 0
+        while level < ListIndent.maxNestingLevel {
+            if line.hasPrefix("\t") {
+                line = line.dropFirst()
+            } else if line.hasPrefix("  ") {
+                line = line.dropFirst(2)
+            } else {
+                break
+            }
+            level += 1
+        }
+        // Any indentation beyond the deepest level is dropped, not kept as
+        // spaces in front of the marker.
+        line = line.drop { $0 == " " || $0 == "\t" }
+
+        let todoMarkers: [(String, Bool)] = [
+            ("- [ ] ", false), ("* [ ] ", false), ("[ ] ", false), ("[] ", false),
+            ("- [x] ", true), ("- [X] ", true), ("* [x] ", true), ("[x] ", true)
+        ]
+        for (marker, isChecked) in todoMarkers where line.hasPrefix(marker) {
+            let result = todoAttachmentAttributedString(isChecked: isChecked, indentLevel: level)
+            let style = result.attribute(.paragraphStyle, at: 0, effectiveRange: nil)
+            var attributes = base
+            attributes[.paragraphStyle] = style
+            result.append(NSAttributedString(
+                string: String(line.dropFirst(marker.count)),
+                attributes: attributes
+            ))
+            return result
+        }
+
+        var attributes = base
+        let isBullet = ["- ", "* ", "• "].contains { line.hasPrefix($0) }
+        if level > 0 || isBullet {
+            let style = paragraphStyle(basedOn: base[.paragraphStyle] as? NSParagraphStyle)
+            let indent = CGFloat(level) * ListIndent.width
+            style.headIndent = indent
+            style.firstLineHeadIndent = indent
+            attributes[.paragraphStyle] = style
+        }
+        let body = isBullet ? "• " + line.dropFirst(2) : String(line)
+        return NSAttributedString(string: body, attributes: attributes)
+    }
+
+    // MARK: - Find in note
+
+    /// Every match of `query` in the note, ignoring case and diacritics — the
+    /// same rules as the All Notes search, so a note found there can be
+    /// searched here with the same words.
+    func findRanges(of query: String) -> [NSRange] {
+        guard !query.isEmpty else { return [] }
+        let text = string as NSString
+        var ranges: [NSRange] = []
+        var searchRange = NSRange(location: 0, length: text.length)
+        while searchRange.length > 0 {
+            let found = text.range(
+                of: query,
+                options: [.caseInsensitive, .diacriticInsensitive],
+                range: searchRange
+            )
+            guard found.location != NSNotFound, found.length > 0 else { break }
+            ranges.append(found)
+            let next = NSMaxRange(found)
+            searchRange = NSRange(location: next, length: text.length - next)
+        }
+        return ranges
+    }
+
+    /// Highlights every match and brings `current` into view.
+    ///
+    /// Temporary attributes, so the highlight is never part of the note: it
+    /// cannot be saved, undone or copied, and it disappears with the layout
+    /// manager when the note switches.
+    func showFindResults(_ ranges: [NSRange], current: Int?) {
+        clearFindHighlights()
+        guard let layoutManager else { return }
+        let accent = BuoyTheme.current.accentNSColor
+        for (index, range) in ranges.enumerated() where NSMaxRange(range) <= (string as NSString).length {
+            layoutManager.addTemporaryAttribute(
+                .backgroundColor,
+                value: accent.withAlphaComponent(index == current ? 0.55 : 0.2),
+                forCharacterRange: range
+            )
+        }
+        guard let current, ranges.indices.contains(current) else { return }
+        let range = ranges[current]
+        guard NSMaxRange(range) <= (string as NSString).length else { return }
+        // Moves the caret too, so closing the find bar leaves the user at the
+        // match they were looking at.
+        setSelectedRange(range)
+        scrollRangeToVisible(range)
+        showFindIndicator(for: range)
+    }
+
+    func clearFindHighlights() {
+        guard let layoutManager else { return }
+        let fullRange = NSRange(location: 0, length: (string as NSString).length)
+        layoutManager.removeTemporaryAttribute(.backgroundColor, forCharacterRange: fullRange)
     }
 
     /// Converts native AppKit text lists from pasted rich text into Buoy's literal bullet markers
@@ -2061,5 +2256,9 @@ final class BuoyTextView: NSTextView {
     @objc func todoListAction(_ sender: Any?)   { applyTodo() }
     @objc func linkAction(_ sender: Any?) {
         buoyDelegate?.textViewRequestShowLinkDialog(context: linkEditingContext())
+    }
+
+    @objc func findInNoteAction(_ sender: Any?) {
+        NotificationCenter.default.post(name: .buoyFindInNote, object: nil)
     }
 }

@@ -85,6 +85,7 @@ enum ShortcutRegistry {
         case .nextNote:     return post(.buoyNextNote)
         case .allNotes:     return post(.buoyToggleAllNotes)
         case .insertLink:   return post(.buoyInsertLink)
+        case .findInNote:   return post(.buoyFindInNote)
         case .harborMode:
             return NSApp.sendAction(
                 #selector(AppDelegate.toggleMinimizedMode(_:)),
@@ -107,4 +108,5 @@ enum ShortcutRegistry {
 extension Notification.Name {
     static let buoyToggleAllNotes = Notification.Name("BuoyToggleAllNotes")
     static let buoyInsertLink = Notification.Name("BuoyInsertLink")
+    static let buoyFindInNote = Notification.Name("BuoyFindInNote")
 }

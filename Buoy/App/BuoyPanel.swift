@@ -14,6 +14,14 @@ final class BuoyPanel: NSPanel {
     private let _undoManager = UndoManager()
     override var undoManager: UndoManager? { _undoManager }
 
+    /// AppKit pushes a window's *frame* below the menu bar whenever it is
+    /// shown or resized, but this frame carries a transparent glassEdgeInset
+    /// margin, so that left the glass stopping 12pt short of the top. Buoy
+    /// clamps the glass itself (`clampedToVisibleFrame`, the header drag).
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
+        frameRect
+    }
+
     override func sendEvent(_ event: NSEvent) {
         switch event.type {
         case .leftMouseDown, .rightMouseDown, .otherMouseDown:
