@@ -28,12 +28,12 @@ struct AllNotesPanel: View {
 
     private var isSearching: Bool { !searchText.isEmpty }
 
-    private var isEmpty: Bool {
-        if let searchMatches { return searchMatches.isEmpty }
-        return notes.isEmpty
-    }
-
     var body: some View {
+        // Computed once per render. As a property read in two places, each
+        // keystroke searched the whole library twice.
+        let matches = searchMatches
+        let isEmpty = matches.map(\.isEmpty) ?? notes.isEmpty
+
         VStack(spacing: 0) {
             header
 
@@ -73,7 +73,7 @@ struct AllNotesPanel: View {
                 NotesOutlineViewWrapper(
                     notes: notes,
                     folders: folders,
-                    searchMatches: searchMatches,
+                    searchMatches: matches,
                     currentNoteID: currentNoteID,
                     renamingFolderID: renamingFolderID,
                     actions: listActions,
@@ -94,6 +94,7 @@ struct AllNotesPanel: View {
                 .scale(scale: 0.92, anchor: .topTrailing).combined(with: .opacity)
             )
         )
+        .onAppear { NotePlainText.prewarm(notes) }
         .onChange(of: isShowing) { _, showing in
             if !showing {
                 searchText = ""

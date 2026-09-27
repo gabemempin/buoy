@@ -25,9 +25,13 @@ enum NotePlainText {
 
     private static var cache: [String: Entry] = [:]
 
-    /// Bounds the cache for very large libraries. Notes are re-decoded on demand,
-    /// so dropping everything is correct, just briefly slower.
-    private static let capacity = 256
+    /// Only a backstop against entries for deleted notes piling up; an edit
+    /// replaces its note's entry rather than adding one. It must stay well
+    /// above any real library size. At 256 a search over 500 notes filled the
+    /// cache, emptied it and refilled it on every pass, so nothing was ever a
+    /// hit and each keystroke decoded ~1,000 RTF blobs (~140ms). The text for
+    /// thousands of notes is a few megabytes.
+    private static let capacity = 10_000
 
     static func of(_ note: Note) -> String {
         if let entry = cache[note.id], entry.updatedAt == note.updatedAt {
@@ -39,9 +43,33 @@ enum NotePlainText {
         return text
     }
 
+    /// Decodes every note the cache is missing off the main thread, so the
+    /// first search keystroke after All Notes opens is not the one that pays
+    /// for the whole library. RTF import, unlike HTML import, is safe off the
+    /// main thread. A note edited meanwhile is stored under its old
+    /// `updatedAt`, which simply misses and is decoded again on demand.
+    static func prewarm(_ notes: [Note]) {
+        let missing = notes.compactMap { note -> (String, Int64, Data)? in
+            if let entry = cache[note.id], entry.updatedAt == note.updatedAt { return nil }
+            return (note.id, note.updatedAt, note.contentRTF)
+        }
+        guard !missing.isEmpty else { return }
+        Task.detached(priority: .utility) {
+            let decoded = missing.map { ($0.0, $0.1, decode($0.2)) }
+            await MainActor.run {
+                // Only fill gaps: an entry written by `of` in the meantime is
+                // at least as fresh as this one.
+                for (id, updatedAt, text) in decoded where cache[id] == nil {
+                    if cache.count >= capacity { cache.removeAll(keepingCapacity: true) }
+                    cache[id] = Entry(updatedAt: updatedAt, text: text)
+                }
+            }
+        }
+    }
+
     /// Object-replacement characters stand in for to-do attachments; they are
     /// noise in a word count and unmatchable in a search.
-    private static func decode(_ rtf: Data) -> String {
+    nonisolated private static func decode(_ rtf: Data) -> String {
         guard !rtf.isEmpty,
               let attributed = try? NSAttributedString(
                 data: rtf,
