@@ -502,7 +502,7 @@ private struct BuoyRegularGlassModifier<S: InsettableShape>: ViewModifier {
                 // a glass material while its window is not key, which took the
                 // window colour with it — the panel looked tinted only while
                 // it had focus, so the one thing you cannot do is judge the
-                // colour you are picking in the Settings window next to it.
+                // colour you are picking in the Settings popover next to it.
                 // A plain fill is not the system's to wash out.
                 .background { tintLayer(shape) }
                 // The clip is load-bearing: `in: shape` shapes the visible

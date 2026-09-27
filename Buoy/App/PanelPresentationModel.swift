@@ -1,5 +1,6 @@
 import CoreGraphics
 import Observation
+import SwiftUI
 
 enum PanelFullSizeMode: Equatable {
     case compact
@@ -35,6 +36,19 @@ final class PanelPresentationModel {
     }
 
     var isMinimized = false
+    /// The glass size the full panel is laid out at while the window animates
+    /// into or out of Harbor Mode; `nil` the rest of the time.
+    ///
+    /// Letting the content follow the window meant the header, toolbar and
+    /// note text re-laid out — and the editor re-wrapped — on every frame of
+    /// the sweep. Held at one size, the glass still follows the window and
+    /// the content is revealed or covered by it instead. Set by `AppDelegate`
+    /// before the animation starts and cleared by its completion, so it can
+    /// never end early on a stale timer.
+    var harborTransitionGlassSize: CGSize?
+    /// Which edge the window grows from or shrinks toward, so the held
+    /// content stays pinned to the edge that is not moving.
+    var harborTransitionAlignment: Alignment = .top
     var fullSizeMode: PanelFullSizeMode = .compact
     var minimizedContentWidth: CGFloat = PanelLayoutMetrics.minimizedWindowMinimumWidth
     /// True while a corner is held. Nothing should animate the panel during

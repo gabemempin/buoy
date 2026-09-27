@@ -1,7 +1,7 @@
 import SwiftUI
 import AppKit
 
-/// One rebindable shortcut in the Settings window: name on the left, key caps
+/// One rebindable shortcut on the Settings Shortcuts page: name on the left, key caps
 /// and an Edit button on the right.
 ///
 /// The Edit button is a fixed width so the row does not shift when its label

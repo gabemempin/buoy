@@ -33,7 +33,7 @@ manually and reports any failures. Static inspection is the default verification
 
 `BuoyApp.swift` is the `@main` entry. Almost all app logic lives in **`AppDelegate.swift`** (NSApplicationDelegateAdaptor), which:
 - Creates a borderless, always-on-top `NSPanel` (non-activating, transparent)
-- Owns a separate, titled `SettingsWindowController` with General, Appearance, Shortcuts, and About pages
+- Presents Settings as a popover on the footer gear (`SettingsPopover`: General, Appearance, Shortcuts; About is the last section of General) — `openSettings` / `.openSettings` toggle it
 - Manages the `NSStatusItem` (menu bar icon) with left/right-click handling
 - Owns the `NoteStore` and `AppSettings` instances passed into SwiftUI
 - Registers the global hotkey via `HotkeyService`
@@ -77,140 +77,18 @@ GRDB migrations are defined in `NoteStore.swift` (`v1_initial`, `v2_contentRTF`,
 
 ### Auto-Title New Notes
 
-**Now live.** `NoteAutoTitler.featureEnabled` is `true`, so `isSupported`
-answers on real capability again (macOS 26 + Apple Silicon + Apple Intelligence)
-and the Settings row and the `NoteStore`
-call-in are all back. It shipped inert for one release because it shares commit
-`c651597` (and three source files) with the link popover, so there was no clean
-commit to omit; flipping this one constant is the whole switch in either
-direction. The migrations stay in either way — additive, harmless while off, and
-they keep the schema identical across both builds.
+On-device naming for new notes via `FoundationModels` (macOS 26, Apple Silicon, Apple Intelligence). `NoteAutoTitler.featureEnabled` is the one kill switch. Rules:
 
-On-device AI naming for brand-new notes, via Apple's `FoundationModels`
-framework (macOS 26+, Apple Silicon, Apple Intelligence on). Everything that
-touches `FoundationModels` symbols in `NoteAutoTitler.swift` is gated behind
-`#available(macOS 26, *)` and `#if canImport(FoundationModels)`; on any
-unsupported Mac `NoteAutoTitler.isSupported` is `false` and the whole feature
-is inert — no fallback keyword generator, no partial UI. `GeneralSettingsPage`
-checks `isSupported` so the toggle row is absent on unsupported Macs.
-
-**Two-stage state machine, tracked in the DB.** `Note.autoTitleStage` (0/1/2)
-counts attempts spent; `Note.autoTitleLocked` (default `true`) permanently
-opts a note out; `Note.autoTitleDefaultTitle` remembers the original
-"Note N" (migration `v6_autoTitleStages` — `createNote(titled:)` sets all
-three; pre-v6 rows migrate `autoTitleLocked = NOT` their old `autoTitlePending`,
-so a note that was still mid-flight under the old single-shot model keeps
-going under the new one). `saveTitle` — the user typing a real title — sets
-`autoTitleLocked = true` in the same `UPDATE` as the title write and calls
-`NoteAutoTitler.cancel(noteID:)`; a locked note is never touched again.
-`NoteAutoTitler.evaluate` re-checks `!autoTitleLocked` before every request,
-so a lock that lands mid-flight (or a stage that's since moved on — the
-`stage` parameter threaded through `applyAutoTitle`/`spendAutoTitleStage`)
-drops a stale result instead of misapplying it.
-
-**Thresholds:** `NoteAutoTitler.thresholds` (`[50, 100, 500]` plain-text
-characters) is the source of truth. Stage 0 names the note; every later stage
-is a refinement — the prompt shows the model the current title and lets it
-keep it. Past the last threshold the note is done: `autoTitleStage ==
-thresholds.count` blocks further runs without locking the note. **Editing
-this array needs a paired migration**, because it redefines "done" for rows
-already in the DB — a note finished under the old array reads as eligible
-again under a longer one and renames itself on the next keystroke. That is
-what `v7_autoTitleRestage` does for the `[50, 300]` → `[50, 100, 500]`
-change (old stage ≥ 2 → 3); follow the same pattern for any future change.
-
-**Revert on empty:** `NoteStore.saveContent` restores `autoTitleDefaultTitle`
-and resets `autoTitleStage` to 0 when a note whose title was AI-applied
-(`autoTitleStage > 0`) is edited back down to empty text — the size-gated
-plain-text check (`nearEmptyRTFSizeThreshold`) keeps this from decoding RTF
-on every keystroke of a note that already has substance; it only fires near
-the empty boundary. Reverting re-arms stage 0, so typing again re-triggers at
-50 chars. A locked (hand-titled) note is never reverted.
-
-**Trigger path:** `NoteStore.saveContent` calls
-`NoteAutoTitler.noteContentDidChange(noteID:)` on every keystroke while the
-note is unlocked, `AppSettings.autoTitleEnabled` is on, and content isn't
-empty. That method is cheap — it just resets a 0.3s coalescing debounce keyed
-by note id (same "capture the target id at schedule time" rule as
-`saveTitle`/`saveContent` above — see the debounced-save bug pattern). It does
-**not** decode RTF: the plain-text length check that arms the model prewarm
-(20 characters) lives in `evaluate` instead, since `evaluate` already pays for
-`NotePlainText.of(note)` — doing it per keystroke was a guaranteed cache miss
-(`saveContent` bumps `updatedAt` before the check could run) and a full RTF
-decode on every keystroke of an unlocked note. When the debounce fires,
-`evaluate` checks the current stage's threshold and runs one
-`LanguageModelSession` request with `@Generable`/`@Guide` guided generation.
-Only one request runs at a time, gated on `inFlightRequests` — a count of
-`respond` calls actually executing, **not** `activeTask != nil`. `Task.cancel()`
-is cooperative and `respond` never checks it, so a cancelled request keeps
-occupying the Neural Engine until it finishes; `cancel(noteID:)` clears the
-shimmer and drops the stale result but must not free the slot. Gating on
-`activeTask` instead meant every cancellation (note switch, `createNote`,
-hand-typed title) started another concurrent inference, and since each one also
-runs a second safety-model pass, rapidly creating notes could stack up enough
-of them to bog down the whole machine. A request's completion re-calls
-`evaluate` so a note that crossed the next threshold mid-request doesn't wait
-for another keystroke, and a superseded request that finishes last re-evaluates
-the note on screen so nothing is stranded behind it. The `@Guide` word-count hint on the model output is
-advisory only — the real "3 words max" guarantee is
-`NoteAutoTitler.sanitize(_:)`, which trims punctuation/quotes, then trims at
-*word* boundaries (drops trailing connective words like "for"/"the", removes
-whole words rather than cutting mid-word to fit 40 characters) and returns
-`nil` — routing to the same failure path as a refusal — rather than handing
-back a truncated fragment.
-
-**Warm session handoff:** one instruction-primed `LanguageModelSession` is
-kept ready in `warmSessionBox` (type-erased to `Any?` — a stored property
-can't be marked `@available`, so only the code that casts it back needs the
-macOS 26 check). `ensureWarmSession()` fills it once the note crosses the
-prewarm character count; `generate` consumes and clears it (falling back to
-building a session on the spot if none is warm) so a note titled long after
-the last one still avoids paying model load on the request the user is
-watching; the completion `defer` calls `ensureWarmSession()` again if the note
-is still unlocked and has a stage left, so the *next* request's load happens
-during typing. Never reuse one session across stages or notes — see the
-comment at the handoff site in `generate` for why (transcript anchoring,
-cross-note contamination, a cancelled-but-still-running `respond` throwing
-`concurrentRequests` on the next call to the same session).
-
-**Failure handling:** `generate`'s `catch` matches on
-`LanguageModelSession.GenerationError` and treats failures differently by
-cause, with a `default:` arm for any case not listed (behaves like a plain
-spend, same as before this was added). `guardrailViolation` and
-`exceededContextWindowSize` retry once with a 240-character excerpt;
-`decodingFailure` retries once with greedy sampling; either retrying twice
-would spin the model on content it will never accept. A retry re-enters
-`generate` for the same `expectedStage`/`nextStage`, which bumps `generation`
-again so `cancel()` still fences it, and `isRetry` blocks a second attempt.
-`rateLimited`, `concurrentRequests`, and `assetsUnavailable` are transient —
-the stage is left unspent and only `titleThinking` is cleared; the next
-keystroke re-arms through the debounce rather than retrying immediately (a
-cancelled `respond` keeps running server-side, so retrying now would likely
-queue behind it). A repeated guardrail refusal or `unsupportedLanguageOrLocale`
-calls `giveUp`, which spends straight to `thresholds.count` (finished, same
-value normal completion and `v7_autoTitleRestage` use) without locking the
-note — revert-on-empty still works if the text is cleared later. The failure
-toast (`.buoyAutoTitleFailed` / `.buoyAutoTitleUnsupportedLanguage`, the
-latter for the give-up-on-language case, routed in `ContentView`'s
-`BuoyNotificationRouter` dictionary since its closures take no argument) only
-fires when `expectedStage == 0` — a failed *refinement* is invisible, since
-the note already has a title and toasting would just repeat what the user can
-already see.
-
-**Reveal + thinking animations:** `NoteStore.applyAutoTitle` sets
-`titleReveal: TitleReveal?` (noteID + title) the instant a title lands, and
-the title field's binding already has the new string — only the *glyphs* are
-hidden. `HeaderView`'s `TitleRevealText` (same `hidesText`-on-`TitleTextField`
-trick as the shimmer and the marquee) stripes in each character left-to-right
-(0.18s per character, 20ms stagger), then calls back to clear
-`noteStore.titleReveal`. While a request is running, `noteStore.titleThinking`
-(the note id) drives `ShimmerTitle` — the sweep `AnimatedBugTitle` used to own
-outright, now extracted so both share it: `AnimatedBugTitle` passes fixed
-blue/yellow, the thinking shimmer uses `TitleTextField.thinkingColors(for:)`
-(title colour as the base, accent blended toward white as the highlight — a
-coloured glint that never clashes with the system accent). Reduce Motion
-collapses both the reveal and the shimmer to short crossfades — same pattern
-as everywhere else, see `BuoyMotion.swift`.
+- **Gate every `FoundationModels` symbol** behind `#available(macOS 26, *)` and `#if canImport(FoundationModels)`. Unsupported Macs get no fallback: the Settings toggle shows disabled and off, with `unsupportedReason` underneath; the stored value is untouched.
+- **State lives in the DB:** `autoTitleStage` (attempts spent), `autoTitleLocked` (permanent opt-out), `autoTitleDefaultTitle` (the original "Note N"). `saveTitle` (the user typing a title) locks in the same `UPDATE` and calls `cancel(noteID:)`. `evaluate` re-checks the lock and the `stage` before applying, so a stale result is dropped.
+- **Thresholds** `[30, 100, 500]` plain-text chars (prewarm at 20). Stage 0 names; later stages refine. `stage == thresholds.count` is done (not locked). **Changing the number of stages needs a paired migration** like `v7_autoTitleRestage`, or finished notes rename themselves again; moving a value within the same count does not.
+- **Revert on empty:** an AI-titled note edited back to empty gets `autoTitleDefaultTitle` back and stage 0. Size-gated by `nearEmptyRTFSizeThreshold` so it never decodes RTF per keystroke. Locked notes never revert.
+- **Trigger:** `saveContent` → `noteContentDidChange(noteID:)`, a 0.3s debounce that captures the note id at schedule time and never decodes RTF. The 20-char prewarm check lives in `evaluate`.
+- **One request at a time, gated on `inFlightRequests`**, never `activeTask != nil`. `respond` ignores cancellation, so a cancelled request still occupies the Neural Engine; freeing the slot on cancel stacked concurrent inferences and bogged the machine down. Completion re-calls `evaluate`.
+- **`sanitize(_:)` is the real 3-word/40-char guarantee** (the `@Guide` hint is advisory): trims at word boundaries, drops trailing connectives, returns `nil` rather than a fragment.
+- **Warm session:** `warmSessionBox` (`Any?`, since stored properties can't be `@available`) holds one primed session; `generate` consumes it and the completion refills it. Never reuse a session across stages or notes.
+- **Failures:** guardrail/context-window errors retry once with a 240-char excerpt; decoding failures retry once greedy; `isRetry` blocks a second retry. Rate-limit/concurrency/assets errors leave the stage unspent. A repeated refusal or unsupported language calls `giveUp` (spend to done, no lock). The failure toast fires only at stage 0.
+- **Animations:** `titleReveal` drives `TitleRevealText` (per-glyph reveal over the hidden field text); `titleThinking` drives `TitleThinkingGlow`. Both collapse to crossfades under Reduce Motion.
 
 ### All Notes Panel & Folders
 
@@ -315,7 +193,7 @@ closures — keep new All Notes wiring in that file.
 
 ### Bug Report Mode
 
-Clicking "Report a Bug" in the Settings window's About page brings the note panel forward, creates an ephemeral note, and sets `bugReportNoteID` in `ContentView`. `isBugReport` is a computed property — navigating away passively exits the mode with no cleanup needed. The `TitleTextField` text color is set to `.clear` so the `AnimatedBugTitle` overlay shows through.
+Clicking "Report a Bug" in the About section of Settings ▸ General, creates an ephemeral note, and sets `bugReportNoteID` in `ContentView`. `isBugReport` is a computed property — navigating away passively exits the mode with no cleanup needed. The `TitleTextField` text color is set to `.clear` so the `AnimatedBugTitle` overlay shows through. Its shimmer comes from `BuoyTheme.bugReportShimmer(isDark:)`: the accent swept by its complementary hue (gold for near-grey accents). The bug-report toolbar and Send Report button use the theme accent, not a fixed blue.
 
 ### macOS Version Conditionals
 
@@ -332,9 +210,9 @@ The `View+Glass.swift` helper abstracts this behind `.buoyGlass()`.
 | `App/AppDelegate.swift` | Window, menu bar, hotkey, theme management |
 | `Models/NoteStore.swift` | @Observable data store + GRDB CRUD |
 | `Models/AppSettings.swift` | Settings persistence |
-| `App/SettingsWindowController.swift` | Native Settings window, activation, position, theme, and level |
-| `Views/Settings/` | Sidebar and General, Appearance, Shortcuts, About pages |
-| `Helpers/ChromeMetrics.swift` | Regular and compact control sizes; height-triggered density reader |
+| `Views/Settings/` | Settings popover and its General, Appearance, Shortcuts pages |
+| `Helpers/ChromeMetrics.swift` | Continuous regular→compact control sizes; window-size density reader; `HarborTransitionLayout` |
+| `Models/HarborTimer.swift` | Harbor Mode countdown: title parsing, per-note timers, completion chime |
 | `Helpers/BuoyTheme.swift` | Window tint and app accent, including AppKit bridge |
 | `Services/ShortcutRegistry.swift` | Rebindable in-app commands and conflict checks |
 | `Editor/BuoyTextView.swift` | Core NSTextView with all formatting logic |
@@ -368,6 +246,12 @@ The phrases **"invoke onboarding"** or **"reset onboarding"** mean run this comm
 ### Harbor Mode Exit Crash (`_postWindowNeedsUpdateConstraints`)
 **Critical bug pattern (fixed in 1.1.3).** `exitMinimizedMode()` ran the SwiftUI pill→editor swap (`withAnimation { panelPresentation.isMinimized = false }`) and the animated `animatePanel(... setFrame(display: true))` in the **same runloop iteration**. Restoring remounts the full `NSTextView` (heavier with `TodoAttachment`s) while AppKit is mid-resize → re-enters the window's constraint pass → `-[NSWindow _postWindowNeedsUpdateConstraints]` assertion kills the app. This was latent for months; a recent macOS point update (Sequoia/macOS 26 line) promoted the re-entrancy from a logged warning to a hard assertion, so it began crashing all users at once. **Fix:** defer the frame animation one runloop tick via `DispatchQueue.main.async`, guarded by `minimizeAnimationGeneration == generation` so spam-toggling can't fire a stale animation. The earlier 1.1.2 fix (`hosting.sizingOptions = []`) only closed the *re-enter* path, not the *exit* path. Rule: never run `setFrame(display: true)` inside (or in the same iteration as) a SwiftUI `withAnimation` transaction that swaps the panel's content.
 
+### Harbor Mode Transition Layout
+`enterMinimizedMode`/`exitMinimizedMode` call `holdHarborTransitionLayout` before flipping `isMinimized`: it sets `PanelPresentationModel.harborTransitionGlassSize` (the outgoing size on enter, the target size on exit) and the edge the window keeps still. `HarborTransitionLayout` lays the full panel out once at that size, clipped to the glass's rounded shape, so the window reveals or covers it instead of re-wrapping the editor every frame. It must stay one modifier chain with `nil` meaning unconstrained: an `if let` branch changes the content's identity, which rebuilt the whole panel (editor included) at the start of a fold, leaving an empty glass rectangle for a moment, and again at the end of a restore. `finishMinimizeAnimation` (generation-guarded) clears it, publishes the final window size, and on a restore posts `.buoyHarborRestoreFinished`, which focuses the editor. Never end the transition on an `asyncAfter` in the view: a stale timer from an earlier toggle clears it mid-sweep. The SwiftUI swap and the frame animation share one duration (`minimizedTransitionDuration == minimizedFrameAnimationDuration`) and curve.
+
+### Harbor Timer
+A note whose *whole* title is a duration (`HarborTimer.duration(in:)`: `5m`, `1h30`, `1 hr 30 min`, `half an hour`, `1:30`, optional "timer", …) starts a countdown when it enters Harbor Mode. Timers are per note (`PanelPresentationModel.harborTimers`), in memory only. While one runs, the header shows the countdown as a button that folds the panel into Harbor Mode, where pause/stop live. At "Time's up" the header gives the title back for editing; renaming the note stops the finished timer. `updateRemaining` ticks at 0.2s but only publishes when the displayed second changes.
+
 ### Off-Screen Drag / Harbor Pill Position
 **Bug pattern (fixed in 1.1.3).** `DragEnablingNSView.mouseDragged` (in `WindowDragBlocker.swift`) called `window.setFrameOrigin(...)` with no clamping, so the header could drag the panel up under the menu bar / off any edge into an unreachable spot. The Harbor pill frames (`topCenteredFrame`/`bottomCenteredFrame`) in `enterMinimizedMode`/`updateMinimizedWidth` were likewise unclamped. **Fix:** clamp the dragged origin to `(window.screen ?? NSScreen.main).visibleFrame`, and wrap the pill anchored frames in `clampedToVisibleFrame(...)`. Not OS-dependent — purely a missing clamp.
 
@@ -375,42 +259,13 @@ The phrases **"invoke onboarding"** or **"reset onboarding"** mean run this comm
 **Fixed.** `BuoyTextView` registers an I-beam `NSTrackingArea` that used to bleed through SwiftUI overlays (All Notes, Update Bubble, onboarding). A view-based overlay (`ArrowCursorOverlay`) could not intercept it because AppKit dispatches `cursorUpdate` to the deepest hit-testable view. `BuoyTextView.suppressesIBeamCursor` now skips `super` while an in-panel overlay is up. `ContentView` updates the flag and re-syncs it in the `textViewRef` callback for the initial onboarding case. The Settings window is independent and does not suppress the panel's cursor. Clickable controls in panel overlays use `pointingHandCursor()` from `WindowDragBlocker.swift`.
 
 ### Shift + Scroll Note Navigation
-
-**Critical bug pattern (fixed after 1.4.5).** `DragBlockingScrollView.scrollWheel`
-(`Editor/EditorView.swift`) has two gestures: the original horizontal two-finger
-swipe, and Shift + scroll. The Shift path originally opened with
-`if !event.hasPreciseScrollingDeltas, event.modifierFlags.contains(.shift)`, on
-the reasoning that a trackpad or Magic Mouse could just swipe horizontally
-instead. **That made the gesture unreachable on the hardware the app actually
-runs on.** macOS only transposes Shift + scroll onto the X axis for a *plain
-wheel* mouse; a precise device already has a horizontal axis, so it keeps
-reporting the movement on Y. The swipe path requires `abs(deltaX) >
-abs(deltaY)` at `phase == .began`, so a precise device holding Shift matched
-neither branch and just scrolled the text. Anyone on a MacBook trackpad or a
-Magic Mouse — i.e. nearly everyone — saw nothing happen.
-
-Rules for this handler:
-- **Gate on the modifier, not the device.** `isNavigationModifier(_:)` checks
-  Shift is down and Cmd/Option/Control are not, and deliberately ignores Caps
-  Lock rather than matching `deviceIndependentFlagsMask` exactly.
-- **Pick the axis by magnitude, never by `!= 0`.** A vertical trackpad swipe
-  always carries a little X jitter, so `scrollingDeltaX != 0 ? X : Y` selects
-  the jitter and throws away the real movement.
-- **Two separation strategies, by device.** Precise devices report a real
-  phase, so `navigateByPreciseScroll` latches `hasNavigatedInCurrentGesture`
-  on fire and clears it at `.ended`/`.cancelled` — one swipe, exactly one note,
-  however far it runs. A plain wheel has no phase, so `navigateByWheel` falls
-  back to a time cooldown plus an idle reset; that only *rate-limits* a long
-  continuous spin (~one note per 0.35s), it does not reduce it to one.
-- **Drop momentum events** (`event.momentumPhase == []`), or the coast after a
-  flick keeps firing.
-- **Sign convention:** positive delta means *previous*, matching the horizontal
-  swipe where a rightward swipe goes back. Direction follows the system's
-  natural-scrolling pref rather than normalising against
-  `isDirectionInvertedFromDevice`, same as the swipe.
-
-Shift events are consumed either way (never forwarded to `super`), so the
-editor does not also scroll while Shift is held.
+`DragBlockingScrollView.scrollWheel` (`Editor/EditorView.swift`) handles the horizontal two-finger swipe and Shift + scroll. Rules:
+- **Gate on the modifier, not the device.** macOS only moves Shift + scroll onto the X axis for a plain wheel; trackpads and Magic Mice keep reporting Y, so a device check made the gesture unreachable for most users. `isNavigationModifier(_:)` requires Shift without Cmd/Option/Control and ignores Caps Lock.
+- **Pick the axis by magnitude, never by `!= 0`**: a vertical swipe always carries some X jitter.
+- **Precise devices:** `navigateByPreciseScroll` latches `hasNavigatedInCurrentGesture` and clears it at `.ended`/`.cancelled`, so one swipe moves exactly one note. **Plain wheels** have no phase: `navigateByWheel` rate-limits with a cooldown plus idle reset (~one note per 0.35s).
+- **Drop momentum events** (`event.momentumPhase == []`).
+- **Positive delta means previous**, matching the swipe; follow the system's natural-scrolling direction, don't normalise it.
+- Shift events are always consumed (never passed to `super`), so the editor doesn't also scroll.
 
 ### Carousel Onboarding
 `OnboardingView.swift` — 4 slides: Welcome (key caps + global shortcut recorder), Formatting (live BuoyTextView demo), Harbor Mode (the current Harbor shortcut animates a mini panel to pill), Bug Report (shimmer title via `AnimatedBugTitle`). A local `NSEvent` monitor captures the registry's Harbor combo during onboarding — on slide 3 it toggles the demo, on all other slides it consumes the event. `AnimatedBugTitle` in `HeaderView.swift` is `internal` so it can be reused in Slide 4. `hasSeenHarborModeTip` remains for backwards compatibility but is never set.
@@ -436,11 +291,11 @@ trick Bug Report mode uses for `AnimatedBugTitle`. The overlay is suppressed whi
 text sliding out from under the caret is unusable. `TitleTextField.textColor(for:)`
 is the single source for the colour so the field and the overlay can't drift.
 
-### Settings Window, Colours, Compact Chrome, and Shortcuts
+### Settings Popover, Colours, Compact Chrome, and Shortcuts
 
-`SettingsWindowController` owns one standard titled window, activated explicitly because Buoy normally runs as an accessory app. Its level and appearance track the note panel. The footer gear opens General; the keyboard button opens Shortcuts. Opening the window never resizes or restores the note panel.
+Settings is a SwiftUI `.popover` on the footer gear (`SettingsPopover`), not a window. It points at its button, moves with the panel and closes on a click away for free. `AppDelegate.isInsideAttachedWindow` keeps a click inside any popover from counting as an outside click (which used to resign the panel and close the popover before the control saw the click). The popover window only mirrors the panel's key state, so `NSApp.keyWindow` stays the panel and `BuoyPanel.performKeyEquivalent` still receives rebindable shortcuts while it is open (verified).
 
-`ChromeMetrics` holds the regular and compact sizes for header, toolbar, and footer controls. `ChromeDensityReader` switches to compact when the full panel is shortened and uses separate enter/exit thresholds so the chrome cannot flicker at the boundary. The Appearance toggle forces compact controls at any height. Editor text keeps `settings.fontSize`. Suspend the reader during the Harbor pill-to-panel restore, when intermediate frame heights are meaningless.
+`ChromeMetrics(compactness:)` interpolates every chrome size continuously between regular (0) and compact (1). `ChromeDensityReader` derives compactness from `PanelPresentationModel.windowSize` (published by `AppDelegate`) — there is no toggle and no threshold. The reader takes the presentation model and reads the size itself, so a resize re-renders only the reader, not `ContentView.body`. Editor text scales through scroll-view magnification, never `settings.fontSize`. The reader is suspended while minimized and during the Harbor sweep (`harborTransitionGlassSize != nil`).
 
 `BuoyTheme` resolves the optional window tint and accent. SwiftUI surfaces read the environment; AppKit selection, checkbox images, list reorder indicator, title field, and corner arcs read `BuoyTheme.current`. A checked `TodoAttachment` bakes its accent into an image, so `BuoyTextView` refreshes existing attachments on `.buoyThemeDidChange`. Derive text on a custom accent from that accent's luminance; `alternateSelectedControlTextColor` only knows the system accent.
 
@@ -574,7 +429,7 @@ sed -i '' 's/"lastSeenWhatsNewVersion":"[^"]*"/"lastSeenWhatsNewVersion":null/' 
 ```
 
 ### Overlay Panel Height Override
-Onboarding and the What's New splash animate the panel taller when shown. Settings and Shortcuts are pages in their own window. Key pieces:
+Onboarding and the What's New splash animate the panel taller when shown. Settings is a popover and never resizes the panel. Key pieces:
 - `PanelLayoutMetrics.onboardingOverrideHeight` / `whatsNewOverrideHeight` — target heights
 - `AppDelegate.applyOverrideHeight(_ height: CGFloat?)` — pass `nil` to restore; 0.25s easeInEaseOut
 - `ContentView` fires `onOverrideHeight` via `.onChange(of: activeFooterOverlayHeight)` and directly in `onAppear` for whichever overlay is already up at first render

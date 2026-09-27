@@ -191,8 +191,15 @@ extension EnvironmentValues {
 /// Scaling follows the pointer directly, with no mode animation or notification.
 struct ChromeDensityReader: View {
     @Binding var compactness: CGFloat
-    var isSuspended: Bool
-    var windowSize: CGSize
+    let presentation: PanelPresentationModel
+
+    /// Harbor Mode and the sweep in and out of it pass through sizes that say
+    /// nothing about the panel the user chose.
+    private var isSuspended: Bool {
+        presentation.isMinimized || presentation.harborTransitionGlassSize != nil
+    }
+
+    private var windowSize: CGSize { presentation.windowSize }
 
     var body: some View {
         Color.clear
@@ -213,5 +220,26 @@ struct ChromeDensityReader: View {
         var transaction = Transaction()
         transaction.disablesAnimations = true
         withTransaction(transaction) { compactness = next }
+    }
+}
+
+/// Lays the full panel out at a fixed glass size during the Harbor sweep,
+/// clipped to the glass's rounded shape, so the window reveals or covers the
+/// content instead of re-laying it out every frame.
+///
+/// One modifier chain whether or not a sweep is running — `nil` just leaves
+/// the frame unconstrained. An `if let` here made SwiftUI swap between two
+/// branches, which gives the content a new identity: the whole panel, editor
+/// and all, was torn down and rebuilt as the fold began (leaving an empty
+/// glass rectangle on screen for a moment) and again as a restore finished.
+struct HarborTransitionLayout: ViewModifier {
+    let size: CGSize?
+    let alignment: Alignment
+
+    func body(content: Content) -> some View {
+        content
+            .frame(width: size?.width, height: size?.height)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: alignment)
+            .clipShape(RoundedRectangle(cornerRadius: PanelLayoutMetrics.windowCornerRadius))
     }
 }

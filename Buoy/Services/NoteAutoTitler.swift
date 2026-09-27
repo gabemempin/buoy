@@ -57,7 +57,9 @@ final class NoteAutoTitler {
     /// Changing this array changes what "finished" means for notes already in
     /// the database — add a migration alongside it (see `v7_autoTitleRestage`)
     /// so previously-completed notes aren't re-armed by the longer array.
-    private static let thresholds = [50, 100, 500]
+    /// Moving a threshold without changing the count (50 → 30 for the first
+    /// title) leaves "finished" alone and needs no migration.
+    private static let thresholds = [30, 100, 500]
 
     /// How long to let typing settle before considering a run. Short enough
     /// to feel responsive right at the threshold rather than after a pause.

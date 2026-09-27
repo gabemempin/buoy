@@ -14,7 +14,6 @@ struct ToolbarView: View {
     var onBullet: () -> Void
     var onTodo: () -> Void
     var onLink: () -> Void
-    var isBugReport: Bool = false
     var linkPopover: LinkPopoverPresentation? = nil
 
     @Environment(\.chromeMetrics) private var metrics
@@ -36,7 +35,7 @@ struct ToolbarView: View {
             linkButton
         }
         .clipShape(Capsule())
-        .buoyAccentCapsule(color: isBugReport ? .blue : nil)
+        .buoyAccentCapsule()
         .padding(.horizontal, metrics.toolbarHorizontalPadding)
         .padding(.vertical, metrics.toolbarVerticalPadding)
         .accessibilityElement(children: .contain)

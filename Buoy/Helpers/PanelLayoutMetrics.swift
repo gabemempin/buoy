@@ -83,9 +83,6 @@ enum PanelLayoutMetrics {
     /// the width it launches at.
     static let regularChromeWindowWidth: CGFloat = minimumWindowWidth(for: .regular)
 
-    static let compactChromeEnterWidth: CGFloat = regularChromeWindowWidth
-
-
     static func minimumGlassHeight(for metrics: ChromeMetrics) -> CGFloat {
         (windowPadding * 2)
         + metrics.headerMinimumHeight
@@ -111,8 +108,6 @@ enum PanelLayoutMetrics {
     /// The shortest the panel can be while still drawing regular chrome, and
     /// the height it launches at.
     static let regularChromeWindowHeight: CGFloat = minimumWindowHeight(for: .regular)
-
-    static let compactChromeEnterHeight: CGFloat = regularChromeWindowHeight
 
     static let maximumAutoHeight: CGFloat = 700 + (glassEdgeInset * 2)
 
@@ -140,8 +135,12 @@ enum PanelLayoutMetrics {
     /// Marquee tuning, shared by the Harbor pill and the main header.
     static let marqueeGap: CGFloat = 32
     static let marqueeEdgeFadeWidth: CGFloat = 24
-    static let minimizedTransitionDuration: TimeInterval = 0.22
+    /// The window's frame animation and the SwiftUI content swap share one
+    /// duration and one curve (easeInOut), so the two land together. They were
+    /// 0.26 and 0.22, which left the content settled while the window was
+    /// still moving.
     static let minimizedFrameAnimationDuration: TimeInterval = 0.26
+    static let minimizedTransitionDuration: TimeInterval = minimizedFrameAnimationDuration
     static let marqueePause: TimeInterval = 1.2
     static let marqueePointsPerSecond: CGFloat = 34
 

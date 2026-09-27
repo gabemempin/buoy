@@ -32,7 +32,6 @@ enum ShortcutRegistry {
         isGlobal: Bool,
         settings: AppSettings
     ) -> String? {
-        if excluded == .hidePanel && combo == BuoyCommand.hidePanel.defaultCombo { return nil }
         let reserved: [(KeyCombo, String)] = [
             (KeyCombo(keyCode: 49, modifiers: .command), "macOS"),
             (KeyCombo(keyCode: 48, modifiers: .command), "macOS"),
@@ -42,7 +41,6 @@ enum ShortcutRegistry {
             (KeyCombo(keyCode: 21, modifiers: [.command, .shift]), "macOS"),
             (KeyCombo(keyCode: 23, modifiers: [.command, .shift]), "macOS"),
             (KeyCombo(keyCode: 12, modifiers: .command), "Quit Buoy"),
-            (KeyCombo(keyCode: 13, modifiers: .command), "Close Settings"),
             (KeyCombo(keyCode: 4, modifiers: .command), "Hide Buoy application"),
             (KeyCombo(keyCode: 4, modifiers: [.command, .option]), "Hide Others"),
             (KeyCombo(keyCode: 0, modifiers: .command), "Select All"),

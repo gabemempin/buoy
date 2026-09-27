@@ -170,7 +170,7 @@ struct FooterView: View {
                     .help("Send bug report via browser")
                     .accessibilityLabel("Send bug report")
                     .accessibilityHint("Opens the report in your browser")
-                    .buoyAccentCapsule(color: .blue, isHovering: isSendHovering)
+                    .buoyAccentCapsule(isHovering: isSendHovering)
                     .onHover { isSendHovering = $0 }
                 } else {
                     HStack(spacing: 0) {

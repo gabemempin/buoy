@@ -670,8 +670,7 @@ private struct HarborModeDemoPanel: View {
 
             ToolbarView(
                 onBold: {}, onItalic: {}, onUnderline: {}, onStrikethrough: {},
-                onBullet: {}, onTodo: {}, onLink: {},
-                isBugReport: false
+                onBullet: {}, onTodo: {}, onLink: {}
             )
             .allowsHitTesting(false)
             .padding(.horizontal, 8)
@@ -729,11 +728,10 @@ private struct BugReportDemoPanel: View {
                     .padding(.bottom, 3)
             }
 
-            // Blue toolbar pill (non-interactive)
+            // Accent toolbar pill (non-interactive)
             ToolbarView(
                 onBold: {}, onItalic: {}, onUnderline: {}, onStrikethrough: {},
-                onBullet: {}, onTodo: {}, onLink: {},
-                isBugReport: true
+                onBullet: {}, onTodo: {}, onLink: {}
             )
             .allowsHitTesting(false)
             .padding(.horizontal, 8)

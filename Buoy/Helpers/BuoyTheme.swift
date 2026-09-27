@@ -87,6 +87,28 @@ struct BuoyTheme: Equatable {
         return Self.readable(accentChoice, against: background).nsColor
     }
 
+    /// Base and glint for the Bug Report title shimmer.
+    ///
+    /// The base is the accent as text, except that the system accent stays
+    /// the accent in dark mode too rather than turning white: the shimmer is
+    /// meant to read as colour. The glint is the base's complementary hue at
+    /// full brightness. A near-grey accent has no meaningful complement, so it
+    /// falls back to the original gold.
+    func bugReportShimmer(isDark: Bool) -> (base: NSColor, highlight: NSColor) {
+        let base = accentChoice == nil ? NSColor.controlAccentColor : accentText(isDark: isDark)
+        guard let rgb = base.usingColorSpace(.sRGB), rgb.saturationComponent >= 0.15 else {
+            return (base, NSColor(srgbRed: 1, green: 0.85, blue: 0, alpha: 1))
+        }
+        let hue = (rgb.hueComponent + 0.5).truncatingRemainder(dividingBy: 1)
+        let highlight = NSColor(
+            hue: hue,
+            saturation: max(rgb.saturationComponent, 0.75),
+            brightness: 1,
+            alpha: 1
+        )
+        return (base, highlight)
+    }
+
     /// Walks lightness both ways and takes whichever reaches the target first,
     /// or gets closest.
     ///

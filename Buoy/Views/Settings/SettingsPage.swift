@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The sections of the Settings window, in sidebar order.
+/// The Settings popover's pages, in the order of its top picker.
 enum SettingsPage: String, CaseIterable, Identifiable, Hashable {
     case general
     case appearance

@@ -50,12 +50,6 @@ struct ContentView: View {
 
     /// Controls and editor scale directly with the available window size.
     @State private var chromeCompactness: CGFloat = 0
-    /// True from the moment Harbor Mode is left until its frame animation has
-    /// finished. The full panel remounts at the *pill's* height and the window
-    /// then grows under it, so the heights the density reader would see during
-    /// that sweep are meaningless — without this the chrome visibly snaps to
-    /// compact and back on every restore.
-    @State private var isRestoringFromHarbor = false
 
     // Bug report mode — tracks the ID of the ephemeral bug report note
     @State private var bugReportNoteID: Note.ID? = nil
@@ -165,7 +159,11 @@ struct ContentView: View {
             .buoyToggleAllNotes:  { toggleAllNotes() },
             .buoyInsertLink:      { showLinkDialogFromToolbar() },
             .openSettings:        { toggleSettings() },
-            .buoyStartBugReport:  { createBugReportNote() },
+            // Posted by AppDelegate once the restore's frame animation lands.
+            .buoyHarborRestoreFinished: {
+                guard !showOnboarding, !showWhatsNew else { return }
+                focusEditor()
+            },
             .buoyAutoTitleFailed: { toastState.show("Couldn't name this note", style: .warning) },
             .buoyAutoTitleUnsupportedLanguage: { toastState.show("Auto-naming isn't available for this note", style: .warning) }
         ]))
@@ -186,25 +184,25 @@ struct ContentView: View {
             if isMinimized {
                 dismissTransientUI()
             } else {
-                isRestoringFromHarbor = true
-                DispatchQueue.main.asyncAfter(deadline: .now() + PanelLayoutMetrics.minimizedFrameAnimationDuration) {
-                    guard !panelPresentation.isMinimized else { return }
-                    isRestoringFromHarbor = false
-                    guard !showOnboarding, !showWhatsNew else { return }
-                    focusEditor()
-                }
-                if currentHarborTimer.isActive {
+                // A one-time tip: shown the first time a restore leaves a
+                // timer running, never again.
+                if currentHarborTimer.isActive, !settings.hasSeenHarborTimerTip {
                     let timerNoteID = noteStore.currentNote?.id
                     DispatchQueue.main.asyncAfter(deadline: .now() + PanelLayoutMetrics.minimizedFrameAnimationDuration + 0.12) {
                         guard !panelPresentation.isMinimized,
+                              !settings.hasSeenHarborTimerTip,
                               noteStore.currentNote?.id == timerNoteID,
                               currentHarborTimer.isActive else { return }
-                        toastState.show("Manage timers in Harbor Mode")
+                        settings.hasSeenHarborTimerTip = true
+                        toastState.show("Manage timers in Harbor Mode", duration: 5)
                     }
                 }
             }
         }
         .onChange(of: displayTitle) { _, _ in
+            // Renaming a note whose timer already ran out clears "Time's up",
+            // so the pill shows the new title rather than a stale finish.
+            if currentHarborTimer.isFinished { currentHarborTimer.stop() }
             onMinimizedWidthChange?(minimizedWidth)
         }
         .onChange(of: currentHarborTimer.isActive) { _, _ in
@@ -239,6 +237,10 @@ struct ContentView: View {
             .blur(radius: isConfirmingDelete ? 9 : 0)
             .animation(BuoyMotion.easeOut(0.16), value: isConfirmingDelete)
             .padding(PanelLayoutMetrics.windowPadding)
+            .modifier(HarborTransitionLayout(
+                size: panelPresentation.harborTransitionGlassSize,
+                alignment: panelPresentation.harborTransitionAlignment
+            ))
             // Minimums *and* maximums. With only a minimum, SwiftUI hands the
             // content its ideal size — the widest bar, about 244pt — and then
             // merely refuses to go below the floor. That looked correct only
@@ -247,27 +249,20 @@ struct ContentView: View {
             // inside a 316pt panel with the difference showing as dead space
             // down the right and along the bottom.
             .frame(
-                // Always the compact floor, for the same reason as the height
-                // below: AppKit already refuses to go narrower, and pinning
-                // this to the live density would clip the content for the one
-                // frame between the window shrinking and the density catching up.
-                minWidth: PanelLayoutMetrics.minimumGlassWidth(for: .compact),
                 // Always the compact floor, never the current density's. AppKit
                 // already refuses to shrink the window below this, and pinning
                 // the SwiftUI minimum to the live density would clip the content
                 // for the one frame between the window shrinking and the density
-                // catching up.
+                // catching up. Dropped during the Harbor sweep, where the glass
+                // has to follow a window smaller than any floor.
+                minWidth: isHarborTransitioning ? 0 : PanelLayoutMetrics.minimumGlassWidth(for: .compact),
                 maxWidth: .infinity,
-                minHeight: PanelLayoutMetrics.minimumGlassHeight(for: .compact),
+                minHeight: isHarborTransitioning ? 0 : PanelLayoutMetrics.minimumGlassHeight(for: .compact),
                 maxHeight: .infinity
             )
-            .background(
-                ChromeDensityReader(
-                    compactness: $chromeCompactness,
-                    isSuspended: panelPresentation.isMinimized || isRestoringFromHarbor,
-                    windowSize: panelPresentation.windowSize
-                )
-            )
+            // Reads the window size itself, so a resize re-renders only the
+            // reader rather than invalidating the whole of this body per frame.
+            .background(ChromeDensityReader(compactness: $chromeCompactness, presentation: panelPresentation))
             .background(WindowDragBlocker())
             .overlay { deleteConfirmOverlay }
             .buoyGlass()
@@ -364,9 +359,12 @@ struct ContentView: View {
                     titleReveal: noteStore.titleReveal,
                     onRevealFinished: { noteStore.titleReveal = nil },
                     titleThinking: noteStore.titleThinking != nil && noteStore.titleThinking == noteStore.currentNote?.id,
-                    timerTitle: currentHarborTimer.isActive && currentHarborTimer.noteID == noteStore.currentNote?.id
+                    // Only while counting down. Once it reads "Time's up" the
+                    // title is the note's own again and can be edited.
+                    timerTitle: currentHarborTimer.isActive && !currentHarborTimer.isFinished
                         ? currentHarborTimer.displayText : nil,
-                    onTimerTitleClick: { toastState.show("Manage timers in Harbor Mode") }
+                    isTimerPaused: currentHarborTimer.isPaused,
+                    onTimerTitleClick: onMinimize
                 )
 
                 formattingToolbar
@@ -496,7 +494,6 @@ struct ContentView: View {
             onBullet:    { applyEditorCursorAction { $0.applyBullet($1) } },
             onTodo:      { applyEditorCursorAction { $0.applyTodo($1) } },
             onLink:      { showLinkDialogFromToolbar() },
-            isBugReport: isBugReport,
             linkPopover: LinkPopoverPresentation(
                 isPresented: $showLinkDialog,
                 content: {
@@ -519,6 +516,10 @@ struct ContentView: View {
                 dismissLinkDialog(restoringSelection: false)
             }
         )
+    }
+
+    private var isHarborTransitioning: Bool {
+        panelPresentation.harborTransitionGlassSize != nil
     }
 
     private var chromeMetrics: ChromeMetrics {

@@ -141,7 +141,10 @@ struct HeaderView: View {
     /// True while an auto-title request is running for the current note —
     /// plays the "thinking" shimmer over the title.
     var titleThinking: Bool = false
+    /// The countdown shown in place of the title while a Harbor timer runs.
     var timerTitle: String? = nil
+    var isTimerPaused: Bool = false
+    /// Folds the panel into Harbor Mode, where the timer's controls live.
     var onTimerTitleClick: () -> Void = {}
 
     @FocusState private var titleFocused: Bool
@@ -211,8 +214,11 @@ struct HeaderView: View {
                     }
                     .buttonStyle(.plain)
                     .padding(.horizontal, metrics.titleHorizontalPadding)
-                    .help("Manage timers in Harbor Mode")
+                    .help("Show timer controls in Harbor Mode")
                     .pointingHandCursor()
+                    .accessibilityLabel(isTimerPaused ? "Timer paused" : "Timer")
+                    .accessibilityValue("\(timerTitle) remaining")
+                    .accessibilityHint("Opens Harbor Mode, where you can pause or stop the timer.")
                 } else {
                     ZStack {
                         TitleTextField(
@@ -445,16 +451,22 @@ struct TitleThinkingGlow: View {
     }
 }
 
-/// The Bug Report title's blue/yellow shimmer — a fixed-palette `ShimmerTitle`.
+/// The Bug Report title's shimmer: the theme's accent, swept by a glint in
+/// its complementary hue. With the system blue that is blue and amber, close
+/// to the fixed blue/yellow it used to be; a custom accent gets its own pair.
 struct AnimatedBugTitle: View {
     let title: String
     var fontSize: CGFloat = 19
 
+    @Environment(\.buoyTheme) private var theme
+    @Environment(\.colorScheme) private var colorScheme
+
     var body: some View {
+        let colors = theme.bugReportShimmer(isDark: colorScheme == .dark)
         ShimmerTitle(
             title: title,
-            base: Color.blue,
-            highlight: Color(red: 1, green: 0.85, blue: 0),
+            base: Color(nsColor: colors.base),
+            highlight: Color(nsColor: colors.highlight),
             fontSize: fontSize
         )
     }

@@ -229,9 +229,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func finishMinimizeAnimation(generation: Int, restoredFrame: NSRect? = nil) {
         guard minimizeAnimationGeneration == generation else { return }
         isMinimizeAnimating = false
-        if let restoredFrame, overlayOverrideHeight == 0, !panelPresentation.isMinimized {
+        panelPresentation.harborTransitionGlassSize = nil
+        publishPanelSize()
+        guard let restoredFrame, !panelPresentation.isMinimized else { return }
+        if overlayOverrideHeight == 0 {
             lastFullSizeFrame = restoredFrame
         }
+        NotificationCenter.default.post(name: .buoyHarborRestoreFinished, object: nil)
+    }
+
+    /// Holds the full panel's content at `frame`'s glass size for the Harbor
+    /// sweep, pinned to whichever edge of `from` the animation keeps still.
+    private func holdHarborTransitionLayout(at frame: NSRect, from start: NSRect, in panel: NSPanel) {
+        let content = panel.contentRect(forFrameRect: frame).size
+        let inset = PanelLayoutMetrics.glassEdgeInset * 2
+        panelPresentation.harborTransitionGlassSize = CGSize(
+            width: max(0, content.width - inset),
+            height: max(0, content.height - inset)
+        )
+        panelPresentation.harborTransitionAlignment =
+            abs(frame.maxY - start.maxY) < 0.5 ? .top
+            : abs(frame.minY - start.minY) < 0.5 ? .bottom
+            : .center
     }
 
     private func animatePanel(
@@ -657,6 +676,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             ? bottomCenteredFrame(forContentSize: pillSize, around: p.frame, in: p)
             : topCenteredFrame(forContentSize: pillSize, around: p.frame, in: p)
         let targetFrame = clampedToVisibleFrame(anchoredFrame, in: p)
+        // The outgoing panel keeps its current size while the window shrinks
+        // around it toward the pill.
+        holdHarborTransitionLayout(at: p.frame, from: targetFrame, in: p)
 
         withAnimation(BuoyMotion.easeInOut(PanelLayoutMetrics.minimizedTransitionDuration)) {
             panelPresentation.isMinimized = true
@@ -677,6 +699,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let generation = beginMinimizeAnimation()
 
         let targetFrame = restoredFullSizeFrame(around: p.frame, in: p)
+        // The incoming panel is laid out once, at the size it is growing to.
+        holdHarborTransitionLayout(at: targetFrame, from: p.frame, in: p)
 
         withAnimation(BuoyMotion.easeInOut(PanelLayoutMetrics.minimizedTransitionDuration)) {
             panelPresentation.isMinimized = false
@@ -805,9 +829,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     // MARK: - Menu Actions
 
-    /// Opens the Settings window. Deliberately does *not* show or restore the
-    /// note panel: Settings is its own window now, and yanking the panel out of
-    /// Harbor Mode to open a window somewhere else would be a non sequitur.
     /// Asks the panel to show its Settings popover.
     ///
     /// Settings is anchored to the footer's gear rather than being a window of
@@ -817,14 +838,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         showPanel()
         if panelPresentation.isMinimized { exitMinimizedMode() }
         NotificationCenter.default.post(name: .openSettings, object: nil)
-    }
-
-    /// Creates the ephemeral bug-report note. Called from the About page, which
-    /// lives in another window, so the panel has to be brought back first.
-    private func startBugReport() {
-        showPanel()
-        if panelPresentation.isMinimized { exitMinimizedMode() }
-        NotificationCenter.default.post(name: .buoyStartBugReport, object: nil)
     }
 
     @objc private func handleSettingsUpdate() {
@@ -846,11 +859,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         panel?.level = settings.alwaysOnTop ? .statusBar : .normal
         cornerResizeOverlayController.syncWindowProperties()
 
-
-        // The three below used to be applied inline by the settings overlay's
-        // own `onChange` handlers. They belong here now that the view is in a
-        // separate window, and each is guarded because this runs for every
-        // settings write, not just its own.
+        // Applied here rather than by the Settings view, and each guarded,
+        // because this runs for every settings write, not just its own.
         if settings.showInDock != appliedSettings.showInDock {
             NSApp.setActivationPolicy(settings.showInDock ? .regular : .accessory)
             if settings.showInDock { NSApp.activate(ignoringOtherApps: true) }
@@ -915,7 +925,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func windowDidResize(_ notification: Notification) {
         recordCurrentFullSizeFrame()
-        publishPanelSize()
+        // The Harbor sweep's intermediate sizes mean nothing to the chrome
+        // density; `finishMinimizeAnimation` publishes the size it lands on.
+        if !isMinimizeAnimating { publishPanelSize() }
         cornerResizeOverlayController.updateFrames()
     }
 
@@ -947,7 +959,7 @@ extension Notification.Name {
     /// status item, all of which are outside the panel's view tree.
     static let openSettings = Notification.Name("BuoyOpenSettings")
 
-    /// Posted by the Settings popover's About page. The bug-report note lives in
-    /// the panel, so the request has to cross windows.
-    static let buoyStartBugReport = Notification.Name("BuoyStartBugReport")
+    /// Posted when the restore from Harbor Mode has finished animating, which
+    /// is when the editor can take focus without fighting the resize.
+    static let buoyHarborRestoreFinished = Notification.Name("BuoyHarborRestoreFinished")
 }

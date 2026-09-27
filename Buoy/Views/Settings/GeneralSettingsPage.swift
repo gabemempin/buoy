@@ -28,7 +28,9 @@ struct GeneralSettingsPage: View {
             // Hiding the row left anyone who had read about the feature with
             // nowhere to find out why they did not have it; the reason says so.
             SettingsSection("Notes") {
-                Toggle(isOn: $settings.autoTitleEnabled) {
+                // Reads as off on a Mac that cannot run it. The stored value
+                // is left alone, so moving to a supported Mac keeps the choice.
+                Toggle(isOn: autoTitleBinding) {
                     Text("Auto-name New Notes")
                     if let reason = NoteAutoTitler.unsupportedReason {
                         Text(reason)
@@ -39,9 +41,6 @@ struct GeneralSettingsPage: View {
                 .disabled(!NoteAutoTitler.isSupported)
             }
 
-            // About lived on its own page while there was a sidebar to hang it
-            // from. It is four lines; with three tabs across the top it reads
-            // better as the last section here than as a tab of its own.
             // About lived on its own page while there was a sidebar to hang it
             // from. It is the app's name and three buttons; with three tabs
             // across the top it reads better as the last section here.
@@ -92,6 +91,13 @@ struct GeneralSettingsPage: View {
             }
         }
         .onDisappear { updateStatusTask?.cancel() }
+    }
+
+    private var autoTitleBinding: Binding<Bool> {
+        Binding(
+            get: { NoteAutoTitler.isSupported && settings.autoTitleEnabled },
+            set: { settings.autoTitleEnabled = $0 }
+        )
     }
 
     private func checkForUpdates() {

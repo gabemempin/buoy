@@ -14,6 +14,9 @@ struct AppSettings: Codable {
     var globalShortcut: String = "Option+Cmd+N"
     var onboarded: Bool = false
     var hasSeenHarborModeTip: Bool = false
+    /// Set once the "Manage timers in Harbor Mode" tip has been shown. It is a
+    /// one-time hint; after that the countdown in the title says it all.
+    var hasSeenHarborTimerTip: Bool = false
     var lastSelectedNoteID: String? = nil
     var dismissedUpdateVersion: String? = nil
     var lastSeenWhatsNewVersion: String? = nil
@@ -57,6 +60,7 @@ struct AppSettings: Codable {
         launchAtLogin = flag(.launchAtLogin, fallback.launchAtLogin)
         onboarded = flag(.onboarded, fallback.onboarded)
         hasSeenHarborModeTip = flag(.hasSeenHarborModeTip, fallback.hasSeenHarborModeTip)
+        hasSeenHarborTimerTip = flag(.hasSeenHarborTimerTip, fallback.hasSeenHarborTimerTip)
         autoTitleEnabled = flag(.autoTitleEnabled, fallback.autoTitleEnabled)
 
         fontSize = (try? container.decodeIfPresent(CGFloat.self, forKey: .fontSize)) ?? nil ?? fallback.fontSize
