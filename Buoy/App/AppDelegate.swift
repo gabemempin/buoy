@@ -581,7 +581,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if focusFog.isActive {
             focusFog.hide()
         } else {
-            focusFog.show()
+            focusFog.show(style: settingsStore.value.focusFogStyle)
+            NotificationCenter.default.post(name: .buoyFocusFogDidShow, object: nil)
         }
         p.level = panelWindowLevel
         cornerResizeOverlayController.syncWindowProperties()
@@ -905,6 +906,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         panel?.level = panelWindowLevel
         cornerResizeOverlayController.syncWindowProperties()
+        // Live, so the Settings picker restyles a fog that is already up.
+        focusFog.setStyle(settings.focusFogStyle)
 
         // Applied here rather than by the Settings view, and each guarded,
         // because this runs for every settings write, not just its own.
@@ -1008,6 +1011,8 @@ extension AppDelegate {
 extension Notification.Name {
     /// Posted when the header is shaken; toggles the focus fog.
     static let buoyToggleFocusFog = Notification.Name("BuoyToggleFocusFog")
+    /// Posted after the fog is turned on; ContentView shows the one-time tip.
+    static let buoyFocusFogDidShow = Notification.Name("BuoyFocusFogDidShow")
 
     /// Toggles the panel's Settings popover. Posted by ⌘, the menu bar and the
     /// status item, all of which are outside the panel's view tree.

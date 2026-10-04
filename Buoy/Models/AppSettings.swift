@@ -5,6 +5,14 @@ enum AppTheme: String, Codable, CaseIterable {
     case system, light, dark
 }
 
+/// What Fog Mode covers the desktop with.
+enum FocusFogStyle: String, Codable, CaseIterable {
+    /// The wallpaper, heavily blurred.
+    case wallpaperBlur
+    /// A slowly moving mesh gradient in the wallpaper's colours.
+    case gradient
+}
+
 struct AppSettings: Codable {
     var showInDock: Bool = false
     var alwaysOnTop: Bool = true
@@ -17,6 +25,9 @@ struct AppSettings: Codable {
     /// Set once the "Manage timers in Harbor Mode" tip has been shown. It is a
     /// one-time hint; after that the countdown in the title says it all.
     var hasSeenHarborTimerTip: Bool = false
+    /// Set once the "shake to exit Fog Mode" tip has been shown.
+    var hasSeenFocusFogTip: Bool = false
+    var focusFogStyle: FocusFogStyle = .wallpaperBlur
     var lastSelectedNoteID: String? = nil
     var dismissedUpdateVersion: String? = nil
     var lastSeenWhatsNewVersion: String? = nil
@@ -61,10 +72,12 @@ struct AppSettings: Codable {
         onboarded = flag(.onboarded, fallback.onboarded)
         hasSeenHarborModeTip = flag(.hasSeenHarborModeTip, fallback.hasSeenHarborModeTip)
         hasSeenHarborTimerTip = flag(.hasSeenHarborTimerTip, fallback.hasSeenHarborTimerTip)
+        hasSeenFocusFogTip = flag(.hasSeenFocusFogTip, fallback.hasSeenFocusFogTip)
         autoTitleEnabled = flag(.autoTitleEnabled, fallback.autoTitleEnabled)
 
         fontSize = (try? container.decodeIfPresent(CGFloat.self, forKey: .fontSize)) ?? nil ?? fallback.fontSize
         theme = (try? container.decodeIfPresent(AppTheme.self, forKey: .theme)) ?? nil ?? fallback.theme
+        focusFogStyle = (try? container.decodeIfPresent(FocusFogStyle.self, forKey: .focusFogStyle)) ?? nil ?? fallback.focusFogStyle
         globalShortcut = text(.globalShortcut) ?? fallback.globalShortcut
 
         windowTint = try? container.decodeIfPresent(HSLColor.self, forKey: .windowTint) ?? nil

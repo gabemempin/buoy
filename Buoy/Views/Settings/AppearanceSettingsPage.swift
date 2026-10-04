@@ -53,6 +53,22 @@ struct AppearanceSettingsPage: View {
                 }
             }
 
+            SettingsSection("Fog Mode") {
+                BuoySegmentedPicker(
+                    selection: $settings.focusFogStyle,
+                    options: [
+                        .init(value: .wallpaperBlur, title: "Wallpaper Blur"),
+                        .init(value: .gradient, title: "Gradient")
+                    ],
+                    accessibilityLabel: "Fog Mode style"
+                )
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 2)
+                Text("Shake the top of the window to fog everything behind your note. Gradient moves slowly in your wallpaper's colours.")
+                    .font(BuoyFont.secondary)
+                    .foregroundStyle(.secondary)
+            }
+
             SettingsSection("Text") {
                 LabeledContent("Editor text size") {
                     EditorFontSizeSlider(

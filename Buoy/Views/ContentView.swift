@@ -181,7 +181,13 @@ struct ContentView: View {
             .buoyAutoTitleFailed: { toastState.show("Couldn't name this note", style: .warning) },
             .buoyAutoTitleUnsupportedLanguage: { toastState.show("Auto-naming isn't available for this note", style: .warning) },
             .buoyBackupFailed: { toastState.show("Couldn't back up notes before updating", style: .warning, duration: 6) },
-            .buoyMigrationFailed: { toastState.show("Buoy couldn't update its notes database", style: .error, duration: 8) }
+            .buoyMigrationFailed: { toastState.show("Buoy couldn't update its notes database", style: .error, duration: 8) },
+            // One-time tip, same length as the Harbor timer tip.
+            .buoyFocusFogDidShow: {
+                guard !settings.hasSeenFocusFogTip else { return }
+                settings.hasSeenFocusFogTip = true
+                toastState.show("Shake the window to exit Fog Mode", duration: 5)
+            }
         ]))
         .onReceive(NotificationCenter.default.publisher(for: .showLinkDialog)) { notif in
             guard !panelPresentation.isMinimized else { return }
