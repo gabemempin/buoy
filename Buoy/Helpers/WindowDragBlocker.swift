@@ -46,19 +46,67 @@ extension View {
 /// Re-enables window dragging for a specific region (e.g. the header bar).
 struct WindowDragHandle: NSViewRepresentable {
     var onDoubleClick: (() -> Void)? = nil
+    /// Fired when the drag turns into a shake (see `ShakeDetector`).
+    var onShake: (() -> Void)? = nil
 
     func makeNSView(context: Context) -> DragEnablingNSView {
         let view = DragEnablingNSView()
         view.onDoubleClick = onDoubleClick
+        view.onShake = onShake
         return view
     }
     func updateNSView(_ nsView: DragEnablingNSView, context: Context) {
         nsView.onDoubleClick = onDoubleClick
+        nsView.onShake = onShake
+    }
+}
+
+/// Recognises a back-and-forth shake from a stream of one-axis positions:
+/// `reversals` direction changes, each after travelling at least `minSwing`
+/// points, all inside `window` seconds.
+struct ShakeDetector {
+    private let minSwing: CGFloat = 26
+    private let reversals = 4
+    private let window: TimeInterval = 0.8
+
+    private var direction: CGFloat = 0
+    private var extreme: CGFloat = 0
+    private var reversalTimes: [TimeInterval] = []
+
+    mutating func reset() {
+        direction = 0
+        reversalTimes.removeAll()
+    }
+
+    mutating func add(_ value: CGFloat, at time: TimeInterval) -> Bool {
+        if direction == 0 {
+            extreme = value
+            direction = 1
+            return false
+        }
+        if (value - extreme) * direction > 0 {
+            extreme = value // still travelling the same way
+            return false
+        }
+        guard abs(value - extreme) >= minSwing else { return false }
+
+        direction = -direction
+        extreme = value
+        reversalTimes.append(time)
+        reversalTimes.removeAll { time - $0 > window }
+        guard reversalTimes.count >= reversals else { return false }
+        reset()
+        return true
     }
 }
 
 final class DragEnablingNSView: NSView {
     var onDoubleClick: (() -> Void)?
+    var onShake: (() -> Void)?
+    private var shakeX = ShakeDetector()
+    private var shakeY = ShakeDetector()
+    /// One toggle per gesture: carrying on shaking must not flip it straight back.
+    private var didShake = false
     private var isDoubleClick = false
     override var mouseDownCanMoveWindow: Bool { false }
     private var dragStartMouse: NSPoint = .zero
@@ -72,11 +120,26 @@ final class DragEnablingNSView: NSView {
         }
         dragStartMouse = NSEvent.mouseLocation
         dragStartWindowOrigin = window?.frame.origin ?? .zero
+        didShake = false
+        shakeX.reset()
+        shakeY.reset()
     }
 
     override func mouseDragged(with event: NSEvent) {
         guard !isDoubleClick, let window = window else { return }
         let loc = NSEvent.mouseLocation
+        if onShake != nil, !didShake {
+            // Screen coordinates, so the window following the pointer doesn't
+            // hide the motion.
+            let now = event.timestamp
+            let shookX = shakeX.add(loc.x, at: now)
+            let shookY = shakeY.add(loc.y, at: now)
+            if shookX || shookY {
+                didShake = true
+                NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+                onShake?()
+            }
+        }
         var origin = NSPoint(
             x: dragStartWindowOrigin.x + loc.x - dragStartMouse.x,
             y: dragStartWindowOrigin.y + loc.y - dragStartMouse.y

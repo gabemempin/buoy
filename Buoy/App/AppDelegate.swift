@@ -12,6 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var globalMouseMonitor: Any?
     private var localMouseMonitor: Any?
     private let cornerResizeOverlayController = CornerResizeOverlayController()
+    private let focusFog = FocusFogController()
     /// The last settings values whose side effects were applied. `.settingsDidChange`
     /// fires for every field, but activation policy, the login item and the global
     /// hotkey must only be touched when their own value actually moved.
@@ -308,8 +309,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             name: .settingsDidChange,
             object: nil
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(toggleFocusFog),
+            name: .buoyToggleFocusFog,
+            object: nil
+        )
         buildMainMenu()
         showPanel()
+        focusFog.prepare()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
@@ -388,7 +396,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             backing: .buffered,
             defer: false
         )
-        p.level = settingsStore.value.alwaysOnTop ? .statusBar : .normal
+        p.level = panelWindowLevel
         p.isOpaque = false
         p.backgroundColor = .clear
         // No AppKit window shadow. A window shadow's inner portion is normally
@@ -561,7 +569,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         cornerResizeOverlayController.parentDidShow()
     }
 
+    /// The fog sits just under `.floating`, so while it is up the panel must be
+    /// at least that high or it would end up behind the haze.
+    private var panelWindowLevel: NSWindow.Level {
+        let base: NSWindow.Level = settingsStore.value.alwaysOnTop ? .statusBar : .normal
+        return focusFog.isActive ? max(base, .floating) : base
+    }
+
+    @objc private func toggleFocusFog() {
+        guard let p = panel, p.isVisible else { return }
+        if focusFog.isActive {
+            focusFog.hide()
+        } else {
+            focusFog.show()
+        }
+        p.level = panelWindowLevel
+        cornerResizeOverlayController.syncWindowProperties()
+    }
+
     @objc func hidePanel(_ sender: Any? = nil) {
+        if focusFog.isActive {
+            focusFog.hide(animated: false)
+            panel?.level = panelWindowLevel
+        }
         cornerResizeOverlayController.parentWillHide()
         panel?.orderOut(nil)
     }
@@ -873,7 +903,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             // a rebind has to rewrite the items rather than being looked up.
             buildMainMenu()
         }
-        panel?.level = settings.alwaysOnTop ? .statusBar : .normal
+        panel?.level = panelWindowLevel
         cornerResizeOverlayController.syncWindowProperties()
 
         // Applied here rather than by the Settings view, and each guarded,
@@ -976,6 +1006,9 @@ extension AppDelegate {
 }
 
 extension Notification.Name {
+    /// Posted when the header is shaken; toggles the focus fog.
+    static let buoyToggleFocusFog = Notification.Name("BuoyToggleFocusFog")
+
     /// Toggles the panel's Settings popover. Posted by ⌘, the menu bar and the
     /// status item, all of which are outside the panel's view tree.
     static let openSettings = Notification.Name("BuoyOpenSettings")
