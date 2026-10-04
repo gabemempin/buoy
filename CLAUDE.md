@@ -291,6 +291,15 @@ A note whose *whole* title is a duration (`HarborTimer.duration(in:)`: `5m`, `1h
 ### NSTextView Cursor Bleed into Overlay Panels
 **Fixed.** `BuoyTextView` registers an I-beam `NSTrackingArea` that used to bleed through SwiftUI overlays (All Notes, Update Bubble, onboarding). A view-based overlay (`ArrowCursorOverlay`) could not intercept it because AppKit dispatches `cursorUpdate` to the deepest hit-testable view. `BuoyTextView.suppressesIBeamCursor` now skips `super` while an in-panel overlay is up. `ContentView` updates the flag and re-syncs it in the `textViewRef` callback for the initial onboarding case. The Settings window is independent and does not suppress the panel's cursor. Clickable controls in panel overlays use `pointingHandCursor()` from `WindowDragBlocker.swift`.
 
+### Focus Fog (shake the header)
+Shaking the header's control row (`WindowDragHandle(onShake:)`, detected by `ShakeDetector` in `WindowDragBlocker.swift`) posts `.buoyToggleFocusFog`; `AppDelegate.toggleFocusFog` runs `FocusFogController`, which covers every screen with a click-through window showing a heavily blurred copy of *that screen's* wallpaper. Rules:
+- **Render ahead, never on shake.** `prepare()` runs at launch, after every hide, and on Space changes; it decodes a ≤960px thumbnail off the main thread and caches by `WallpaperKey` (URL + frame index). Decoding the full 6K HEIC on demand was the "lag before the fade". Fade in is ease-*out*: ease-in-out also read as a delay.
+- **Wallpaper kinds:** stills and Apple's solid colours (PNGs) via ImageIO; dynamic HEICs pick the current frame from the XMP plist (`h24` by time of day, `solar`/`apr` by light/dark `ap`); video (Aerial) wallpapers via the first `AVAssetImageGenerator` frame. Anything unreadable falls back to a live `NSVisualEffectView` blur.
+- **The fog sits at `.floating - 1` and must stay under the panel.** `panelWindowLevel` lifts the panel to at least `.floating` while the fog is up, then restores it; any new code that sets `panel.level` must go through it. Re-sync the corner overlays (`syncWindowProperties`) after a change.
+- **One toggle per drag gesture** (`didShake`), or continued shaking flips it straight back. Detection reads screen coordinates, since the window follows the pointer.
+- Fog windows never become key, so typing is undisturbed. `hidePanel` drops the fog instantly.
+- Reduce Motion stops the mist drift.
+
 ### Shift + Scroll Note Navigation
 `DragBlockingScrollView.scrollWheel` (`Editor/EditorView.swift`) handles the horizontal two-finger swipe and Shift + scroll. Rules:
 - **Gate on the modifier, not the device.** macOS only moves Shift + scroll onto the X axis for a plain wheel; trackpads and Magic Mice keep reporting Y, so a device check made the gesture unreachable for most users. `isNavigationModifier(_:)` requires Shift without Cmd/Option/Control and ignores Caps Lock.

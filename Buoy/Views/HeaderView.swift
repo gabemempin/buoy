@@ -198,7 +198,10 @@ struct HeaderView: View {
             }
             .frame(height: metrics.headerControlRowHeight)
             .padding(.top, metrics.headerTopPadding)
-            .background(dragEnabled ? WindowDragHandle(onDoubleClick: onHeaderDoubleClick) : nil)
+            .background(dragEnabled ? WindowDragHandle(
+                onDoubleClick: onHeaderDoubleClick,
+                onShake: { NotificationCenter.default.post(name: .buoyToggleFocusFog, object: nil) }
+            ) : nil)
 
             Group {
                 if let timerTitle {
