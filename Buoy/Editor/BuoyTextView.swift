@@ -1085,8 +1085,14 @@ final class BuoyTextView: NSTextView {
             case .leftMouseUp:
                 if isTodo, let storage = textStorage,
                    let todo = storage.attributes(at: charIndex, effectiveRange: nil)[.attachment] as? TodoAttachment {
-                    todo.isChecked.toggle()
-                    storage.edited(.editedAttributes, range: NSRange(location: charIndex, length: 1), changeInLength: 0)
+                    let range = NSRange(location: charIndex, length: 1)
+                    todo.setChecked(!todo.isChecked, animated: true) { [weak self] in
+                        // The text may have changed under a running animation.
+                        guard let self, let storage = self.textStorage,
+                              NSMaxRange(range) <= storage.length else { return }
+                        self.layoutManager?.invalidateDisplay(forCharacterRange: range)
+                    }
+                    storage.edited(.editedAttributes, range: range, changeInLength: 0)
                     notifyChange()
                 } else {
                     window.makeFirstResponder(self)
