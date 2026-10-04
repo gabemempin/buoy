@@ -136,11 +136,14 @@ struct WhatsNewView: View {
         Button(action: continueNow) {
             Text("Continue")
                 .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(BuoyTheme.current.onAccent)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 3)
         }
         .buttonStyle(.borderedProminent)
         .controlSize(.large)
+        // `.borderedProminent` fills with the *system* accent unless tinted.
+        .tint(BuoyTheme.current.accent)
         // The panel is non-activating, so without this the button renders in
         // its inactive grey instead of the accent colour.
         .environment(\.controlActiveState, .active)

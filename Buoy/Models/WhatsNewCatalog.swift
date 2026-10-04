@@ -33,6 +33,63 @@ enum WhatsNewCatalog {
     /// Newest first.
     static let releases: [WhatsNewRelease] = [
         WhatsNewRelease(
+            version: "1.5.0",
+            features: [
+                WhatsNewItem(
+                    symbol: "paintpalette",
+                    title: "Build your Buoy!",
+                    detail: "Pick a window tint and an accent color in Settings ▸ Appearance."
+                ),
+                WhatsNewItem(
+                    symbol: "folder",
+                    title: "Folders",
+                    detail: "Group your notes into folders, and drag to reorder anything in All Notes."
+                ),
+                WhatsNewItem(
+                    symbol: "sparkles",
+                    title: "Notes that name themselves",
+                    detail: "On Macs with Apple Intelligence, new notes get a short title as you write."
+                ),
+                WhatsNewItem(
+                    symbol: "gearshape",
+                    title: "New Settings",
+                    detail: "Settings now opens from the gear, and every shortcut can be changed."
+                ),
+                WhatsNewItem(
+                    symbol: "rectangle.compress.vertical",
+                    title: "Compact Mode",
+                    detail: "Make the window smaller and Buoy's controls shrink to fit."
+                ),
+                WhatsNewItem(
+                    symbol: "timer",
+                    title: "Harbor timers",
+                    detail: "Title a note \"5m\" or \"1h30\" and it counts down in Harbor Mode."
+                ),
+                WhatsNewItem(
+                    symbol: "cloud.fog",
+                    title: "Fog Mode",
+                    detail: "Shake the window to blur everything behind Buoy. Shake again to clear it."
+                )
+            ],
+            fixes: [
+                WhatsNewItem(
+                    symbol: "arrow.down.right.and.arrow.up.left",
+                    title: "Smoother Harbor Mode",
+                    detail: "Harbor Mode opens and closes more smoothly."
+                ),
+                WhatsNewItem(
+                    symbol: "checklist",
+                    title: "Checklists that travel",
+                    detail: "Checkboxes survive sending to Apple Notes or copying as Markdown."
+                ),
+                WhatsNewItem(
+                    symbol: "arrow.left.arrow.right",
+                    title: "Shift to switch notes, everywhere",
+                    detail: "Now works on trackpads and Magic Mice too."
+                )
+            ]
+        ),
+        WhatsNewRelease(
             version: "1.4.5",
             features: [
                 WhatsNewItem(
