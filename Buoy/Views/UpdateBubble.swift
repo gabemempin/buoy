@@ -1,57 +1,21 @@
 import SwiftUI
 import AppKit
 
-/// Floating pill that surfaces an available update at the bottom edge of the
-/// main panel. Modeled on the overlay-panel glass + the NotificationToast
-/// slide-up transition. Floats over the editor without affecting panel height.
+/// The update notice: a `NotificationToast` that stays until it is acted on
+/// or dismissed, so it looks and moves exactly like every other lower-center
+/// pill. Floats over the editor without affecting panel height.
 struct UpdateBubble: View {
     let version: String
     var onUpdate: () -> Void
     var onDismiss: () -> Void
 
-    @State private var isUpdateHovering = false
-
     var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "arrow.up.circle.fill")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(BuoyTheme.current.accent)
-
-            Text("Buoy v\(version) is available")
-                .font(BuoyFont.control.weight(.medium))
-                .fixedSize()
-
-            Button(action: onUpdate) {
-                Text("Update")
-                    .font(BuoyFont.secondaryProminent)
-                    .lineLimit(1)
-                    .fixedSize()
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 4)
-                    .buoyGlassButton(tint: BuoyTheme.current.accent, isHovering: isUpdateHovering)
-            }
-            .buttonStyle(.plain)
-            .onHover { isUpdateHovering = $0 }
-            .accessibilityLabel("Install Buoy \(version)")
-            .pointingHandCursor()
-
-            Button(action: onDismiss) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 18, height: 18)
-                    .background(Circle().fill(Color.buoyControlFill))
-            }
-            .buttonStyle(.plain)
-            .help("Dismiss")
-            .accessibilityLabel("Dismiss update notice")
-            .pointingHandCursor()
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(WindowDragBlocker())
-        .buoyGlassPanel(cornerRadius: 14)
-        .shadow(radius: 8)
+        NotificationToast(
+            message: "Buoy \(version) is available",
+            symbolName: "arrow.up.circle.fill",
+            action: ToastAction(title: "Update", handler: onUpdate),
+            onClose: onDismiss
+        )
     }
 }
 
@@ -73,12 +37,14 @@ struct UpdateBubbleOverlay: View {
                     onUpdate: { openUpdate(update.url) },
                     onDismiss: { dismissUpdate(update.version) }
                 )
-                .padding(.bottom, PanelLayoutMetrics.footerOverlayBottomInset)
-                .transition(BuoyMotion.transition(.opacity.combined(with: .move(edge: .bottom))))
+                .padding(.bottom, PanelLayoutMetrics.footerPillBottomPadding)
+                .transition(BuoyMotion.pillPop)
             }
         }
+        .padding(.horizontal, 8)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-        .animation(BuoyMotion.easeOut(0.16), value: updateInfo?.version)
+        .animation(BuoyMotion.pillAnimation, value: updateInfo?.version)
+        .animation(BuoyMotion.pillAnimation, value: isSuppressed)
         .task {
             // Auto-check at launch, then re-check daily while the app stays running.
             while !Task.isCancelled {
@@ -93,20 +59,20 @@ struct UpdateBubbleOverlay: View {
         let result = await UpdateService.shared.checkForUpdates()
         guard case let .available(version, url) = result else { return }
         guard version != settings.dismissedUpdateVersion else { return }
-        withAnimation(BuoyMotion.easeOut(0.16)) {
+        withAnimation(BuoyMotion.pillAnimation) {
             updateInfo = (version: version, url: url)
         }
     }
 
     private func openUpdate(_ url: URL) {
         NSWorkspace.shared.open(url)
-        withAnimation(BuoyMotion.easeOut(0.16)) { updateInfo = nil }
+        withAnimation(BuoyMotion.pillAnimation) { updateInfo = nil }
     }
 
     private func dismissUpdate(_ version: String) {
         settings.dismissedUpdateVersion = version
         settings.save()
-        withAnimation(BuoyMotion.easeOut(0.16)) { updateInfo = nil }
+        withAnimation(BuoyMotion.pillAnimation) { updateInfo = nil }
     }
 }
 

@@ -14,19 +14,36 @@ struct ToastAction {
 
 // MARK: - Toast Style
 
-/// Register of a toast. Neutral confirms an action the user just took, warning
+/// Register of a toast. Neutral confirms an action the user just took, info
+/// is a tip or a next step (no checkmark: nothing has finished yet), warning
 /// reports a soft failure nothing needs doing about (auto-titling declined the
 /// note), error reports one that blocked what they asked for.
+///
+/// Copy rules for every pill: sentence case, no trailing period, "Couldn't" /
+/// "Can't" rather than "Cannot" or a raw "Error: …" dump.
 enum ToastStyle {
     case neutral
+    case info
     case warning
     case error
 
     var symbolName: String {
         switch self {
         case .neutral: return "checkmark.circle.fill"
+        case .info:    return "info.circle.fill"
         case .warning: return "exclamationmark.triangle.fill"
         case .error:   return "exclamationmark.circle.fill"
+        }
+    }
+
+    /// How long a pill of this register stays up when the caller doesn't say.
+    /// A confirmation only needs a glance; anything the user has to read and
+    /// act on gets longer.
+    var defaultDuration: TimeInterval {
+        switch self {
+        case .neutral: return 2
+        case .info:    return 5
+        case .warning, .error: return 4
         }
     }
 
@@ -34,7 +51,7 @@ enum ToastStyle {
     /// appearance, Graphite and Increase Contrast like every other alert.
     var tint: Color {
         switch self {
-        case .neutral: return BuoyTheme.current.accent
+        case .neutral, .info: return BuoyTheme.current.accent
         case .warning: return Color(nsColor: .systemOrange)
         case .error:   return Color(nsColor: .systemRed)
         }
@@ -44,14 +61,14 @@ enum ToastStyle {
     /// a glance, not just by its glyph. Neutral stays plain glass.
     var washOpacity: Double {
         switch self {
-        case .neutral: return 0
+        case .neutral, .info: return 0
         case .warning, .error: return BuoyContrast.opacity(0.14, boosted: 0.3)
         }
     }
 
     var stroke: Color {
         switch self {
-        case .neutral: return .buoyOverlayStroke
+        case .neutral, .info: return .buoyOverlayStroke
         case .warning, .error: return tint.opacity(BuoyContrast.opacity(0.45, boosted: 0.9))
         }
     }
@@ -61,6 +78,11 @@ enum ToastStyle {
 
 /// Floating glass pill anchored at the lower center of the note panel.
 ///
+/// The one pill for everything that appears there — toasts, tips and the
+/// update notice (`UpdateBubble`) — so they share a shape, type, spacing,
+/// position (`footerPillBottomPadding`) and the `BuoyMotion.pillPop` entrance.
+/// Build new lower-center notices from this rather than a bespoke view.
+///
 /// Shares `buoyGlassCapsule()` with the Harbor pill, so it inherits the Reduce
 /// Transparency opaque fallback and the pre-26 static glass for free. Text is
 /// `.primary` on every style; the style speaks through the glyph, a tinted
@@ -69,14 +91,20 @@ enum ToastStyle {
 struct NotificationToast: View {
     let message: String
     var style: ToastStyle = .neutral
+    /// Overrides the style's glyph (the update notice's arrow); the tint still
+    /// comes from the style.
+    var symbolName: String? = nil
     var action: ToastAction? = nil
+    /// Adds a trailing close button, for a notice that stays until dismissed.
+    var onClose: (() -> Void)? = nil
 
     @Environment(\.buoyTheme) private var theme
     @State private var isActionHovering = false
+    @State private var isCloseHovering = false
 
     var body: some View {
         HStack(spacing: 6) {
-            Image(systemName: style.symbolName)
+            Image(systemName: symbolName ?? style.symbolName)
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(style.tint)
                 .accessibilityHidden(true)
@@ -108,13 +136,35 @@ struct NotificationToast: View {
                 .pointingHandCursor()
                 .accessibilityLabel(action.title)
             }
+
+            if let onClose {
+                Button(action: onClose) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 16, height: 16)
+                        .background(Circle().fill(isCloseHovering ? Color.buoyControlFill : .clear))
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .onHover { isCloseHovering = $0 }
+                .padding(.leading, 2)
+                .padding(.trailing, -4)
+                .help("Dismiss")
+                .accessibilityLabel("Dismiss")
+                .pointingHandCursor()
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
         .background(Capsule().fill(style.tint.opacity(style.washOpacity)))
         .overlay(Capsule().strokeBorder(style.stroke, lineWidth: 0.8))
+        // A press on an interactive pill must not start a window drag.
+        .background { if isInteractive { WindowDragBlocker() } }
         .buoyGlassCapsule()
     }
+
+    private var isInteractive: Bool { action != nil || onClose != nil }
 }
 
 // MARK: - Toast State
@@ -125,6 +175,10 @@ final class ToastState {
     var style: ToastStyle = .neutral
     var action: ToastAction? = nil
     var isShowing: Bool = false
+    /// Bumped on every `show`, and used as the pill's identity, so a toast
+    /// that replaces one already up pops in afresh instead of swapping its
+    /// text in place.
+    var presentationID: Int = 0
 
     @ObservationIgnored private var hideTask: Task<Void, Never>?
 
@@ -132,7 +186,7 @@ final class ToastState {
         _ message: String,
         style: ToastStyle = .neutral,
         actionTitle: String? = nil,
-        duration: TimeInterval = 2,
+        duration: TimeInterval? = nil,
         action: (() -> Void)? = nil
     ) {
         hideTask?.cancel()
@@ -148,7 +202,9 @@ final class ToastState {
         } else {
             self.action = nil
         }
+        presentationID &+= 1
         isShowing = true
+        let duration = duration ?? style.defaultDuration
         hideTask = Task { @MainActor in
             try? await Task.sleep(for: .seconds(duration))
             guard !Task.isCancelled else { return }
@@ -172,11 +228,9 @@ struct ToastContainer: View {
         ZStack(alignment: .bottom) {
             if state.isShowing {
                 NotificationToast(message: state.message, style: state.style, action: state.action)
-                    // `buoyGlassCapsule` pads the pill by `glassEdgeInset` for
-                    // its shadow ring; subtract it so the visible capsule sits
-                    // on the same line as the update bubble, just above the footer.
-                    .padding(.bottom, PanelLayoutMetrics.footerOverlayBottomInset - PanelLayoutMetrics.glassEdgeInset)
-                    .transition(.opacity)
+                    .id(state.presentationID)
+                    .padding(.bottom, PanelLayoutMetrics.footerPillBottomPadding)
+                    .transition(BuoyMotion.pillPop)
                     // Spoken as soon as it appears; it is the only feedback
                     // for actions like Copy and Transfer.
                     .accessibilityAddTraits(.isStaticText)
@@ -184,7 +238,8 @@ struct ToastContainer: View {
         }
         .padding(.horizontal, 8)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-        .animation(BuoyMotion.easeInOut(0.18), value: state.isShowing)
+        .animation(BuoyMotion.pillAnimation, value: state.isShowing)
+        .animation(BuoyMotion.pillAnimation, value: state.presentationID)
         // An informational pill must never swallow a click meant for the
         // editor or footer beneath it. One carrying an action has to be
         // clickable, so hit testing follows the action rather than being off

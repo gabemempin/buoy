@@ -371,7 +371,14 @@ private final class DragBlockingScrollView: NSScrollView {
     private func syncDocumentViewGeometry() {
         guard let textView = documentView as? BuoyTextView else { return }
 
-        let contentSize = self.contentSize
+        // The clip view's *bounds*, not `contentSize`: compact chrome magnifies
+        // the editor, and the document lives in the magnified coordinate
+        // space. `contentSize` is the unmagnified frame, so sizing the text
+        // view from it fought the clip view's own autoresizing (which uses the
+        // bounds) on every tile. Each flip changed the width, reflowed the
+        // whole note, briefly shrank the text view and clamped the scroll
+        // offset to the top — the "typing at the bottom jumps to the top" bug.
+        let contentSize = contentView.bounds.size
         guard contentSize.width > 0, contentSize.height > 0 else { return }
 
         let targetHeight = max(textView.frame.height, contentSize.height)

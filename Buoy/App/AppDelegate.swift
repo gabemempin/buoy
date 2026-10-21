@@ -315,6 +315,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             name: .buoyToggleFocusFog,
             object: nil
         )
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(otherAppDidActivate(_:)),
+            name: NSWorkspace.didActivateApplicationNotification,
+            object: nil
+        )
         buildMainMenu()
         showPanel()
         focusFog.prepare()
@@ -579,20 +585,55 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc private func toggleFocusFog() {
         guard let p = panel, p.isVisible else { return }
         if focusFog.isActive {
-            focusFog.hide()
+            dismissFocusFog()
         } else {
             focusFog.show(style: settingsStore.value.focusFogStyle)
             NotificationCenter.default.post(name: .buoyFocusFogDidShow, object: nil)
+            p.level = panelWindowLevel
+            cornerResizeOverlayController.syncWindowProperties()
         }
-        p.level = panelWindowLevel
-        cornerResizeOverlayController.syncWindowProperties()
+    }
+
+    /// The one way the fog comes down, so the panel's level always follows.
+    /// The level drops only once the fog is gone: lowering it as the exit
+    /// began put the note *behind* the still-fading fog for the whole fade.
+    private func dismissFocusFog(completion: (() -> Void)? = nil) {
+        focusFog.hide { [weak self] in
+            if let self {
+                // Reads `isActive`, so a show that interrupted the exit keeps
+                // the panel lifted.
+                self.panel?.level = self.panelWindowLevel
+                self.cornerResizeOverlayController.syncWindowProperties()
+            }
+            completion?()
+        }
+    }
+
+    /// Switching to another app (Dock, ⌘-Tab, a notification, a link opened
+    /// from a note) lifts the fog: the app comes forward *under* it, so the
+    /// user would otherwise have to shake the fog away to see what they just
+    /// asked for — and its windows, never drawn while covered, came back
+    /// black when they did.
+    @objc private func otherAppDidActivate(_ notification: Notification) {
+        guard focusFog.isActive,
+              let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+              app.processIdentifier != ProcessInfo.processInfo.processIdentifier,
+              app.activationPolicy == .regular
+        else { return }
+        dismissFocusFog()
+    }
+
+    /// Quitting with the fog up would drop it in one frame, showing every
+    /// covered window black; lift it first.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard focusFog.isActive else { return .terminateNow }
+        dismissFocusFog { sender.reply(toApplicationShouldTerminate: true) }
+        return .terminateLater
     }
 
     @objc func hidePanel(_ sender: Any? = nil) {
-        if focusFog.isActive {
-            focusFog.hide(animated: false)
-            panel?.level = panelWindowLevel
-        }
+        // Lifts rather than vanishing with the panel, for the same reason.
+        if focusFog.isActive { dismissFocusFog() }
         cornerResizeOverlayController.parentWillHide()
         panel?.orderOut(nil)
     }

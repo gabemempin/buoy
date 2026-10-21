@@ -182,11 +182,11 @@ struct ContentView: View {
             .buoyAutoTitleUnsupportedLanguage: { toastState.show("Auto-naming isn't available for this note", style: .warning) },
             .buoyBackupFailed: { toastState.show("Couldn't back up notes before updating", style: .warning, duration: 6) },
             .buoyMigrationFailed: { toastState.show("Buoy couldn't update its notes database", style: .error, duration: 8) },
-            // One-time tip, same length as the Harbor timer tip.
+            // One-time tip; `.info` gives it the same length as the Harbor timer tip.
             .buoyFocusFogDidShow: {
                 guard !settings.hasSeenFocusFogTip else { return }
                 settings.hasSeenFocusFogTip = true
-                toastState.show("Shake the window to exit Fog Mode", duration: 5)
+                toastState.show("Shake the window to exit Fog Mode", style: .info)
             }
         ]))
         .onReceive(NotificationCenter.default.publisher(for: .showLinkDialog)) { notif in
@@ -216,7 +216,7 @@ struct ContentView: View {
                               noteStore.currentNote?.id == timerNoteID,
                               currentHarborTimer.isActive else { return }
                         settings.hasSeenHarborTimerTip = true
-                        toastState.show("Manage timers in Harbor Mode", duration: 5)
+                        toastState.show("Manage timers in Harbor Mode", style: .info)
                     }
                 }
             }
@@ -677,6 +677,8 @@ struct ContentView: View {
     private var canShowUpdateBubble: Bool {
         !showOnboarding && !showWhatsNew && !showAllNotes
             && !isLinkDialogPresented && !isBugReport && !isConfirmingDelete
+            // Both pills sit on the same spot; a toast takes it for its few seconds.
+            && !toastState.isShowing
     }
 
     // MARK: - Actions
@@ -800,7 +802,7 @@ struct ContentView: View {
     /// Validates the "last note" guard, then defers to the confirmation dialog.
     private func requestDeleteNote(_ note: Note) {
         guard noteStore.notes.count > 1 else {
-            toastState.show("Cannot delete the last note", style: .error)
+            toastState.show("Can't delete the last note", style: .error)
             return
         }
         withAnimation(BuoyMotion.easeOut(0.16)) { pendingDeleteNote = note }
@@ -950,15 +952,22 @@ struct ContentView: View {
         }
     }
 
+    /// The service's message is an AppleScript or file error, too long and
+    /// too technical for a one-line pill; log it and say what failed.
+    private func showTransferError(_ error: String) {
+        NSLog("Buoy: Apple Notes transfer failed: %@", error)
+        toastState.show("Couldn't transfer to Apple Notes", style: .error)
+    }
+
     private func transferToAppleNotes() {
         guard let textView = tvRef.value else { return }
         if #available(macOS 26, *) {
             let markdown = textView.markdownContent(title: noteStore.currentNote?.title ?? "Untitled")
             AppleNotesService.transferMarkdown(markdown) { error in
                 if let error {
-                    toastState.show("Error: \(error)", style: .error)
+                    showTransferError(error)
                 } else {
-                    toastState.show("Confirm import in Apple Notes")
+                    toastState.show("Confirm the import in Apple Notes", style: .info)
                 }
             }
             return
@@ -966,7 +975,7 @@ struct ContentView: View {
         let html = textView.htmlContent()
         AppleNotesService.transfer(htmlContent: html) { error in
             if let error {
-                toastState.show("Error: \(error)", style: .error)
+                showTransferError(error)
             } else {
                 toastState.show("Transferred to Apple Notes")
             }

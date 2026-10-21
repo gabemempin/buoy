@@ -46,6 +46,10 @@ enum PanelLayoutMetrics {
     /// Extra leading inset for a note shown inside a folder.
     static let allNotesChildIndent: CGFloat = 18
     static let footerOverlayBottomInset: CGFloat = 43
+    /// Bottom padding for a lower-center pill (`NotificationToast`).
+    /// `buoyGlassCapsule` pads the pill by `glassEdgeInset` for its shadow
+    /// ring, so subtract it to put the visible capsule just above the footer.
+    static let footerPillBottomPadding: CGFloat = footerOverlayBottomInset - glassEdgeInset
 
     // Section minimum heights now live on `ChromeMetrics`, because they are
     // the thing compact chrome shrinks. Everything below reads them from a

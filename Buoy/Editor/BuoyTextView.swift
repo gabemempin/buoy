@@ -710,7 +710,7 @@ final class BuoyTextView: NSTextView {
         if textOnLine == "-" {
             guard replaceText(in: NSRange(location: lineStart, length: 1), with: "• ") else { return false }
             setSelectedRange(NSRange(location: lineStart + 2, length: 0))
-            notifyChange()
+            notifyTypedChange()
             return true
         }
 
@@ -721,7 +721,7 @@ final class BuoyTextView: NSTextView {
             guard replaceText(in: NSRange(location: lineStart, length: 2), with: atStr) else { return false }
             setSelectedRange(NSRange(location: lineStart + atStr.length, length: 0))
             updateDefaultTypingAttributes()
-            notifyChange()
+            notifyTypedChange()
             return true
         }
 
@@ -766,7 +766,7 @@ final class BuoyTextView: NSTextView {
                 guard replaceText(in: sel, with: newLine) else { return false }
                 setSelectedRange(NSRange(location: pos + newLine.length, length: 0))
             }
-            notifyChange()
+            notifyTypedChange()
             return true
         }
 
@@ -791,7 +791,7 @@ final class BuoyTextView: NSTextView {
                 guard replaceText(in: sel, with: newLine) else { return false }
                 setSelectedRange(NSRange(location: pos + newLine.length, length: 0))
             }
-            notifyChange()
+            notifyTypedChange()
             return true
         }
 
@@ -815,7 +815,7 @@ final class BuoyTextView: NSTextView {
         if lineText == "• " {
             guard replaceText(in: NSRange(location: lineStart, length: 2), with: "") else { return false }
             setSelectedRange(NSRange(location: lineStart, length: 0))
-            notifyChange()
+            notifyTypedChange()
             return true
         }
 
@@ -824,7 +824,7 @@ final class BuoyTextView: NSTextView {
             resetParagraphIndent(at: lineStart)
             setSelectedRange(NSRange(location: lineStart, length: 0))
             typingAttributes = normalizedTypingAttributesForEscapedList()
-            notifyChange()
+            notifyTypedChange()
             return true
         }
 
@@ -836,7 +836,7 @@ final class BuoyTextView: NSTextView {
             resetParagraphIndent(at: lineStart)
             setSelectedRange(NSRange(location: lineStart, length: 0))
             typingAttributes = normalizedTypingAttributesForEscapedList()
-            notifyChange()
+            notifyTypedChange()
             return true
         }
 
@@ -1920,6 +1920,16 @@ final class BuoyTextView: NSTextView {
     private func notifyChange() {
         buoyDelegate?.textViewDidChange(self)
         needsDisplay = true
+    }
+
+    /// `notifyChange` for the keystroke handlers (Return, Space, Backspace).
+    /// They edit the storage directly, which skips NSTextView's own
+    /// scroll-to-caret, so a list line continued at the bottom of a long note
+    /// landed below the viewport. Not for clicks or drags: the caret may be
+    /// off screen then, and following it would yank the view away.
+    private func notifyTypedChange() {
+        notifyChange()
+        scrollRangeToVisible(selectedRange())
     }
 
     override func setSelectedRange(_ charRange: NSRange, affinity: NSSelectionAffinity, stillSelecting: Bool) {

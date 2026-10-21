@@ -454,9 +454,15 @@ private struct BuoyRegularGlassModifier<S: InsettableShape>: ViewModifier {
     /// So cast the shadow from an opaque silhouette, then mask the surface's own
     /// shape back out. Only the part that falls outside the glass survives, and
     /// nothing dark is ever composited behind the material.
+    ///
+    /// The silhouette is inset by a point. At full size its anti-aliased edge
+    /// and the cut-out's anti-aliased edge overlapped, and the partial black
+    /// pixels that survived both read as a dark hairline on every curve (the
+    /// window corners, the pill ends) — straight, pixel-aligned edges hid it.
     private var shadowRing: some View {
         let inset = PanelLayoutMetrics.glassEdgeInset
         return shape
+            .inset(by: 1)
             .fill(Color.black)
             .padding(inset)
             .shadow(

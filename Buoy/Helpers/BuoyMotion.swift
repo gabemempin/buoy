@@ -62,6 +62,22 @@ enum BuoyMotion {
         isReduced ? .opacity : transition
     }
 
+    // MARK: - Lower-center pill
+
+    /// The one entrance for every lower-center pill (toasts, tips, the update
+    /// notice): it grows up out of the footer with a small overshoot and
+    /// shrinks back into it on the way out. Pair it with `pillAnimation`.
+    static var pillPop: AnyTransition {
+        transition(.asymmetric(
+            insertion: .scale(scale: 0.5, anchor: .bottom).combined(with: .opacity),
+            removal: .scale(scale: 0.8, anchor: .bottom).combined(with: .opacity)
+        ))
+    }
+
+    static var pillAnimation: Animation {
+        spring(response: 0.34, dampingFraction: 0.68)
+    }
+
     // MARK: - AppKit
 
     /// Collapses an `NSAnimationContext` duration to an instant change.

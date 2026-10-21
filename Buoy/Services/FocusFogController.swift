@@ -3,6 +3,8 @@ import AVFoundation
 import SwiftUI
 import CoreImage
 import ImageIO
+import Metal
+import MetalKit
 import UniformTypeIdentifiers
 
 /// Focus fog: covers the rest of the desktop with a heavily blurred copy of
@@ -40,12 +42,37 @@ final class FocusFogController {
     private let fadeInDuration: TimeInterval = 0.55
     private let fadeOutDuration: TimeInterval = 0.4
 
-    /// Never fully opaque. An opaque full-screen window counts as covering
-    /// everything under it, so macOS lets the desktop drop its wallpaper
-    /// while the fog is up; the first fade out then revealed black until the
-    /// wallpaper redrew. At 0.99 nothing underneath is ever occluded, and the
-    /// 1% that shows through is lost in the blur.
-    private let shownAlpha: CGFloat = 0.99
+    /// Fully opaque. 0.99 was tried, to keep the desktop from counting as
+    /// occluded, but compositing is in linear light, so 1% of white text over
+    /// a dark fog comes out around 10% grey and the windows behind showed
+    /// through. The occlusion is handled by `fogFrame(for:)` instead.
+    private let shownAlpha: CGFloat = 1
+
+    /// The exit's first step. While the fog is fully opaque the windows behind
+    /// it count as occluded, and apps that drop their content when occluded
+    /// (browsers, Electron, video) only redraw once they are uncovered. The
+    /// top-row gap in `fogFrame(for:)` only keeps windows that reach the menu
+    /// bar visible, so everything else came back black for the first part of
+    /// the fade. Dropping just under opaque first un-occludes them while the
+    /// fog still hides them, and they redraw during `revealLeadTime`.
+    ///
+    /// The worst case is an app activated while the fog was up: its windows
+    /// came forward fully covered and were never drawn at all, and 0.05s was
+    /// not enough for them. A still hold that long read as lag, though, so
+    /// the fog starts lifting visibly (`FogView.beginLift`) the moment the
+    /// exit begins, and the hold hides inside that motion.
+    private let revealAlpha: CGFloat = 0.97
+    private let revealLeadTime: TimeInterval = 0.15
+
+    /// The screen minus its top point, which sits behind the menu bar. A
+    /// window covering the *whole* screen occludes the desktop, macOS drops
+    /// the wallpaper underneath, and the first fade out showed black until it
+    /// redrew. One uncovered row keeps the desktop counted as visible.
+    private static func fogFrame(for screen: NSScreen) -> NSRect {
+        var frame = screen.frame
+        frame.size.height -= 1
+        return frame
+    }
 
     init() {
         screenObserver = NotificationCenter.default.addObserver(
@@ -67,6 +94,9 @@ final class FocusFogController {
             object: nil,
             queue: .main
         ) { [weak self] _ in self?.prepare() }
+        // Compiles the gradient's shader off the main thread, so the first
+        // shake in Gradient style doesn't wait on it.
+        DispatchQueue.global(qos: .utility).async { _ = FogMeshRenderer.shared }
     }
 
     deinit {
@@ -131,31 +161,46 @@ final class FocusFogController {
         }
     }
 
-    func hide(animated: Bool = true) {
-        guard isActive else { return }
-        isActive = false
-        generation += 1
-        guard animated else {
-            windows.forEach(retire)
-            prepare()
+    /// Every exit takes this path, including hiding the panel and quitting.
+    /// There is no instant drop: removing the fog in one frame showed every
+    /// covered window black until its app redrew. `completion` runs once the
+    /// fog is gone (or a new show has taken the windows over).
+    func hide(completion: (() -> Void)? = nil) {
+        guard isActive else {
+            completion?()
             return
         }
+        isActive = false
+        generation += 1
         let expected = generation
-        fade(to: 0, duration: fadeOutDuration, timing: .easeIn) { [weak self] in
-            // A show that landed mid-fade owns the windows now.
-            guard let self, self.generation == expected else { return }
-            self.windows.forEach(self.retire)
-            self.prepare()
+        for window in windows {
+            window.alphaValue = revealAlpha
+            (window.contentView as? FogView)?.beginLift(duration: revealLeadTime + fadeOutDuration)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + revealLeadTime) { [weak self] in
+            // A show that landed during the lead-in owns the windows now.
+            guard let self, self.generation == expected else {
+                completion?()
+                return
+            }
+            self.fade(to: 0, duration: self.fadeOutDuration, timing: .easeIn) { [weak self] in
+                defer { completion?() }
+                // Likewise for one that landed mid-fade.
+                guard let self, self.generation == expected else { return }
+                self.windows.forEach(self.retire)
+                self.prepare()
+            }
         }
     }
 
     // MARK: - Windows
 
-    /// Ordered out, with the gradient's timeline unmounted so nothing keeps
-    /// ticking while the fog is down.
+    /// Ordered out, with the gradient's display link stopped so nothing keeps
+    /// rendering while the fog is down.
     private func retire(_ window: NSWindow) {
         window.orderOut(nil)
         (window.contentView as? FogView)?.stopAnimating()
+        (window.contentView as? FogView)?.endLift()
     }
 
     private func applyContent(to window: NSWindow, screen: NSScreen) {
@@ -166,6 +211,7 @@ final class FocusFogController {
             ?? FogPalette.make(from: (options[.fillColor] as? NSColor)?.usingColorSpace(.sRGB))
         (window.contentView as? FogView)?.apply(
             image: assets?.blur,
+            artwork: assets?.artwork,
             palette: palette,
             style: style,
             options: options
@@ -174,10 +220,14 @@ final class FocusFogController {
 
     private func present(animated: Bool) {
         for (window, screen) in zip(windows, NSScreen.screens) {
-            window.setFrame(screen.frame, display: false)
-            applyContent(to: window, screen: screen)
+            window.setFrame(Self.fogFrame(for: screen), display: false)
+            // A show that interrupted an exit takes over a lifting window.
+            (window.contentView as? FogView)?.endLift()
             window.alphaValue = animated ? 0 : shownAlpha
+            // On screen before the content goes in, so the gradient's display
+            // link starts on the display it will run on.
             window.orderFront(nil)
+            applyContent(to: window, screen: screen)
         }
         guard animated else { return }
         // Let the order-in reach the window server before the fade starts, so
@@ -194,7 +244,7 @@ final class FocusFogController {
             // A non-activating panel, so the clicks it swallows don't
             // activate Buoy or pull focus away from the note.
             let window = FogPanel(
-                contentRect: screen.frame,
+                contentRect: Self.fogFrame(for: screen),
                 styleMask: [.borderless, .nonactivatingPanel],
                 backing: .buffered,
                 defer: false
@@ -209,7 +259,7 @@ final class FocusFogController {
             window.level = Self.level
             window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
             window.alphaValue = 0
-            window.contentView = FogView(frame: NSRect(origin: .zero, size: screen.frame.size))
+            window.contentView = FogView(frame: NSRect(origin: .zero, size: Self.fogFrame(for: screen).size))
             return window
         }
     }
@@ -271,7 +321,14 @@ private enum WallpaperFog {
             .applyingGaussianBlur(sigma: blurSigma)
             .cropped(to: input.extent)
         guard let blur = context.createCGImage(fog, from: input.extent) else { return nil }
-        return FogAssets(blur: blur, palette: FogPalette.make(from: thumbnail))
+        let analysis = FogPalette.analyze(thumbnail)
+        return FogAssets(
+            blur: blur,
+            palette: analysis.palette,
+            // A near-single-colour wallpaper has nothing to swirl; the
+            // gradient uses its shades instead.
+            artwork: analysis.isVaried ? FogArtwork.make(from: thumbnail) : nil
+        )
     }
 
     private static func stillFrame(of url: URL, index: Int) -> CGImage? {
@@ -363,21 +420,16 @@ private final class FogPanel: NSPanel {
 
 // MARK: - View
 
-/// Just the blurred wallpaper. No tint or mist on top: anything layered over
-/// it read as a white wash rather than the user's own desktop. Without a
-/// readable wallpaper it falls back to a live backdrop blur.
+/// The fog's content. Wallpaper Blur: just the blurred wallpaper, with no
+/// tint or mist on top (anything layered over it read as a white wash).
+/// Without a readable wallpaper it falls back to a live backdrop blur.
+/// Gradient: a `FogMeshView`.
 private final class FogView: NSView {
     private let fallbackBlur = NSVisualEffectView()
     /// Its own subview, so AppKit can't slide the layer under the blur.
     private let overlay = NSView()
     private let wallpaper = CALayer()
-    /// The gradient: two pre-rendered mesh images turning in opposite
-    /// directions, the top one breathing in and out. All Core Animation, so
-    /// the motion runs in the window server and never depends on the app
-    /// redrawing. (A SwiftUI `TimelineView` here rendered one frame and then
-    /// sat still.)
-    private let gradientView = NSView()
-    private let meshLayers = [CALayer(), CALayer()]
+    private let mesh = FogMeshView()
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -399,16 +451,10 @@ private final class FogView: NSView {
         wallpaper.contentsGravity = .resizeAspectFill
         overlay.layer?.addSublayer(wallpaper)
 
-        gradientView.wantsLayer = true
-        gradientView.frame = bounds
-        gradientView.autoresizingMask = [.width, .height]
-        gradientView.isHidden = true
-        addSubview(gradientView)
-        for mesh in meshLayers {
-            mesh.contentsGravity = .resize
-            gradientView.layer?.addSublayer(mesh)
-        }
-        meshLayers[1].opacity = 0.55
+        mesh.frame = bounds
+        mesh.autoresizingMask = [.width, .height]
+        mesh.isHidden = true
+        addSubview(mesh)
     }
 
     @available(*, unavailable)
@@ -416,6 +462,7 @@ private final class FogView: NSView {
 
     func apply(
         image: CGImage?,
+        artwork: CGImage?,
         palette: [CGColor],
         style: FocusFogStyle,
         options: [NSWorkspace.DesktopImageOptionKey: Any]
@@ -428,48 +475,18 @@ private final class FogView: NSView {
         case .gradient:
             overlay.isHidden = true
             fallbackBlur.isHidden = true
-            gradientView.isHidden = false
-            CATransaction.begin()
-            CATransaction.setDisableActions(true)
-            meshLayers[0].contents = FogMeshImage.render(palette)
-            // Same colours in reverse, so the overlap keeps shifting hue.
-            meshLayers[1].contents = FogMeshImage.render(Array(palette.reversed()))
-            CATransaction.commit()
-            startAnimating()
+            mesh.isHidden = false
+            // A plain or unreadable wallpaper moves its own shades instead.
+            mesh.setArtwork(artwork ?? FogMeshImage.render(palette))
+            mesh.startAnimating()
         }
     }
 
-    private func startAnimating() {
-        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else {
-            meshLayers.forEach { $0.removeAllAnimations() }
-            return
-        }
-        for (mesh, (period, direction)) in zip(meshLayers, [(90.0, 1.0), (130.0, -1.0)])
-        where mesh.animation(forKey: "spin") == nil {
-            let spin = CABasicAnimation(keyPath: "transform.rotation.z")
-            spin.fromValue = 0
-            spin.toValue = direction * 2 * Double.pi
-            spin.duration = period
-            spin.repeatCount = .infinity
-            mesh.add(spin, forKey: "spin")
-        }
-        if meshLayers[1].animation(forKey: "breathe") == nil {
-            let breathe = CABasicAnimation(keyPath: "opacity")
-            breathe.fromValue = 0.2
-            breathe.toValue = 0.85
-            breathe.duration = 9
-            breathe.autoreverses = true
-            breathe.repeatCount = .infinity
-            breathe.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            meshLayers[1].add(breathe, forKey: "breathe")
-        }
-    }
-
-    /// Stops the gradient's motion while the fog is down; it restarts on the
-    /// next `apply`.
+    /// Stops the gradient while the fog is down; it restarts on the next
+    /// `apply`.
     func stopAnimating() {
-        meshLayers.forEach { $0.removeAllAnimations() }
-        gradientView.isHidden = true
+        mesh.stopAnimating()
+        mesh.isHidden = true
     }
 
     /// Lays the fog out the way the desktop lays out the wallpaper.
@@ -492,6 +509,35 @@ private final class FogView: NSView {
         CATransaction.commit()
     }
 
+    /// The exit's motion: the fog zooms in slightly as it lifts, starting the
+    /// moment the exit does, so the opaque hold in `hide` reads as the fog
+    /// already moving rather than as a delay. A fill-forwards animation
+    /// rather than a model change, so AppKit's own layer geometry is left
+    /// alone; `endLift` takes it off. Skipped under Reduce Motion.
+    func beginLift(duration: TimeInterval) {
+        guard let layer, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
+        // About the centre, whatever anchor AppKit gave the backing layer.
+        let pivot = CGPoint(
+            x: (0.5 - layer.anchorPoint.x) * bounds.width,
+            y: (0.5 - layer.anchorPoint.y) * bounds.height
+        )
+        var lifted = CATransform3DMakeTranslation(pivot.x, pivot.y, 0)
+        lifted = CATransform3DScale(lifted, 1.06, 1.06, 1)
+        lifted = CATransform3DTranslate(lifted, -pivot.x, -pivot.y, 0)
+        let lift = CABasicAnimation(keyPath: "transform")
+        lift.fromValue = CATransform3DIdentity
+        lift.toValue = lifted
+        lift.duration = duration
+        lift.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        lift.fillMode = .forwards
+        lift.isRemovedOnCompletion = false
+        layer.add(lift, forKey: "lift")
+    }
+
+    func endLift() {
+        layer?.removeAnimation(forKey: "lift")
+    }
+
     /// Swallow clicks rather than letting them fall through to the desktop.
     override func mouseDown(with event: NSEvent) {}
     override func rightMouseDown(with event: NSEvent) {}
@@ -507,16 +553,287 @@ private final class FogView: NSView {
         super.layout()
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        // Square and as wide as the diagonal, so no corner ever shows as the
-        // meshes turn.
-        let side = (bounds.width * bounds.width + bounds.height * bounds.height).squareRoot() * 1.05
-        for mesh in meshLayers {
-            mesh.bounds = CGRect(x: 0, y: 0, width: side, height: side)
-            mesh.position = CGPoint(x: bounds.midX, y: bounds.midY)
-        }
         wallpaper.frame = bounds
         CATransaction.commit()
     }
+}
+
+// MARK: - Moving mesh
+
+/// The gradient, done the way Apple Music's lyrics backdrop does it now (as
+/// reverse-engineered by the Apple Music-like Lyrics project's mesh
+/// renderer): the processed artwork is stretched over a mesh whose control
+/// points each drift on their own slow path, so the colour fields flow and
+/// fold into each other with no shape of their own.
+///
+/// It replaced four copies of the artwork spinning at different speeds, the
+/// smaller ones feathered to circles and orbiting. That was Apple Music's
+/// *older* renderer, and the circles read as balls moving around the screen.
+///
+/// Metal rather than Core Animation, because CA has no public mesh warp. The
+/// drawable is one pixel per point (the image is a blur, so Retina detail
+/// is wasted) and the shader is a texture sample per pixel, so it is cheap.
+/// The display link is the view's own, so it runs while the fog window is
+/// on screen whether or not Buoy is active; a SwiftUI `TimelineView` here
+/// rendered once and stopped.
+private final class FogMeshView: NSView {
+    private var metalLayer: CAMetalLayer? { layer as? CAMetalLayer }
+    private var texture: MTLTexture?
+    private var displayLink: CADisplayLink?
+    /// Each show starts somewhere new in the motion rather than replaying
+    /// the same opening.
+    private var timeOrigin: CFTimeInterval = 0
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layerContentsRedrawPolicy = .never
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+    deinit { displayLink?.invalidate() }
+
+    override func makeBackingLayer() -> CALayer {
+        guard let renderer = FogMeshRenderer.shared else {
+            // No Metal: the artwork as a still image, which is still the
+            // right colours.
+            let still = CALayer()
+            still.contentsGravity = .resizeAspectFill
+            return still
+        }
+        let layer = CAMetalLayer()
+        layer.device = renderer.device
+        layer.pixelFormat = .bgra8Unorm
+        // The texture holds sRGB-encoded values and the shader passes them
+        // straight through, so tag the output the same way.
+        layer.colorspace = CGColorSpace(name: CGColorSpace.sRGB)
+        layer.framebufferOnly = true
+        layer.isOpaque = true
+        layer.contentsGravity = .resize
+        return layer
+    }
+
+    func setArtwork(_ image: CGImage?) {
+        guard let image else { texture = nil; return }
+        guard let renderer = FogMeshRenderer.shared else {
+            layer?.contents = image
+            return
+        }
+        texture = renderer.texture(from: image)
+        render(time: currentTime)
+    }
+
+    func startAnimating() {
+        displayLink?.invalidate()
+        displayLink = nil
+        timeOrigin = CACurrentMediaTime() - Double.random(in: 0..<600)
+        render(time: currentTime)
+        // Reduce Motion keeps the gradient but holds it still.
+        guard FogMeshRenderer.shared != nil,
+              !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        else { return }
+        let link = displayLink(target: self, selector: #selector(step(_:)))
+        link.add(to: .main, forMode: .common)
+        displayLink = link
+    }
+
+    func stopAnimating() {
+        displayLink?.invalidate()
+        displayLink = nil
+    }
+
+    private var currentTime: CFTimeInterval { CACurrentMediaTime() - timeOrigin }
+
+    @objc private func step(_ link: CADisplayLink) {
+        render(time: link.targetTimestamp - timeOrigin)
+    }
+
+    override func layout() {
+        super.layout()
+        guard let metalLayer else { return }
+        let size = CGSize(width: max(1, bounds.width.rounded()), height: max(1, bounds.height.rounded()))
+        if metalLayer.drawableSize != size {
+            metalLayer.drawableSize = size
+            render(time: currentTime)
+        }
+    }
+
+    private func render(time: CFTimeInterval) {
+        guard let metalLayer, let texture, let renderer = FogMeshRenderer.shared,
+              bounds.width > 0, bounds.height > 0
+        else { return }
+        renderer.draw(
+            into: metalLayer,
+            artwork: texture,
+            // Wrapped so the float the shader gets never loses precision
+            // after the fog has been up for hours. Every speed in the shader
+            // is a multiple of 2π / 3600 s, so the wrap is seamless.
+            time: Float(time.truncatingRemainder(dividingBy: 3600)),
+            aspect: Float(bounds.width / bounds.height)
+        )
+    }
+}
+
+/// The Metal side of `FogMeshView`, built once and shared by every screen.
+private final class FogMeshRenderer {
+    static let shared = FogMeshRenderer()
+
+    let device: MTLDevice
+    private let queue: MTLCommandQueue
+    private let pipeline: MTLRenderPipelineState
+    private let loader: MTKTextureLoader
+
+    private init?() {
+        guard let device = MTLCreateSystemDefaultDevice(),
+              let queue = device.makeCommandQueue(),
+              let library = try? device.makeLibrary(source: Self.shaderSource, options: nil),
+              let vertex = library.makeFunction(name: "fogMeshVertex"),
+              let fragment = library.makeFunction(name: "fogMeshFragment")
+        else { return nil }
+        let descriptor = MTLRenderPipelineDescriptor()
+        descriptor.vertexFunction = vertex
+        descriptor.fragmentFunction = fragment
+        descriptor.colorAttachments[0].pixelFormat = .bgra8Unorm
+        guard let pipeline = try? device.makeRenderPipelineState(descriptor: descriptor) else { return nil }
+        self.device = device
+        self.queue = queue
+        self.pipeline = pipeline
+        self.loader = MTKTextureLoader(device: device)
+    }
+
+    func texture(from image: CGImage) -> MTLTexture? {
+        try? loader.newTexture(cgImage: image, options: [
+            // Keep the sRGB-encoded bytes as they are; see `makeBackingLayer`.
+            .SRGB: false,
+            .textureStorageMode: MTLStorageMode.private.rawValue,
+            .textureUsage: MTLTextureUsage.shaderRead.rawValue,
+        ])
+    }
+
+    private struct Uniforms {
+        var time: Float
+        var aspect: Float
+    }
+
+    func draw(into layer: CAMetalLayer, artwork: MTLTexture, time: Float, aspect: Float) {
+        guard let drawable = layer.nextDrawable(),
+              let commands = queue.makeCommandBuffer()
+        else { return }
+        let pass = MTLRenderPassDescriptor()
+        pass.colorAttachments[0].texture = drawable.texture
+        pass.colorAttachments[0].loadAction = .dontCare
+        pass.colorAttachments[0].storeAction = .store
+        guard let encoder = commands.makeRenderCommandEncoder(descriptor: pass) else { return }
+        var uniforms = Uniforms(time: time, aspect: aspect)
+        encoder.setRenderPipelineState(pipeline)
+        encoder.setFragmentBytes(&uniforms, length: MemoryLayout<Uniforms>.stride, index: 0)
+        encoder.setFragmentTexture(artwork, index: 0)
+        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+        encoder.endEncoding()
+        commands.present(drawable)
+        commands.commit()
+    }
+
+    /// Compiled at runtime so the fog stays one self-contained file.
+    ///
+    /// The mesh: a 5×5 grid of control points over the screen, each drifting
+    /// on its own ellipse (speed and phase hashed from its cell), blended
+    /// with Catmull-Rom so the warp is smooth everywhere. The artwork is
+    /// sampled through two layers of it, the second warping the first's
+    /// result, which turns drift into the slow folding Apple Music has. A
+    /// gentle sway of the whole image keeps the big fields travelling.
+    /// Amplitudes stay under the grid spacing so the mesh never folds over
+    /// itself into a visible crease. Last, a sub-step dither (under 1/255,
+    /// so not grain) keeps the smooth ramps from banding on a large screen.
+    private static let shaderSource = """
+    #include <metal_stdlib>
+    using namespace metal;
+
+    struct VertexOut {
+        float4 position [[position]];
+        float2 uv;
+    };
+
+    struct Uniforms {
+        float time;
+        float aspect;
+    };
+
+    vertex VertexOut fogMeshVertex(uint id [[vertex_id]]) {
+        // One triangle that covers the screen.
+        float2 corner = float2(float((id << 1) & 2), float(id & 2));
+        VertexOut out;
+        out.position = float4(corner * 2.0 - 1.0, 0.0, 1.0);
+        out.uv = float2(corner.x, 1.0 - corner.y);
+        return out;
+    }
+
+    static float hash(float2 p) {
+        return fract(sin(dot(p, float2(127.1, 311.7))) * 43758.5453);
+    }
+
+    // Each point loops in 7–11 s, close to Apple Music's pace (24–40 s read
+    // as sluggish). Every speed is a whole multiple of
+    // 2π / 3600 s, so wrapping time at 3600 s is seamless.
+    constant float kStep = 6.2831853 / 3600.0;
+
+    static float2 controlOffset(int2 cell, float t) {
+        float2 c = float2(cell);
+        float phaseX = hash(c) * 6.2831853;
+        float phaseY = hash(c + 17.0) * 6.2831853;
+        float speedX = kStep * floor(330.0 + 180.0 * hash(c + 31.0));
+        float speedY = kStep * floor(330.0 + 180.0 * hash(c + 47.0));
+        return float2(sin(t * speedX + phaseX), cos(t * speedY + phaseY));
+    }
+
+    static float2 catmullRom(float2 p0, float2 p1, float2 p2, float2 p3, float x) {
+        float x2 = x * x, x3 = x2 * x;
+        return 0.5 * (2.0 * p1
+                      + (p2 - p0) * x
+                      + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * x2
+                      + (3.0 * p1 - p0 - 3.0 * p2 + p3) * x3);
+    }
+
+    static float2 meshDisplacement(float2 uv, float t) {
+        float2 g = uv * 4.0;
+        int2 base = int2(floor(g));
+        float2 f = g - floor(g);
+        float2 rows[4];
+        for (int j = 0; j < 4; j++) {
+            float2 p0 = controlOffset(base + int2(-1, j - 1), t);
+            float2 p1 = controlOffset(base + int2( 0, j - 1), t);
+            float2 p2 = controlOffset(base + int2( 1, j - 1), t);
+            float2 p3 = controlOffset(base + int2( 2, j - 1), t);
+            rows[j] = catmullRom(p0, p1, p2, p3, f.x);
+        }
+        return catmullRom(rows[0], rows[1], rows[2], rows[3], f.y);
+    }
+
+    fragment float4 fogMeshFragment(VertexOut in [[stage_in]],
+                                    constant Uniforms &u [[buffer(0)]],
+                                    texture2d<float> artwork [[texture(0)]]) {
+        constexpr sampler smooth(filter::linear, address::mirrored_repeat);
+        float t = u.time;
+
+        float2 uv = in.uv;
+        uv += 0.075 * meshDisplacement(uv, t);
+        uv += 0.04 * meshDisplacement(uv + 0.37, t);
+
+        // Aspect-fill the square artwork, zoomed in so the warp and sway
+        // rarely reach its edge (and mirror smoothly when they do).
+        float2 q = uv - 0.5;
+        q *= u.aspect >= 1.0 ? float2(1.0, 1.0 / u.aspect) : float2(u.aspect, 1.0);
+        float angle = 0.3 * sin(t * kStep * 80.0);
+        float2 drift = 0.05 * float2(sin(t * kStep * 100.0), cos(t * kStep * 75.0));
+        q = float2x2(cos(angle), sin(angle), -sin(angle), cos(angle)) * q + drift;
+        float3 color = artwork.sample(smooth, 0.5 + q * 0.78).rgb;
+
+        color += (hash(in.position.xy + fract(t)) - 0.5) / 255.0;
+        return float4(color, 1.0);
+    }
+    """
 }
 
 // MARK: - Gradient
@@ -526,6 +843,80 @@ private final class FogView: NSView {
 private struct FogAssets {
     let blur: CGImage
     let palette: [CGColor]
+    /// The gradient's source image; `nil` for a near-single-colour wallpaper.
+    let artwork: CGImage?
+}
+
+/// The wallpaper prepared for the gradient: shrunk to 32 px (which turns a
+/// photo into a few big fields of colour, as Apple Music does with album
+/// art), then levelled so any wallpaper comes out vivid. Brightness is
+/// stretched from the image's own 5th–95th percentile onto 0.32–0.92, and
+/// saturation is scaled until its 90th percentile reaches 0.9 (gain capped
+/// at 6×). Hue is untouched, so the colours are still the wallpaper's.
+///
+/// Apple Music's fixed recipe (contrast 0.4 → saturation 3 → contrast 1.7 →
+/// brightness 0.75) was tried first: it suits bright album art, but on a
+/// night wallpaper it collapsed to near-black grey.
+private enum FogArtwork {
+    private static let side = 32
+    private static let context = CIContext(options: [.cacheIntermediates: false])
+
+    static func make(from image: CGImage) -> CGImage? {
+        var bytes = [UInt8](repeating: 0, count: side * side * 4)
+        let drew = bytes.withUnsafeMutableBytes { buffer -> Bool in
+            guard let space = CGColorSpace(name: CGColorSpace.sRGB),
+                  let context = CGContext(
+                    data: buffer.baseAddress, width: side, height: side,
+                    bitsPerComponent: 8, bytesPerRow: side * 4, space: space,
+                    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+                  )
+            else { return false }
+            context.interpolationQuality = .medium
+            context.draw(image, in: CGRect(x: 0, y: 0, width: side, height: side))
+            return true
+        }
+        guard drew else { return nil }
+
+        let pixels = stride(from: 0, to: bytes.count, by: 4).map {
+            FogPalette.hsv(SIMD3(Double(bytes[$0]), Double(bytes[$0 + 1]), Double(bytes[$0 + 2])) / 255)
+        }
+        func percentile(_ values: [Double], _ fraction: Double) -> Double {
+            let sorted = values.sorted()
+            return sorted[Int(Double(sorted.count - 1) * fraction)]
+        }
+        let values = pixels.map(\.2), saturations = pixels.map(\.1)
+        let low = percentile(values, 0.05), high = percentile(values, 0.95)
+        let gain = min(6, max(1, 0.9 / max(percentile(saturations, 0.9), 0.05)))
+
+        for (index, (hue, saturation, value)) in pixels.enumerated() {
+            let level = high - low > 0.01 ? min(1, max(0, (value - low) / (high - low))) : 0.5
+            let color = FogPalette.rgb(hue, min(1, saturation * gain), 0.32 + 0.6 * level)
+            bytes[index * 4] = UInt8(color.x * 255)
+            bytes[index * 4 + 1] = UInt8(color.y * 255)
+            bytes[index * 4 + 2] = UInt8(color.z * 255)
+            bytes[index * 4 + 3] = 255
+        }
+
+        guard let provider = CGDataProvider(data: Data(bytes) as CFData),
+              let space = CGColorSpace(name: CGColorSpace.sRGB),
+              let small = CGImage(
+                width: side, height: side, bitsPerComponent: 8, bitsPerPixel: 32,
+                bytesPerRow: side * 4, space: space,
+                bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
+                provider: provider, decode: nil, shouldInterpolate: true, intent: .defaultIntent
+              )
+        else { return nil }
+
+        // Upscaled and blurred here, once, so the layers stretching it to
+        // screen size show smooth fields rather than bilinear creases.
+        let input = CIImage(cgImage: small)
+        let large = input
+            .clampedToExtent()
+            .applyingFilter("CILanczosScaleTransform", parameters: [kCIInputScaleKey: 8])
+            .applyingGaussianBlur(sigma: 14)
+            .cropped(to: CGRect(x: 0, y: 0, width: side * 8, height: side * 8))
+        return context.createCGImage(large, from: large.extent)
+    }
 }
 
 /// The nine colours of the fog's 3×3 mesh, taken from the wallpaper.
@@ -536,7 +927,9 @@ private enum FogPalette {
     /// saturation and contrast so the gradient reads as colour rather than
     /// mud. A near-single-colour wallpaper gets shades of that colour
     /// instead, so solid black becomes black and greys.
-    static func make(from image: CGImage) -> [CGColor] {
+    /// The palette, and whether the wallpaper has enough colour variety to
+    /// be worth using as gradient artwork.
+    static func analyze(_ image: CGImage) -> (palette: [CGColor], isVaried: Bool) {
         let side = 24
         var bytes = [UInt8](repeating: 0, count: side * side * 4)
         let drew = bytes.withUnsafeMutableBytes { buffer -> Bool in
@@ -551,7 +944,7 @@ private enum FogPalette {
             context.draw(image, in: CGRect(x: 0, y: 0, width: side, height: side))
             return true
         }
-        guard drew else { return shades(of: RGB(0, 0, 0)) }
+        guard drew else { return (shades(of: RGB(0, 0, 0)), false) }
 
         let samples = stride(from: 0, to: bytes.count, by: 4).map {
             RGB(Double(bytes[$0]), Double(bytes[$0 + 1]), Double(bytes[$0 + 2])) / 255
@@ -559,13 +952,13 @@ private enum FogPalette {
         let clusters = kMeans(samples, k: 5)
         let significant = clusters.filter { $0.share >= 0.05 }
         let spread = significant.flatMap { a in significant.map { b in distance(a.center, b.center) } }.max() ?? 0
-        guard spread >= 0.15 else {
-            return shades(of: clusters.first?.center ?? RGB(0, 0, 0))
+        guard spread >= 0.10 else {
+            return (shades(of: clusters.first?.center ?? RGB(0, 0, 0)), false)
         }
         let boosted = boost(significant.map(\.center))
         // Spread the colours over the mesh so neighbours differ.
         let order = [0, 1, 2, 3, 0, 4, 2, 1, 3]
-        return order.map { color(boosted[$0 % boosted.count]) }
+        return (order.map { color(boosted[$0 % boosted.count]) }, true)
     }
 
     /// From a single colour (an unreadable wallpaper's fill colour, or none).
@@ -579,7 +972,7 @@ private enum FogPalette {
         let s = min(1, s0 * 1.15)
         // Black lands on black and dark greys; a colour on its own darker
         // and lighter tones.
-        let offsets: [Double] = [-0.10, 0.06, 0.16, 0.02, 0.24, -0.04, 0.12, 0.20, 0]
+        let offsets: [Double] = [-0.10, 0.10, 0.24, 0.04, 0.36, -0.04, 0.18, 0.30, 0]
         return offsets.map { color(rgb(h, s, min(1, max(0, v + $0)))) }
     }
 
@@ -588,7 +981,8 @@ private enum FogPalette {
         let meanV = values.map(\.2).reduce(0, +) / Double(values.count)
         return values.map { h, s, v in
             let saturation = s < 0.08 ? s : min(1, s * 1.3 + 0.05)
-            let value = min(1, max(0.04, meanV + (v - meanV) * 1.4))
+            // Floored so a night wallpaper still has visible colour to move.
+            let value = min(1, max(0.24, meanV + (v - meanV) * 1.4))
             return rgb(h, saturation, value)
         }
     }
@@ -633,7 +1027,7 @@ private enum FogPalette {
         CGColor(srgbRed: c.x, green: c.y, blue: c.z, alpha: 1)
     }
 
-    private static func hsv(_ c: RGB) -> (Double, Double, Double) {
+    static func hsv(_ c: SIMD3<Double>) -> (Double, Double, Double) {
         let maxC = max(c.x, c.y, c.z), minC = min(c.x, c.y, c.z), delta = maxC - minC
         var h = 0.0
         if delta > 0 {
@@ -646,7 +1040,7 @@ private enum FogPalette {
         return (h, maxC == 0 ? 0 : delta / maxC, maxC)
     }
 
-    private static func rgb(_ h: Double, _ s: Double, _ v: Double) -> RGB {
+    static func rgb(_ h: Double, _ s: Double, _ v: Double) -> SIMD3<Double> {
         let i = Int(h * 6) % 6, f = h * 6 - Double(Int(h * 6))
         let p = v * (1 - s), q = v * (1 - f * s), t = v * (1 - (1 - f) * s)
         switch i {

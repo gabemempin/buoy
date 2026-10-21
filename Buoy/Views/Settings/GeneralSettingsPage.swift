@@ -90,7 +90,12 @@ struct GeneralSettingsPage: View {
                 .accessibilityLabel("About Buoy")
             }
         }
-        .onDisappear { updateStatusTask?.cancel() }
+        .onDisappear {
+            updateStatusTask?.cancel()
+            // Otherwise a check cancelled mid-flight leaves "Checking…" up,
+            // and the re-entry guard would refuse every later click.
+            updateStatus = nil
+        }
     }
 
     private var autoTitleBinding: Binding<Bool> {
@@ -100,23 +105,38 @@ struct GeneralSettingsPage: View {
         )
     }
 
+    /// How long "Checking…" stays up even when the answer is instant. A
+    /// fast network made it flash for a frame before "Up to date", which
+    /// read as a glitch rather than as a check having happened.
+    private static let minimumCheckingDuration: Duration = .milliseconds(900)
+
     private func checkForUpdates() {
-        updateStatus = "Checking…"
+        // A second click mid-check would restart the minimum and the result.
+        guard updateStatus != "Checking…" else { return }
+        setUpdateStatus("Checking…")
         updateStatusTask?.cancel()
         updateStatusTask = Task { @MainActor in
+            let started = ContinuousClock.now
             let result = await UpdateService.shared.checkForUpdates()
+            try? await Task.sleep(until: started + Self.minimumCheckingDuration, clock: .continuous)
+            guard !Task.isCancelled else { return }
             switch result {
             case .upToDate(let version):
-                updateStatus = "Up to date (v\(version))"
+                setUpdateStatus("Up to date (v\(version))")
             case .available(let version, let url):
-                updateStatus = "v\(version) available"
+                setUpdateStatus("v\(version) available")
                 NSWorkspace.shared.open(url)
             case .error:
-                updateStatus = "Couldn't check"
+                setUpdateStatus("Couldn't check")
             }
             try? await Task.sleep(for: .seconds(4))
             guard !Task.isCancelled else { return }
-            updateStatus = nil
+            setUpdateStatus(nil)
         }
+    }
+
+    /// Crossfades the button's label (see `SettingsCapsuleButton`).
+    private func setUpdateStatus(_ status: String?) {
+        withAnimation(.easeInOut(duration: 0.2)) { updateStatus = status }
     }
 }

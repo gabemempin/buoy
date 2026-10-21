@@ -335,6 +335,9 @@ struct SettingsCapsuleButton: View {
                 .font(BuoyFont.secondaryEmphasized)
                 .foregroundStyle(isDestructive ? Color.red : Color.primary)
                 .lineLimit(1)
+                // A label that changes in place (Check for Updates → Checking…
+                // → Up to date) crossfades when the change is animated.
+                .contentTransition(.opacity)
                 .frame(width: width)
                 .padding(.horizontal, width == nil ? 14 : 0)
                 .padding(.vertical, 5)
