@@ -227,7 +227,7 @@ flushes pending saves first.
 
 ### Bug Report Mode
 
-Clicking "Report a Bug" in the About section of Settings ▸ General, creates an ephemeral note, and sets `bugReportNoteID` in `ContentView`. `isBugReport` is a computed property — navigating away passively exits the mode with no cleanup needed. The `TitleTextField` text color is set to `.clear` so the `AnimatedBugTitle` overlay shows through. Its shimmer comes from `BuoyTheme.bugReportShimmer(isDark:)`: the accent swept by its complementary hue (gold for near-grey accents). The bug-report toolbar and Send Report button use the theme accent, not a fixed blue.
+Clicking "Report a Bug" in the About section of Settings ▸ General, creates an ephemeral note, and sets `bugReportNoteID` in `ContentView`. `isBugReport` is a computed property — navigating away passively exits the mode with no cleanup needed. The `TitleTextField` text color is set to `.clear` so the `AnimatedBugTitle` overlay shows through. Its shimmer comes from `BuoyTheme.bugReportShimmer(isDark:)`: the accent swept by a *neighbouring* hue (+0.1 on the wheel; blue → violet), silver for near-grey accents. Onboarding's "Welcome to Buoy" is the exception: it pins `AnimatedBugTitle.appIconPalette` (system blue + the icon's P3 yellow) to match the app icon. Not the complement: the soft sweep keeps letters part-way between the two colours, and complements meet as grey-olive mud (blue + amber read as a dirty yellow). The bug-report toolbar and Send Report button use the theme accent, not a fixed blue.
 
 ### Lower-Center Pills (toasts, tips, update notice)
 
@@ -428,6 +428,7 @@ Added in the HIG pass (2026-08-22):
   number in the "Note N" sequence. `discardNote` skips `deleteNote`'s
   "keep at least one note" guard, which otherwise strands a permanent note
   titled "Bug Report" when it is the only note.
+- **Popover content needs a fixed width.** Popovers (SwiftUI `.popover` and `NSPopover` with an `NSHostingController`) size to the content's *ideal* width, and a `TextField`'s ideal width is its placeholder's. `LinkDialog` had only `maxWidth` and shrank to ~150pt; it is now `.frame(width: 280)`.
 - **Text checking:** `BuoyTextView` remounts on every note switch, so the Edit ▸
   Spelling/Substitutions toggles persist through `BuoyTextView.TextCheckingOption`
   (UserDefaults) and replay in `commonInit`. Add new toggles there, not as bare

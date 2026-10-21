@@ -240,7 +240,7 @@ private struct WelcomeSlide: View {
                 .offset(y: iconAppeared ? 0 : 8)
 
                 VStack(spacing: 6) {
-                    AnimatedBugTitle(title: "Welcome to Buoy", fontSize: 22)
+                    AnimatedBugTitle(title: "Welcome to Buoy", fontSize: 22, palette: AnimatedBugTitle.appIconPalette)
                         .multilineTextAlignment(.center)
                     Text("A notepad that floats on top of all your windows.")
                         .font(.system(size: 14, weight: .semibold))

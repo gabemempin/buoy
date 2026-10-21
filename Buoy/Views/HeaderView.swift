@@ -454,24 +454,40 @@ struct TitleThinkingGlow: View {
     }
 }
 
-/// The Bug Report title's shimmer: the theme's accent, swept by a glint in
-/// its complementary hue. With the system blue that is blue and amber, close
-/// to the fixed blue/yellow it used to be; a custom accent gets its own pair.
+/// The Bug Report title's shimmer: the theme's accent, swept by a glint in a
+/// neighbouring hue (system blue sweeps to violet). See
+/// `BuoyTheme.bugReportShimmer` for why not the complement.
+///
+/// Pass `palette` to pin the colours instead; onboarding's "Welcome to Buoy"
+/// uses `appIconPalette` so the first screen matches the icon above it.
 struct AnimatedBugTitle: View {
     let title: String
     var fontSize: CGFloat = 19
+    var palette: (base: Color, highlight: Color)? = nil
+
+    /// The app icon's blue float on its yellow ground. The yellow is the
+    /// icon's own fill (`AppIcon.icon`, Display P3), not an approximation.
+    static let appIconPalette: (base: Color, highlight: Color) = (
+        base: .blue,
+        highlight: Color(.displayP3, red: 0.968, green: 0.903, blue: 0)
+    )
 
     @Environment(\.buoyTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        let colors = theme.bugReportShimmer(isDark: colorScheme == .dark)
+        let colors = palette ?? themedPalette
         ShimmerTitle(
             title: title,
-            base: Color(nsColor: colors.base),
-            highlight: Color(nsColor: colors.highlight),
+            base: colors.base,
+            highlight: colors.highlight,
             fontSize: fontSize
         )
+    }
+
+    private var themedPalette: (base: Color, highlight: Color) {
+        let themed = theme.bugReportShimmer(isDark: colorScheme == .dark)
+        return (base: Color(nsColor: themed.base), highlight: Color(nsColor: themed.highlight))
     }
 }
 

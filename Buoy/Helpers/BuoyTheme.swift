@@ -91,19 +91,27 @@ struct BuoyTheme: Equatable {
     ///
     /// The base is the accent as text, except that the system accent stays
     /// the accent in dark mode too rather than turning white: the shimmer is
-    /// meant to read as colour. The glint is the base's complementary hue at
-    /// full brightness. A near-grey accent has no meaningful complement, so it
-    /// falls back to the original gold.
+    /// meant to read as colour.
+    ///
+    /// The glint is a *neighbouring* hue (a tenth of the way round the wheel:
+    /// blue sweeps to violet, green to teal), not the complement. The sweep is
+    /// a soft mask, so the letters spend most of it part-way between the two
+    /// colours, and complements meet in the middle as grey-olive mud: system
+    /// blue and its amber read as a dirty yellow. Neighbours blend cleanly.
+    /// A near-grey accent has no hue to move, so it gets a silver glint (white
+    /// in dark mode, near-black in light) instead of the old fixed gold.
     func bugReportShimmer(isDark: Bool) -> (base: NSColor, highlight: NSColor) {
         let base = accentChoice == nil ? NSColor.controlAccentColor : accentText(isDark: isDark)
-        guard let rgb = base.usingColorSpace(.sRGB), rgb.saturationComponent >= 0.15 else {
-            return (base, NSColor(srgbRed: 1, green: 0.85, blue: 0, alpha: 1))
+        guard let rgb = base.usingColorSpace(.sRGB) else { return (base, base) }
+        guard rgb.saturationComponent >= 0.15 else {
+            return (base, isDark ? .white : NSColor(white: 0.12, alpha: 1))
         }
-        let hue = (rgb.hueComponent + 0.5).truncatingRemainder(dividingBy: 1)
+        let hue = (rgb.hueComponent + 0.1).truncatingRemainder(dividingBy: 1)
         let highlight = NSColor(
             hue: hue,
-            saturation: max(rgb.saturationComponent, 0.75),
-            brightness: 1,
+            saturation: max(rgb.saturationComponent, 0.6),
+            // Full brightness would wash out on a light background.
+            brightness: isDark ? 1 : max(rgb.brightnessComponent, 0.8),
             alpha: 1
         )
         return (base, highlight)

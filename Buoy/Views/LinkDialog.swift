@@ -42,7 +42,7 @@ struct LinkDialog: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Label(title, systemImage: "link")
                     .font(BuoyFont.sectionTitle)
@@ -60,7 +60,7 @@ struct LinkDialog: View {
                 .pointingHandCursor()
             }
 
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 10) {
                 if context.hasText {
                     HStack(spacing: 6) {
                         Image(systemName: "textformat")
@@ -116,14 +116,14 @@ struct LinkDialog: View {
                 Spacer()
                 Button("Cancel", action: onCancel)
                     .buttonStyle(.bordered)
-                    .controlSize(.small)
+                    .controlSize(.regular)
                     .keyboardShortcut(.cancelAction)
                     .accessibilityLabel("Cancel")
                     .pointingHandCursor()
 
                 Button(primaryActionTitle) { submit() }
                     .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
+                    .controlSize(.regular)
                     .keyboardShortcut(.defaultAction)
                     .disabled(destination == nil || isSubmitting)
                     .accessibilityLabel("\(primaryActionTitle) link")
@@ -131,9 +131,12 @@ struct LinkDialog: View {
                     .pointingHandCursor()
             }
         }
-        .padding(12)
-        .frame(maxWidth: 264)
-        .padding(.horizontal, 8)
+        .padding(14)
+        // A fixed width, not just a cap: both presentations are popovers,
+        // which size to the content's *ideal* width, and a text field's ideal
+        // width is its placeholder's. With only `maxWidth` the dialog shrank
+        // to about 150pt and everything in it was cramped.
+        .frame(width: 280)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(title)
         .onAppear {
@@ -248,7 +251,7 @@ private struct LinkField: View {
             .foregroundStyle(.secondary)
             TextField(placeholder, text: $text)
                 .textFieldStyle(.roundedBorder)
-                .controlSize(.small)
+                .controlSize(.regular)
                 .font(BuoyFont.control)
                 .focused(focusedField, equals: field)
                 .onSubmit(onSubmit)
