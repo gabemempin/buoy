@@ -55,6 +55,7 @@ manually and reports any failures. Static inspection is the default verification
 - Auto-converts `- ` + Space → bullet `•`, `[] ` + Space → checkbox attachment
 - Bullets and todos continue on Enter; empty list line removes the marker
 - `TodoAttachment` is a custom `NSTextAttachment` subclass for checkboxes
+- **Hanging indent:** a wrapped bullet or to-do line lines up under its text, not its marker. `BuoyTextView` is its own `NSTextStorageDelegate`, and `willProcessEditing` → `applyHangingIndents` sets `headIndent = firstLineHeadIndent + marker width` on every edited list paragraph (and `headIndent = firstLineHeadIndent` on any other), so no list helper has to know about it. **The nesting level is `firstLineHeadIndent / ListIndent.width`, never `headIndent`**: a 13pt checkbox plus its spacer is wider than one 20pt level. Helpers still set both indents to the level; the delegate adds the hang. Old notes pick it up on load (the delegate is set before `setAttributedString`).
 
 **Nested list critical bug pattern:** When removing an empty nested marker at end-of-document, always guard `lineStart < storage.length` before calling `resetParagraphIndent` — otherwise the clamp lands on the previous paragraph's `\n` and strips its indent. After escaping an empty nested line, reset `typingAttributes = normalizedTypingAttributes()` so subsequent typing doesn't inherit the indent.
 

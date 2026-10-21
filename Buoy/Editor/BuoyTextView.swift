@@ -77,6 +77,12 @@ final class BuoyTextView: NSTextView {
         static let paragraph: CGFloat = 0
     }
 
+    /// A list line's nesting level lives in `firstLineHeadIndent`
+    /// (`level * width`); `headIndent` is that plus the marker's width, so a
+    /// wrapped line lines up under the text rather than under the bullet or
+    /// checkbox (see `applyHangingIndents`). Read the level from
+    /// `firstLineHeadIndent` only: a 13pt checkbox and its spacer are wider
+    /// than one level, so dividing `headIndent` would over-count.
     private enum ListIndent {
         static let width: CGFloat = 20
         static let maxNestingLevel = 2
@@ -154,6 +160,7 @@ final class BuoyTextView: NSTextView {
     }
 
     private func commonInit() {
+        textStorage?.delegate = self
         isRichText = true
         isEditable = true
         isSelectable = true
@@ -848,7 +855,7 @@ final class BuoyTextView: NSTextView {
     private func indentLevel(at lineStart: Int) -> Int {
         guard let storage = textStorage, lineStart < storage.length else { return 0 }
         let style = storage.attribute(.paragraphStyle, at: lineStart, effectiveRange: nil) as? NSParagraphStyle
-        return Int((style?.headIndent ?? 0) / ListIndent.width)
+        return Int((style?.firstLineHeadIndent ?? 0) / ListIndent.width)
     }
 
     // MARK: - List drag-to-reorder
@@ -2173,7 +2180,7 @@ final class BuoyTextView: NSTextView {
                 let found = (mutable.string as NSString).range(of: marker, options: [], range: searchRange)
                 if found.location == NSNotFound { break }
                 let markerParaStyle = mutable.attribute(.paragraphStyle, at: found.location, effectiveRange: nil) as? NSParagraphStyle
-                let nestLevel = Int((markerParaStyle?.headIndent ?? 0) / ListIndent.width)
+                let nestLevel = Int((markerParaStyle?.firstLineHeadIndent ?? 0) / ListIndent.width)
                 let atStr = todoAttachmentAttributedString(isChecked: isChecked, indentLevel: nestLevel)
                 let replacementRange = rangeByConsumingFollowingTodoSpacer(
                     in: mutable.string as NSString,
@@ -2188,6 +2195,9 @@ final class BuoyTextView: NSTextView {
 
         canonicalizeExternalBulletLists(in: mutable, range: NSRange(location: 0, length: mutable.length))
         normalizeParagraphSpacing(in: mutable, range: NSRange(location: 0, length: mutable.length))
+        // Set before the load so notes saved before hanging indents existed
+        // get them as they open.
+        textStorage?.delegate = self
         textStorage?.setAttributedString(mutable)
         updateDefaultTypingAttributes()
         needsDisplay = true
@@ -2276,5 +2286,80 @@ final class BuoyTextView: NSTextView {
 
     @objc func findInNoteAction(_ sender: Any?) {
         NotificationCenter.default.post(name: .buoyFindInNote, object: nil)
+    }
+}
+
+// MARK: - Hanging Indent
+
+extension BuoyTextView: NSTextStorageDelegate {
+    /// Every edit, from any path (typing, Return continuation, Tab, paste,
+    /// reorder, undo, loading a note, a font-size change), passes through
+    /// here, so the hanging indent is kept in one place instead of in each of
+    /// the dozen helpers that build list lines. `willProcessEditing` is the
+    /// documented point for adjusting attributes before layout sees the edit.
+    func textStorage(
+        _ textStorage: NSTextStorage,
+        willProcessEditing editedMask: NSTextStorageEditActions,
+        range editedRange: NSRange,
+        changeInLength delta: Int
+    ) {
+        applyHangingIndents(in: textStorage, around: editedRange)
+    }
+
+    /// Sets `headIndent` on each paragraph `range` touches: the nesting
+    /// indent plus the marker's width on a list line, the nesting indent
+    /// alone everywhere else (so a line that stops being a list item loses
+    /// its hang).
+    private func applyHangingIndents(in storage: NSTextStorage, around range: NSRange) {
+        guard storage.length > 0 else { return }
+        let string = storage.string as NSString
+        let start = min(range.location, storage.length - 1)
+        let end = min(max(NSMaxRange(range), start), storage.length)
+        let paragraphs = string.paragraphRange(for: NSRange(location: start, length: end - start))
+
+        var updates: [(NSRange, NSParagraphStyle)] = []
+        var paragraphStart = paragraphs.location
+        while paragraphStart < NSMaxRange(paragraphs) {
+            let paragraph = string.paragraphRange(for: NSRange(location: paragraphStart, length: 0))
+            let hang = listMarkerWidth(in: storage, paragraphAt: paragraph.location)
+            storage.enumerateAttribute(.paragraphStyle, in: paragraph) { value, styleRange, _ in
+                let style = (value as? NSParagraphStyle) ?? .default
+                let target = style.firstLineHeadIndent + hang
+                guard abs(style.headIndent - target) > 0.01,
+                      let updated = style.mutableCopy() as? NSMutableParagraphStyle
+                else { return }
+                updated.headIndent = target
+                updates.append((styleRange, updated))
+            }
+            guard NSMaxRange(paragraph) > paragraphStart else { break }
+            paragraphStart = NSMaxRange(paragraph)
+        }
+        for (styleRange, style) in updates {
+            storage.addAttribute(.paragraphStyle, value: style, range: styleRange)
+        }
+    }
+
+    /// Width of a list line's marker and its one-space spacer (`• `, `◦ `,
+    /// or a checkbox and its spacer), or 0 if the paragraph is not a list line.
+    private func listMarkerWidth(in storage: NSTextStorage, paragraphAt location: Int) -> CGFloat {
+        guard location + 1 < storage.length else { return 0 }
+        let string = storage.string as NSString
+        guard string.character(at: location + 1) == 0x20 else { return 0 }
+
+        func font(at index: Int) -> NSFont {
+            (storage.attribute(.font, at: index, effectiveRange: nil) as? NSFont)
+                ?? NSFont.systemFont(ofSize: fontSize)
+        }
+
+        let markerWidth: CGFloat
+        if let todo = storage.attribute(.attachment, at: location, effectiveRange: nil) as? TodoAttachment {
+            markerWidth = todo.bounds.width
+        } else {
+            let marker = string.substring(with: NSRange(location: location, length: 1))
+            guard marker == "•" || marker == "◦" else { return 0 }
+            markerWidth = (marker as NSString).size(withAttributes: [.font: font(at: location)]).width
+        }
+        let spacerWidth = (" " as NSString).size(withAttributes: [.font: font(at: location + 1)]).width
+        return markerWidth + spacerWidth
     }
 }
