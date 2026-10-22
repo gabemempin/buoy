@@ -57,14 +57,14 @@ struct AppearanceSettingsPage: View {
                 BuoySegmentedPicker(
                     selection: $settings.focusFogStyle,
                     options: [
-                        .init(value: .wallpaperBlur, title: "Wallpaper Blur"),
-                        .init(value: .gradient, title: "Gradient")
+                        .init(value: .wallpaperBlur, title: "Static"),
+                        .init(value: .gradient, title: "Dynamic")
                     ],
                     accessibilityLabel: "Fog Mode style"
                 )
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 2)
-                Text("Shake the top of the window to fog everything behind your note. Gradient moves slowly in your wallpaper's colours.")
+                Text("Shake the top of the window to fog everything behind your note. Static blurs your wallpaper; Dynamic moves slowly in its colours.")
                     .font(BuoyFont.secondary)
                     .foregroundStyle(.secondary)
             }

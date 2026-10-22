@@ -420,10 +420,10 @@ private final class FogPanel: NSPanel {
 
 // MARK: - View
 
-/// The fog's content. Wallpaper Blur: just the blurred wallpaper, with no
+/// The fog's content. Static (`.wallpaperBlur`): just the blurred wallpaper, with no
 /// tint or mist on top (anything layered over it read as a white wash).
 /// Without a readable wallpaper it falls back to a live backdrop blur.
-/// Gradient: a `FogMeshView`.
+/// Dynamic (`.gradient`): a `FogMeshView`.
 private final class FogView: NSView {
     private let fallbackBlur = NSVisualEffectView()
     /// Its own subview, so AppKit can't slide the layer under the blur.
