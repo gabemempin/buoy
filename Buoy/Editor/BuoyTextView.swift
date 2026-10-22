@@ -703,6 +703,34 @@ final class BuoyTextView: NSTextView {
         super.keyDown(with: event)
     }
 
+    // MARK: - Confetti
+
+    /// Typed text only: paste, note loads and Shortcuts appends never come
+    /// through `insertText`, so the word sitting in a note doesn't refire.
+    override func insertText(_ string: Any, replacementRange: NSRange) {
+        super.insertText(string, replacementRange: replacementRange)
+        let typed = (string as? NSAttributedString)?.string ?? (string as? String) ?? ""
+        if typed.count == 1 && completesConfetti() {
+            ConfettiController.shared.celebrate()
+        }
+    }
+
+    /// Whether the character just typed finished the word "confetti", as a
+    /// word of its own rather than the tail of a longer one.
+    private func completesConfetti() -> Bool {
+        let word = "confetti"
+        let caret = selectedRange().location
+        let nsString = string as NSString
+        let length = (word as NSString).length
+        guard caret >= length, caret <= nsString.length else { return false }
+        let start = caret - length
+        guard nsString.substring(with: NSRange(location: start, length: length))
+            .caseInsensitiveCompare(word) == .orderedSame else { return false }
+        guard start > 0 else { return true }
+        let previous = nsString.substring(with: NSRange(location: start - 1, length: 1))
+        return previous.rangeOfCharacter(from: .alphanumerics) == nil
+    }
+
     // MARK: - Auto-complete
 
     private func handleAutoComplete() -> Bool {
