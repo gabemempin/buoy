@@ -33,7 +33,7 @@ enum WhatsNewCatalog {
     /// Newest first.
     static let releases: [WhatsNewRelease] = [
         WhatsNewRelease(
-            version: "1.5.0",
+            version: "1.5",
             features: [
                 WhatsNewItem(
                     symbol: "paintpalette",
