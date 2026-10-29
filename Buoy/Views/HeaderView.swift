@@ -175,6 +175,15 @@ struct HeaderView: View {
         titleThinking && !showsReveal && !isBugReport && !isEditingTitle
     }
 
+    #if DEBUG
+    private static let debugVersionLabel: String = {
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? "?"
+        let build = info?["CFBundleVersion"] as? String ?? "?"
+        return "Debug \(version) (\(build))"
+    }()
+    #endif
+
     var body: some View {
         VStack(spacing: metrics.headerRowSpacing) {
             HStack(spacing: 0) {
@@ -197,6 +206,22 @@ struct HeaderView: View {
                 }
             }
             .frame(height: metrics.headerControlRowHeight)
+            #if DEBUG
+            // Debug builds only, so a local build is never mistaken for the
+            // installed release. `xcodebuild archive` uses Release, which
+            // leaves this out. Centred on the row, and never takes the click,
+            // so dragging and shaking the header work through it.
+            .overlay {
+                Text(Self.debugVersionLabel)
+                    .font(Font(NSFont.systemFont(ofSize: 10, weight: .medium, width: .expanded)))
+                    .monospacedDigit()
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .fixedSize()
+                    .allowsHitTesting(false)
+                    .accessibilityLabel("Debug build, \(Self.debugVersionLabel)")
+            }
+            #endif
             .padding(.top, metrics.headerTopPadding)
             .background(dragEnabled ? WindowDragHandle(
                 onDoubleClick: onHeaderDoubleClick,

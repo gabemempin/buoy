@@ -142,6 +142,13 @@ final class BuoyTextView: NSTextView {
     /// Last known cursor position (may have length 0).
     private(set) var lastKnownCursorPosition: NSRange = NSRange(location: 0, length: 0)
 
+    /// While a checked to-do slides into place: the snapshots that stand in
+    /// for the list's lines, and the area `draw` leaves blank underneath them.
+    private var sortAnimationOverlay: NSView?
+    private var sortAnimationHiddenRect: NSRect?
+    private var sortAnimationGeneration = 0
+    private var isCommittingSortedTodo = false
+
     // MARK: - Init
 
     override init(frame: NSRect, textContainer: NSTextContainer?) {
@@ -613,7 +620,19 @@ final class BuoyTextView: NSTextView {
     // MARK: - Placeholder
 
     override func draw(_ dirtyRect: NSRect) {
-        super.draw(dirtyRect)
+        if let hidden = sortAnimationHiddenRect {
+            // The real lines are already in their new order; the overlay's
+            // snapshots are what slide. Drawing both would show each line twice.
+            NSGraphicsContext.saveGraphicsState()
+            let visible = NSBezierPath(rect: bounds)
+            visible.append(NSBezierPath(rect: hidden))
+            visible.windingRule = .evenOdd
+            visible.addClip()
+            super.draw(dirtyRect)
+            NSGraphicsContext.restoreGraphicsState()
+        } else {
+            super.draw(dirtyRect)
+        }
         guard string.isEmpty else { return }
         let padding = textContainerInset.width + (textContainer?.lineFragmentPadding ?? 0)
         let rect = NSRect(
@@ -929,9 +948,173 @@ final class BuoyTextView: NSTextView {
         return ListBlock(paragraphs: paragraphs, range: range)
     }
 
+    /// How long a checked to-do stays put before it moves down: long enough
+    /// to see the check land (the animation is 0.32s), short enough to read
+    /// as one action.
+    private static let checkedTodoSortDelay: TimeInterval = 0.45
+
+    /// "Move Checked To-dos to Bottom". Waits out the check animation, then
+    /// looks the box up again by identity, since the text may have changed.
+    private func scheduleCheckedTodoSort(_ todo: TodoAttachment) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.checkedTodoSortDelay) { [weak self, weak todo] in
+            guard let self, let todo, AppSettings.current.moveCheckedTodosToBottom else { return }
+            self.sortToggledTodo(todo)
+        }
+    }
+
+    /// A checked to-do moves to just below the last unchecked line of its
+    /// list, so the most recently checked sits at the top of the done ones.
+    /// An unchecked one moves back up to just above the first checked line.
+    /// Lists with nested lines are left alone: moving a parent would leave
+    /// its children behind under the wrong item.
+    private func sortToggledTodo(_ todo: TodoAttachment) {
+        guard let storage = textStorage, storage.length > 0 else { return }
+        var location: Int?
+        storage.enumerateAttribute(.attachment, in: NSRange(location: 0, length: storage.length)) { value, range, stop in
+            if (value as AnyObject?) === todo {
+                location = range.location
+                stop.pointee = true
+            }
+        }
+        guard let location,
+              let block = listBlock(containing: location),
+              let sourceIndex = block.paragraphs.firstIndex(where: { $0.location == location }),
+              block.paragraphs.allSatisfy({ indentLevel(at: $0.location) == 0 })
+        else { return }
+
+        func isChecked(_ index: Int) -> Bool {
+            (storage.attribute(.attachment, at: block.paragraphs[index].location, effectiveRange: nil) as? TodoAttachment)?.isChecked == true
+        }
+        let others = block.paragraphs.indices.filter { $0 != sourceIndex }
+        let target: Int
+        if todo.isChecked {
+            guard let lastUnchecked = others.last(where: { !isChecked($0) }), lastUnchecked > sourceIndex else { return }
+            target = lastUnchecked + 1
+        } else {
+            guard let firstChecked = others.first(where: { isChecked($0) }), firstChecked < sourceIndex else { return }
+            target = firstChecked
+        }
+        let insertIndex = target > sourceIndex ? target - 1 : target
+        var order = Array(block.paragraphs.indices)
+        order.insert(order.remove(at: sourceIndex), at: insertIndex)
+
+        finishSortAnimation()
+        let snapshots = BuoyMotion.duration(Self.checkedTodoSlideDuration) > 0
+            ? block.paragraphs.map(lineSnapshot(of:))
+            : []
+
+        isCommittingSortedTodo = true
+        commitListReorder(block: block, sourceIndex: sourceIndex, targetBoundary: target, placesCaret: false)
+        isCommittingSortedTodo = false
+
+        if snapshots.count == block.paragraphs.count, !snapshots.contains(where: { $0 == nil }) {
+            animateSortedLines(snapshots.compactMap { $0 }, in: block.range, order: order, movedTo: insertIndex)
+        }
+    }
+
+    private static let checkedTodoSlideDuration: TimeInterval = 0.34
+
+    /// The paragraph's full-width line rect in view coordinates, or nil if
+    /// it has not been laid out.
+    private func lineRect(of paragraph: NSRange) -> NSRect? {
+        guard let layoutManager, let textContainer, let storage = textStorage,
+              NSMaxRange(paragraph) <= storage.length else { return nil }
+        layoutManager.ensureLayout(for: textContainer)
+        let glyphs = layoutManager.glyphRange(forCharacterRange: paragraph, actualCharacterRange: nil)
+        var rect = NSRect.null
+        layoutManager.enumerateLineFragments(forGlyphRange: glyphs) { fragment, _, _, _, _ in
+            rect = rect.union(fragment)
+        }
+        guard !rect.isNull else { return nil }
+        let origin = textContainerOrigin
+        return NSRect(x: 0, y: rect.minY + origin.y, width: bounds.width, height: rect.height)
+    }
+
+    private func lineSnapshot(of paragraph: NSRange) -> (rect: NSRect, image: NSImage)? {
+        guard let rect = lineRect(of: paragraph), rect.height > 0,
+              let rep = bitmapImageRepForCachingDisplay(in: rect) else { return nil }
+        cacheDisplay(in: rect, to: rep)
+        let image = NSImage(size: rect.size)
+        image.addRepresentation(rep)
+        return (rect, image)
+    }
+
+    /// Slides each line's snapshot from where it was to where its text now
+    /// is. The storage change has already happened, so undo, saving and the
+    /// caret never wait on the animation; it is only a picture of the move.
+    private func animateSortedLines(_ snapshots: [(rect: NSRect, image: NSImage)], in blockRange: NSRange, order: [Int], movedTo movedIndex: Int) {
+        guard let storage = textStorage, NSMaxRange(blockRange) <= storage.length else { return }
+        let nsString = storage.string as NSString
+        var newParagraphs: [NSRange] = []
+        var location = blockRange.location
+        while location < NSMaxRange(blockRange) {
+            let paragraph = nsString.paragraphRange(for: NSRange(location: location, length: 0))
+            newParagraphs.append(paragraph)
+            guard NSMaxRange(paragraph) > location else { break }
+            location = NSMaxRange(paragraph)
+        }
+        guard newParagraphs.count == order.count else { return }
+        let targets = newParagraphs.map(lineRect(of:))
+        guard !targets.contains(where: { $0 == nil }) else { return }
+
+        let overlay = FlippedOverlayView(frame: bounds)
+        overlay.wantsLayer = true
+        var moves: [(view: NSImageView, to: NSPoint)] = []
+        var hidden = NSRect.null
+        for (newIndex, oldIndex) in order.enumerated() {
+            guard let target = targets[newIndex] else { continue }
+            let snapshot = snapshots[oldIndex]
+            let imageView = NSImageView(frame: snapshot.rect)
+            imageView.image = snapshot.image
+            imageView.imageScaling = .scaleNone
+            overlay.addSubview(imageView)
+            moves.append((imageView, target.origin))
+            hidden = hidden.union(snapshot.rect).union(target)
+        }
+        // The line that moved rides above the ones it passes.
+        if movedIndex < moves.count {
+            let moved = moves[movedIndex].view
+            moved.removeFromSuperview()
+            overlay.addSubview(moved)
+        }
+
+        addSubview(overlay)
+        sortAnimationOverlay = overlay
+        sortAnimationHiddenRect = hidden
+        setNeedsDisplay(hidden)
+        sortAnimationGeneration += 1
+        let generation = sortAnimationGeneration
+
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = Self.checkedTodoSlideDuration
+            context.timingFunction = CAMediaTimingFunction(controlPoints: 0.25, 0.1, 0.25, 1)
+            context.allowsImplicitAnimation = true
+            for move in moves {
+                move.view.animator().setFrameOrigin(move.to)
+            }
+        }, completionHandler: { [weak self] in
+            guard let self, self.sortAnimationGeneration == generation else { return }
+            self.finishSortAnimation()
+        })
+    }
+
+    /// Drops the overlay and shows the real lines again. Called when the
+    /// slide ends, before another one starts, and on any other edit.
+    private func finishSortAnimation() {
+        guard sortAnimationOverlay != nil || sortAnimationHiddenRect != nil else { return }
+        sortAnimationGeneration += 1
+        sortAnimationOverlay?.removeFromSuperview()
+        sortAnimationOverlay = nil
+        if let hidden = sortAnimationHiddenRect {
+            sortAnimationHiddenRect = nil
+            setNeedsDisplay(hidden)
+        }
+    }
+
     /// Moves the paragraph at `sourceIndex` within `block` to `targetBoundary` (0...paragraphs.count),
-    /// rebuilding the whole block as a single undoable edit.
-    func commitListReorder(block: ListBlock, sourceIndex: Int, targetBoundary: Int) {
+    /// rebuilding the whole block as a single undoable edit. A drag puts the caret at the end of
+    /// the moved line; `placesCaret: false` (an automatic move) keeps it on the text it was in.
+    func commitListReorder(block: ListBlock, sourceIndex: Int, targetBoundary: Int, placesCaret: Bool = true) {
         guard let storage = textStorage,
               sourceIndex >= 0, sourceIndex < block.paragraphs.count,
               targetBoundary >= 0, targetBoundary <= block.paragraphs.count,
@@ -954,6 +1137,18 @@ final class BuoyTextView: NSTextView {
         let insertIndex = targetBoundary > sourceIndex ? targetBoundary - 1 : targetBoundary
         let moved = lines.remove(at: sourceIndex)
         lines.insert(moved, at: insertIndex)
+
+        // Where the caret sits, as (line, offset within it), in the new order.
+        let oldSelection = selectedRange()
+        var keptCaret: (line: Int, offset: Int)?
+        if !placesCaret, let caretLine = block.paragraphs.firstIndex(where: { NSLocationInRange(oldSelection.location, $0) }) {
+            var order = Array(block.paragraphs.indices)
+            order.insert(order.remove(at: sourceIndex), at: insertIndex)
+            if let newLine = order.firstIndex(of: caretLine) {
+                let offset = oldSelection.location - block.paragraphs[caretLine].location
+                keptCaret = (newLine, min(offset, lines[newLine].line.length))
+            }
+        }
 
         let rebuilt = NSMutableAttributedString()
         var caretOffsetForInsertIndex: Int?
@@ -982,8 +1177,13 @@ final class BuoyTextView: NSTextView {
         storage.replaceCharacters(in: block.range, with: rebuilt)
         didChangeText()
 
-        if let offset = caretOffsetForInsertIndex {
+        if placesCaret, let offset = caretOffsetForInsertIndex {
             setSelectedRange(NSRange(location: block.range.location + offset, length: 0))
+        } else if let keptCaret {
+            let lineStart = lines[..<keptCaret.line].reduce(0) { $0 + $1.line.length + 1 }
+            setSelectedRange(NSRange(location: block.range.location + lineStart + keptCaret.offset, length: 0))
+        } else if !placesCaret, NSMaxRange(oldSelection) <= storage.length {
+            setSelectedRange(oldSelection)
         }
         notifyChange()
     }
@@ -1129,6 +1329,9 @@ final class BuoyTextView: NSTextView {
                     }
                     storage.edited(.editedAttributes, range: range, changeInLength: 0)
                     notifyChange()
+                    if AppSettings.current.moveCheckedTodosToBottom {
+                        scheduleCheckedTodoSort(todo)
+                    }
                 } else {
                     window.makeFirstResponder(self)
                     setSelectedRange(NSRange(location: charIndex, length: 0))
@@ -2323,15 +2526,25 @@ extension BuoyTextView: NSTextStorageDelegate {
     /// Every edit, from any path (typing, Return continuation, Tab, paste,
     /// reorder, undo, loading a note, a font-size change), passes through
     /// here, so the hanging indent is kept in one place instead of in each of
-    /// the dozen helpers that build list lines. `willProcessEditing` is the
-    /// documented point for adjusting attributes before layout sees the edit.
+    /// the dozen helpers that build list lines.
+    ///
+    /// `didProcessEditing`, never `willProcessEditing`: restyling the whole
+    /// paragraph there widened the pending edit, and NSTextView put the caret
+    /// at the end of the widened range. Backspacing a line into the to-do
+    /// above it dropped the caret on the line below instead of at the join.
+    /// Here the edit is settled (the merged paragraph already carries the
+    /// first line's style) and layout still picks up the new indent.
     func textStorage(
         _ textStorage: NSTextStorage,
-        willProcessEditing editedMask: NSTextStorageEditActions,
+        didProcessEditing editedMask: NSTextStorageEditActions,
         range editedRange: NSRange,
         changeInLength delta: Int
     ) {
         applyHangingIndents(in: textStorage, around: editedRange)
+        // Typing mid-slide would edit text the overlay is still covering.
+        if !isCommittingSortedTodo, sortAnimationOverlay != nil {
+            DispatchQueue.main.async { [weak self] in self?.finishSortAnimation() }
+        }
     }
 
     /// Sets `headIndent` on each paragraph `range` touches: the nesting
@@ -2390,4 +2603,11 @@ extension BuoyTextView: NSTextStorageDelegate {
         let spacerWidth = (" " as NSString).size(withAttributes: [.font: font(at: location + 1)]).width
         return markerWidth + spacerWidth
     }
+}
+
+/// Holds the sliding line snapshots in the text view's own (flipped)
+/// coordinates, and never takes a click.
+private final class FlippedOverlayView: NSView {
+    override var isFlipped: Bool { true }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }

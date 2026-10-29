@@ -28,12 +28,14 @@ struct DeleteConfirmDialog: View {
     }
 
     var body: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 12) {
             Image(systemName: iconName)
-                .font(.system(size: 20, weight: .regular))
+                .font(.system(size: 26, weight: .regular))
                 .foregroundStyle(.red)
+                .padding(.top, 2)
+                .accessibilityHidden(true)
 
-            VStack(spacing: 3) {
+            VStack(spacing: 4) {
                 Text("Delete “\(displayTitle)”?")
                     .font(BuoyFont.headline)
                     .multilineTextAlignment(.center)
@@ -41,51 +43,30 @@ struct DeleteConfirmDialog: View {
                 Text(message)
                     .font(BuoyFont.secondary)
                     .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
             }
+            .fixedSize(horizontal: false, vertical: true)
 
+            // macOS 26+ alerts: capsule buttons of equal width that fill the
+            // alert, Cancel leading, the default trailing. The default is the
+            // filled one, which is what says Return picks it; the old ⏎
+            // keycap inside the label is not something system alerts draw.
             HStack(spacing: 8) {
                 Button("Cancel") { onCancel() }
-                    .buttonStyle(.plain)
-                    .font(BuoyFont.control)
-                    .lineLimit(1)
-                    .foregroundStyle(.primary)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 5)
-                    .background(Color.buoyControlFill, in: RoundedRectangle(cornerRadius: 7))
-                    .accessibilityLabel("Cancel")
+                    .buttonStyle(AlertCapsuleButtonStyle(role: .cancel))
                     .accessibilityHint(cancelHint)
-                    .pointingHandCursor()
 
-                Button {
-                    onConfirm()
-                } label: {
-                    HStack(spacing: 5) {
-                        Text(confirmTitle)
-                            .font(BuoyFont.control.weight(.semibold))
-                            .lineLimit(1)
-                            .fixedSize()
-                        Text("⏎")
-                            .font(BuoyFont.caption.weight(.semibold))
-                            .frame(width: 15, height: 15)
-                            .background(Color.buoyOnAccent.opacity(0.22), in: RoundedRectangle(cornerRadius: 4))
-                            .accessibilityHidden(true)
-                    }
-                    .foregroundStyle(Color.buoyOnAccent)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(Color(nsColor: .systemRed), in: RoundedRectangle(cornerRadius: 7))
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(confirmTitle)
-                .accessibilityHint(
-                    confirmHint ?? "Permanently deletes “\(displayTitle)”. Return does the same."
-                )
-                .pointingHandCursor()
+                Button(confirmTitle) { onConfirm() }
+                    .buttonStyle(AlertCapsuleButtonStyle(role: .destructive))
+                    .accessibilityHint(
+                        confirmHint ?? "Permanently deletes “\(displayTitle)”. Return does the same."
+                    )
             }
-            .padding(.top, 2)
+            .padding(.top, 4)
         }
-        .padding(16)
+        .padding(.horizontal, 16)
+        .padding(.top, 18)
+        .padding(.bottom, 14)
         // Wide enough for the longest confirm label ("Delete Folder") beside
         // Cancel. At 220 that button wrapped to two lines and the whole dialog
         // went lopsided.
@@ -94,15 +75,13 @@ struct DeleteConfirmDialog: View {
         // than 244 now that the Settings overlay no longer props it open, and a
         // fixed width would hang the dialog over both edges of the glass.
         .frame(maxWidth: 244)
-        .padding(.horizontal, 8)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Delete “\(displayTitle)”?")
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14)
-                .strokeBorder(Color.buoyOverlayStroke, lineWidth: 1)
-        )
-        .shadow(radius: 12, y: 4)
+        // Concentric with the buttons: the card's radius is the capsule's
+        // (half its height) plus the 14pt it sits in from the edge.
+        .buoyGlassPanel(cornerRadius: AlertCapsuleButtonStyle.height / 2 + 14)
+        .shadow(color: .black.opacity(0.25), radius: 18, y: 6)
+        .padding(.horizontal, 8)
         .transition(BuoyMotion.transition(.scale(scale: 0.9).combined(with: .opacity)))
         .onAppear { installKeyMonitor() }
         .onDisappear { removeKeyMonitor() }
@@ -127,5 +106,36 @@ struct DeleteConfirmDialog: View {
     private func removeKeyMonitor() {
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
         keyMonitor = nil
+    }
+}
+
+/// The confirm dialog's buttons, after macOS 26's alerts: full-width
+/// capsules, the default one filled. Pressing dims and shrinks it slightly,
+/// since a custom button without a press state feels unresponsive (HIG).
+private struct AlertCapsuleButtonStyle: ButtonStyle {
+    enum Role { case cancel, destructive }
+
+    static let height: CGFloat = 28
+
+    let role: Role
+    @State private var isHovering = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(role == .destructive ? BuoyFont.control.weight(.semibold) : BuoyFont.control)
+            .lineLimit(1)
+            .foregroundStyle(role == .destructive ? Color.buoyOnAccent : Color.primary)
+            .frame(maxWidth: .infinity)
+            .frame(height: Self.height)
+            .background(
+                Capsule().fill(role == .destructive ? Color(nsColor: .systemRed) : Color.buoyControlFill)
+            )
+            .overlay(Capsule().fill(Color.white.opacity(isHovering && !configuration.isPressed ? 0.08 : 0)))
+            .opacity(configuration.isPressed ? 0.8 : 1)
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .contentShape(Capsule())
+            .animation(BuoyMotion.easeOut(0.1), value: configuration.isPressed)
+            .onHover { isHovering = $0 }
+            .pointingHandCursor()
     }
 }

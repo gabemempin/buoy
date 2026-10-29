@@ -39,6 +39,11 @@ struct GeneralSettingsPage: View {
                     }
                 }
                 .disabled(!NoteAutoTitler.isSupported)
+
+                Toggle(isOn: $settings.moveCheckedTodosToBottom) {
+                    Text("Move Checked To-dos to Bottom")
+                    Text("A to-do you check off moves below the ones still to do.")
+                }
             }
 
             // About lived on its own page while there was a sidebar to hang it
