@@ -33,6 +33,28 @@ enum WhatsNewCatalog {
     /// Newest first.
     static let releases: [WhatsNewRelease] = [
         WhatsNewRelease(
+            version: "1.5.1",
+            features: [
+                WhatsNewItem(
+                    symbol: "checklist",
+                    title: "Done to-dos move down",
+                    detail: "Turn it on in Settings ▸ General and checked to-dos slide below the ones still to do."
+                ),
+                WhatsNewItem(
+                    symbol: "trash",
+                    title: "A fresher delete prompt",
+                    detail: "The delete confirmation now matches the latest macOS alerts."
+                ),
+            ],
+            fixes: [
+                WhatsNewItem(
+                    symbol: "text.cursor",
+                    title: "Cursor stays put",
+                    detail: "Joining a line onto the to-do above keeps your cursor where the lines meet."
+                ),
+            ]
+        ),
+        WhatsNewRelease(
             version: "1.5",
             features: [
                 WhatsNewItem(
