@@ -25,6 +25,9 @@ private struct BuoyNotificationRouter: ViewModifier {
 // Class wrapper so the NSTextView reference survives SwiftUI re-renders without triggering update cycles.
 private final class TextViewRef {
     var value: BuoyTextView?
+    /// A note whose editor should take focus as soon as it mounts. See
+    /// `focusEditor()`.
+    var pendingFocusNoteID: String?
 }
 
 struct ContentView: View {
@@ -734,10 +737,14 @@ struct ContentView: View {
     private func navigateNote(forward: Bool) {
         guard !showWhatsNew else { return }
         let previousID = noteStore.currentNote?.id
-        if forward { noteStore.nextNote() } else { noteStore.previousNote() }
-        if previousID != noteStore.currentNote?.id {
-            slideDirection = noteStore.lastNavigationDirection
-            withAnimation(BuoyMotion.spring(response: 0.3, dampingFraction: 0.8)) {
+        // Set ahead, in its own update, so the outgoing editor's removal
+        // transition already points the right way.
+        slideDirection = forward ? .forward : .backward
+        // The switch and the new identity in one transaction (see
+        // `slideToNote`).
+        withAnimation(BuoyMotion.spring(response: 0.3, dampingFraction: 0.8)) {
+            if forward { noteStore.nextNote() } else { noteStore.previousNote() }
+            if previousID != noteStore.currentNote?.id {
                 slideID = UUID()
             }
         }
@@ -751,6 +758,13 @@ struct ContentView: View {
         NoteIntentBridge.editor = tv
         tv.formattingState = formattingState
         tv.suppressesIBeamCursor = suppressesEditorCursor
+        if let pending = tvRef.pendingFocusNoteID, tv.noteID == pending {
+            tvRef.pendingFocusNoteID = nil
+            // Not in its window yet when this runs from `makeNSView`.
+            DispatchQueue.main.async { [weak tv] in
+                tv?.window?.makeFirstResponder(tv)
+            }
+        }
         if tv.noteLinkSuggestions == nil {
             let store = noteStore
             tv.noteLinkSuggestions = {
@@ -789,9 +803,15 @@ struct ContentView: View {
         if showAllNotes {
             withAnimation(BuoyMotion.easeOut(0.16)) { showAllNotes = false }
         }
-        noteStore.switchNote(to: note)
         slideDirection = direction
+        // The note switch and the new identity must land in one transaction.
+        // Switching first, outside it, made SwiftUI point the *outgoing*
+        // editor at the new note (so the slide-out showed the wrong note),
+        // and that outgoing view claimed the note's kept editor from
+        // `EditorCache`. The incoming view then got a fresh editor with no
+        // undo history, and focus left with the outgoing one.
         withAnimation(BuoyMotion.spring(response: 0.3, dampingFraction: 0.8)) {
+            noteStore.switchNote(to: note)
             slideID = UUID()
         }
         focusEditor()
@@ -906,9 +926,20 @@ struct ContentView: View {
         focusEditor()
     }
 
+    /// Focuses the current note's editor, including one that hasn't mounted
+    /// yet. After a note switch the new editor only appears in a coming
+    /// SwiftUI update, and a plain `async` ran before it, focusing the editor
+    /// of the note being left. ⌘Z is handled only by the focused editor, so
+    /// it reached the wrong note and undo did nothing after Go Back. The
+    /// request is keyed to the note: whichever happens first, this block or
+    /// the editor mounting (`configureEditor`), focuses the right one.
     private func focusEditor() {
-        DispatchQueue.main.async { [tv = tvRef.value] in
-            tv?.window?.makeFirstResponder(tv)
+        let target = noteStore.currentNote?.id
+        tvRef.pendingFocusNoteID = target
+        DispatchQueue.main.async { [tvRef] in
+            guard let tv = tvRef.value, tv.noteID == target, tv.window != nil else { return }
+            tvRef.pendingFocusNoteID = nil
+            tv.window?.makeFirstResponder(tv)
         }
     }
 

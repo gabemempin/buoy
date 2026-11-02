@@ -157,6 +157,14 @@ final class BuoyTextView: NSTextView {
     /// offscreen editors leave it nil and `>>` stays plain text.
     var noteLinkSuggestions: (() -> [NoteLinkSuggestion])?
 
+    /// The RTF this editor last loaded or handed off to be saved. `EditorCache`
+    /// reuses the editor only while the note's saved content still equals it.
+    var contentSnapshot: Data?
+
+    /// The note this editor shows. Set by `EditorView`; lets a focus request
+    /// made for a note find that note's editor when it mounts.
+    var noteID: String?
+
     private var themeObserver: NSObjectProtocol?
     private var settingsObserver: NSObjectProtocol?
     private lazy var listReorder = ListReorderController(textView: self)
@@ -171,7 +179,15 @@ final class BuoyTextView: NSTextView {
     }
     var currentEditorTextColor: NSColor { editorTextColor }
 
-    /// Last known non-zero selection — preserved even after the view resigns first responder.
+    /// The selection as of the last time the editor had focus, when it was
+    /// non-empty. Survives the editor resigning first responder, so a toolbar
+    /// action can put it back.
+    ///
+    /// It used to keep the last non-empty selection *ever*: a caret placed
+    /// afterwards never cleared it, so clicking Italic with just a caret
+    /// re-selected some old range (by then spanning other text). Any
+    /// selection change made while the editor has focus now replaces it,
+    /// a bare caret included.
     private(set) var lastKnownSelection: NSRange = NSRange(location: 0, length: 0)
     /// Last known cursor position (may have length 0).
     private(set) var lastKnownCursorPosition: NSRange = NSRange(location: 0, length: 0)
@@ -662,10 +678,14 @@ final class BuoyTextView: NSTextView {
 
     override func setSelectedRange(_ charRange: NSRange) {
         lastKnownCursorPosition = charRange
-        if charRange.length > 0 {
-            lastKnownSelection = charRange
-        }
+        rememberSelection(charRange)
         super.setSelectedRange(charRange)
+    }
+
+    private func rememberSelection(_ range: NSRange) {
+        if range.length > 0 || window?.firstResponder === self {
+            lastKnownSelection = range
+        }
     }
 
     /// When the text view regains first responder (e.g. after a toolbar button click), restore the
@@ -2446,9 +2466,7 @@ final class BuoyTextView: NSTextView {
 
     override func setSelectedRange(_ charRange: NSRange, affinity: NSSelectionAffinity, stillSelecting: Bool) {
         lastKnownCursorPosition = charRange
-        if charRange.length > 0 {
-            lastKnownSelection = charRange
-        }
+        rememberSelection(charRange)
         super.setSelectedRange(charRange, affinity: affinity, stillSelecting: stillSelecting)
         if !stillSelecting {
             buoyDelegate?.textViewSelectionDidChange(self)
@@ -2462,9 +2480,7 @@ final class BuoyTextView: NSTextView {
         super.setSelectedRanges(ranges, affinity: affinity, stillSelecting: stillSelecting)
         guard let first = ranges.first?.rangeValue else { return }
         lastKnownCursorPosition = first
-        if first.length > 0 {
-            lastKnownSelection = first
-        }
+        rememberSelection(first)
         if !stillSelecting {
             buoyDelegate?.textViewSelectionDidChange(self)
             scheduleFormattingStateRefresh()
@@ -2636,6 +2652,7 @@ final class BuoyTextView: NSTextView {
     }
 
     func loadRTF(_ data: Data) {
+        contentSnapshot = data
         guard !data.isEmpty,
               let atStr = try? NSAttributedString(
                 data: data,

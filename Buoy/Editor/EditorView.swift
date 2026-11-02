@@ -448,9 +448,13 @@ struct EditorView: NSViewRepresentable {
         )
         let initialHeight = max(contentSize.height, ChromeMetrics.compact.editorMinimumHeight)
 
-        let textView = BuoyTextView(
+        let reused = EditorCache.take(noteID: noteID, matching: rtfData)
+        let textView = reused ?? BuoyTextView(
             frame: NSRect(x: 0, y: 0, width: initialWidth, height: initialHeight)
         )
+        if reused != nil {
+            textView.frame = NSRect(x: 0, y: 0, width: initialWidth, height: initialHeight)
+        }
         textView.fontSize = fontSize
         textView.usesDarkAppearance = usesDarkAppearance
         textView.minSize = NSSize(width: 0, height: initialHeight)
@@ -467,17 +471,29 @@ struct EditorView: NSViewRepresentable {
         scrollView.documentView = textView
         scrollView.layoutSubtreeIfNeeded()
         context.coordinator.currentNoteID = noteID
+        textView.noteID = noteID
         textViewRef?(textView)
 
-        context.coordinator.setLoadingContent(true)
-        textView.loadRTF(rtfData)
-        context.coordinator.setLoadingContent(false)
+        if reused == nil {
+            context.coordinator.setLoadingContent(true)
+            textView.loadRTF(rtfData)
+            context.coordinator.setLoadingContent(false)
+        }
         scrollView.refreshEdgeFade()
 
         scrollView.isResizingByDrag = isResizingByDrag
         scrollView.suppressScrollerUntilSettled()
+        EditorCache.restoreScrollPosition(of: noteID, in: scrollView)
 
         return scrollView
+    }
+
+    /// The editor outlives its view: kept, with its undo history, for when
+    /// the note comes back.
+    static func dismantleNSView(_ scrollView: NSScrollView, coordinator: TextViewCoordinator) {
+        guard let textView = scrollView.documentView as? BuoyTextView,
+              let noteID = coordinator.currentNoteID else { return }
+        EditorCache.store(textView, noteID: noteID)
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
@@ -516,12 +532,43 @@ struct EditorView: NSViewRepresentable {
         }
 
         if context.coordinator.currentNoteID != noteID {
-            context.coordinator.currentNoteID = noteID
             // Temporarily hide the scroller so the content swap doesn't flash it.
             (scrollView as? DragBlockingScrollView)?.suppressScrollerUntilSettled()
-            context.coordinator.setLoadingContent(true)
-            textView.loadRTF(rtfData)
-            context.coordinator.setLoadingContent(false)
+            if let previousID = context.coordinator.currentNoteID {
+                EditorCache.store(textView, noteID: previousID)
+            }
+            context.coordinator.currentNoteID = noteID
+            let incoming: BuoyTextView
+            if let reused = EditorCache.take(noteID: noteID, matching: rtfData) {
+                incoming = reused
+            } else {
+                incoming = BuoyTextView(frame: textView.frame)
+                incoming.fontSize = fontSize
+                incoming.usesDarkAppearance = usesDarkAppearance
+                incoming.minSize = textView.minSize
+                incoming.maxSize = textView.maxSize
+                incoming.autoresizingMask = [.width]
+                incoming.textContainer?.containerSize = NSSize(
+                    width: textView.frame.width,
+                    height: CGFloat.greatestFiniteMagnitude
+                )
+                incoming.textContainer?.widthTracksTextView = true
+                context.coordinator.setLoadingContent(true)
+                incoming.loadRTF(rtfData)
+                context.coordinator.setLoadingContent(false)
+            }
+            incoming.frame.size.width = textView.frame.width
+            // A kept editor may have been away through a font or theme change.
+            incoming.fontSize = fontSize
+            incoming.usesDarkAppearance = usesDarkAppearance
+            incoming.delegate = context.coordinator
+            incoming.buoyDelegate = context.coordinator
+            incoming.placeholderString = placeholder
+            incoming.noteID = noteID
+            scrollView.documentView = incoming
+            scrollView.layoutSubtreeIfNeeded()
+            EditorCache.restoreScrollPosition(of: noteID, in: scrollView)
+            textViewRef?(incoming)
             (scrollView as? DragBlockingScrollView)?.refreshEdgeFade()
         }
 
@@ -536,6 +583,7 @@ extension TextViewCoordinator: BuoyTextViewDelegate {
     func textViewDidChange(_ textView: BuoyTextView) {
         guard !isLoadingContent else { return }
         if let rtf = textView.rtfContent() {
+            textView.contentSnapshot = rtf
             onContentChange?(rtf)
         }
     }
@@ -551,4 +599,63 @@ extension TextViewCoordinator: BuoyTextViewDelegate {
 
 extension Notification.Name {
     static let showLinkDialog = Notification.Name("BuoyShowLinkDialog")
+}
+
+/// The editors of the last few notes, kept so a note's undo history survives
+/// switching away and back.
+///
+/// Each note used to get a fresh `BuoyTextView` (and with it a fresh undo
+/// manager) every time it was shown, so following a `>>` link and coming
+/// back left ⌘Z with nothing to undo. NSTextView's undo actions point at
+/// the text view that registered them, so the history can't move to a new
+/// editor; the editor itself has to stay.
+///
+/// An editor is reused only if the note's saved content is exactly what it
+/// last loaded or saved (`contentSnapshot`). Anything that rewrote the note
+/// in between (a Shortcuts action, an append from another editor) makes it
+/// stale, and the note loads fresh as before.
+enum EditorCache {
+    private static let capacity = 6
+    private static var entries: [(noteID: String, editor: BuoyTextView)] = []
+    /// Where each note was scrolled to when it was last left, in document
+    /// coordinates. Kept for every note, editor reused or not, so coming
+    /// back doesn't start at the top.
+    private static var scrollOffsets: [String: CGFloat] = [:]
+
+    static func store(_ editor: BuoyTextView, noteID: String) {
+        if let clip = editor.enclosingScrollView?.contentView {
+            scrollOffsets[noteID] = clip.bounds.origin.y
+        }
+        entries.removeAll { $0.noteID == noteID || $0.editor === editor }
+        editor.delegate = nil
+        editor.buoyDelegate = nil
+        editor.formattingState = nil
+        entries.append((noteID, editor))
+        if entries.count > capacity { entries.removeFirst() }
+    }
+
+    /// Scrolls back to where the note was left. On the next turn, once the
+    /// new scroll view has its size and the text is laid out.
+    static func restoreScrollPosition(of noteID: String, in scrollView: NSScrollView) {
+        guard let offset = scrollOffsets[noteID], offset > 0 else { return }
+        DispatchQueue.main.async { [weak scrollView] in
+            guard let scrollView, let textView = scrollView.documentView as? NSTextView else { return }
+            if let layoutManager = textView.layoutManager, let container = textView.textContainer {
+                layoutManager.ensureLayout(for: container)
+            }
+            scrollView.layoutSubtreeIfNeeded()
+            let clip = scrollView.contentView
+            let maxY = max(0, textView.frame.height - clip.bounds.height)
+            clip.scroll(to: NSPoint(x: clip.bounds.origin.x, y: min(offset, maxY)))
+            scrollView.reflectScrolledClipView(clip)
+        }
+    }
+
+    static func take(noteID: String, matching content: Data) -> BuoyTextView? {
+        guard let index = entries.firstIndex(where: { $0.noteID == noteID }) else { return nil }
+        let editor = entries.remove(at: index).editor
+        guard editor.contentSnapshot == content else { return nil }
+        editor.removeFromSuperview()
+        return editor
+    }
 }

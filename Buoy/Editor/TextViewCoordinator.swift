@@ -14,6 +14,7 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
         guard !isLoadingContent,
               let tv = notification.object as? BuoyTextView else { return }
         if let rtf = tv.rtfContent() {
+            tv.contentSnapshot = rtf
             onContentChange?(rtf)
         }
     }
