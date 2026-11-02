@@ -318,6 +318,9 @@ The phrases **"invoke onboarding"** or **"reset onboarding"** mean run this comm
 ### Harbor Timer
 A note whose *whole* title is a duration (`HarborTimer.duration(in:)`: `5m`, `1h30`, `1 hr 30 min`, `half an hour`, `1:30`, optional "timer", …) starts a countdown when it enters Harbor Mode. Timers are per note (`PanelPresentationModel.harborTimers`), in memory only. While one runs, the header shows the countdown as a button that folds the panel into Harbor Mode, where pause/stop live. At "Time's up" the header gives the title back for editing; renaming the note stops the finished timer. `updateRemaining` ticks at 0.2s but only publishes when the displayed second changes.
 
+### Header Drag Needs First Mouse
+**Bug pattern (fixed in 1.5.2).** `DragEnablingNSView` didn't override `acceptsFirstMouse`, so while the panel wasn't key (right after launch, after clicking another app) the first click only made it key and AppKit swallowed the rest of the gesture: the pointer moved, the panel didn't. Shaking out of Fog Mode hit the same thing and was first blamed on the fog. Any view that must react to the first click on a non-key panel needs `acceptsFirstMouse` → `true`.
+
 ### Off-Screen Drag / Harbor Pill Position
 **Bug pattern (fixed in 1.1.3).** `DragEnablingNSView.mouseDragged` (in `WindowDragBlocker.swift`) called `window.setFrameOrigin(...)` with no clamping, so the header could drag the panel up under the menu bar / off any edge into an unreachable spot. The Harbor pill frames (`topCenteredFrame`/`bottomCenteredFrame`) in `enterMinimizedMode`/`updateMinimizedWidth` were likewise unclamped. **Fix:** clamp the dragged origin to `(window.screen ?? NSScreen.main).visibleFrame`, and wrap the pill anchored frames in `clampedToVisibleFrame(...)`. Not OS-dependent — purely a missing clamp.
 

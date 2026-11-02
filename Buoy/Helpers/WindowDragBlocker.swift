@@ -109,6 +109,11 @@ final class DragEnablingNSView: NSView {
     private var didShake = false
     private var isDoubleClick = false
     override var mouseDownCanMoveWindow: Bool { false }
+    /// The first click on a panel that isn't key (right after launch, or
+    /// after clicking another app) only made the panel key: AppKit kept the
+    /// whole gesture, so the pointer moved and the panel didn't. The editor
+    /// and the corner controls already take the first click.
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     private var dragStartMouse: NSPoint = .zero
     private var dragStartWindowOrigin: NSPoint = .zero
 
