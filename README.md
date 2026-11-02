@@ -1,9 +1,8 @@
 <p align="center">
-  <img
-    src="AppIcon%20Exports/AppIcon-iOS-Default-1024x1024@1x.png"
-    alt="Buoy app icon"
-    width="160"
-  />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/icon-dark.png" />
+    <img src="docs/images/icon-light.png" alt="Buoy app icon" width="160" />
+  </picture>
 </p>
 
 <h1 align="center">Buoy</h1>
