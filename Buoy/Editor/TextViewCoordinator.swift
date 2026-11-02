@@ -25,7 +25,11 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
 
     func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
         let url = (link as? URL) ?? (link as? String).flatMap(URL.init)
-        if let url { NSWorkspace.shared.open(url) }
+        if let url, let noteID = NoteLink.noteID(from: url) {
+            NoteLink.open(noteID: noteID)
+        } else if let url {
+            NSWorkspace.shared.open(url)
+        }
         return true
     }
 

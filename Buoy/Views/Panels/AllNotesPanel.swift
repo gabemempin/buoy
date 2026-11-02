@@ -85,9 +85,9 @@ struct AllNotesPanel: View {
         .frame(maxWidth: .infinity)
         // Without this the list runs straight into the panel's rounded corner,
         // so the scroller's track crossed the curve instead of following it.
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: PanelLayoutMetrics.windowCornerRadius, style: .continuous))
         .background(WindowDragBlocker())
-        .buoyGlassPanel(cornerRadius: 14)
+        .buoyGlassPanel()
         .shadow(radius: 8)
         .transition(
             BuoyMotion.transition(

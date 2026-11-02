@@ -243,6 +243,7 @@ private final class DragBlockingScrollView: NSScrollView {
     override func reflectScrolledClipView(_ cView: NSClipView) {
         super.reflectScrolledClipView(cView)
         updateEdgeFade()
+        (documentView as? BuoyTextView)?.visibleRectDidScroll()
     }
 
     private func configureEdgeFade() {

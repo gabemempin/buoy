@@ -86,6 +86,14 @@ final class BuoyTextView: NSTextView {
     private enum ListIndent {
         static let width: CGFloat = 20
         static let maxNestingLevel = 2
+
+        /// The nesting level a paragraph's `firstLineHeadIndent` stands for.
+        /// Rounded, never truncated: RTF stores indents in whole twips, and a
+        /// hanging indent comes back from a save as 19.95pt, not 20. Truncating
+        /// that read level 1 as 0, so every reload un-nested the list a step.
+        static func level(for firstLineHeadIndent: CGFloat) -> Int {
+            max(0, Int((firstLineHeadIndent / width).rounded()))
+        }
     }
 
     weak var buoyDelegate: BuoyTextViewDelegate?
@@ -127,12 +135,38 @@ final class BuoyTextView: NSTextView {
         }
     }
 
+    /// Where the toolbar learns which buttons to draw pressed in.
+    weak var formattingState: EditorFormattingState? {
+        didSet {
+            guard formattingState !== oldValue else { return }
+            scheduleFormattingStateRefresh()
+        }
+    }
+
+    /// NSTextView resets typing attributes on every caret move, and the
+    /// format actions change them with no selection, so this is the one hook
+    /// that sees every change.
+    override var typingAttributes: [NSAttributedString.Key: Any] {
+        didSet { scheduleFormattingStateRefresh() }
+    }
+
+    private var isFormattingStateRefreshScheduled = false
+
+    /// Every note `>>` can link to, most recently opened first. The first
+    /// few are offered directly, the rest under More Notes. Set by `ContentView`;
+    /// offscreen editors leave it nil and `>>` stays plain text.
+    var noteLinkSuggestions: (() -> [NoteLinkSuggestion])?
+
     private var themeObserver: NSObjectProtocol?
+    private var settingsObserver: NSObjectProtocol?
     private lazy var listReorder = ListReorderController(textView: self)
 
     deinit {
         if let themeObserver {
             NotificationCenter.default.removeObserver(themeObserver)
+        }
+        if let settingsObserver {
+            NotificationCenter.default.removeObserver(settingsObserver)
         }
     }
     var currentEditorTextColor: NSColor { editorTextColor }
@@ -167,6 +201,15 @@ final class BuoyTextView: NSTextView {
     }
 
     private func commonInit() {
+        // Dial Scrolling draws through its own layout manager. Reading
+        // `layoutManager` first settles the view on TextKit 1, which every
+        // list and drag helper here already depends on.
+        if let container = textContainer, !(layoutManager is DialLayoutManager) {
+            let dial = DialLayoutManager()
+            container.replaceLayoutManager(dial)
+            dial.dialView = self
+            dial.isDialEnabled = AppSettings.current.dialScrolling
+        }
         textStorage?.delegate = self
         isRichText = true
         isEditable = true
@@ -209,6 +252,24 @@ final class BuoyTextView: NSTextView {
         ) { [weak self] _ in
             self?.applyThemeColors()
         }
+        settingsObserver = NotificationCenter.default.addObserver(
+            forName: .settingsDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self, let dial = self.layoutManager as? DialLayoutManager,
+                  dial.isDialEnabled != AppSettings.current.dialScrolling else { return }
+            dial.isDialEnabled = AppSettings.current.dialScrolling
+            self.setNeedsDisplay(self.visibleRect)
+        }
+    }
+
+    /// The dial's curve depends on where each line sits in the viewport, so
+    /// a scroll has to redraw what's visible. Without the dial, scrolling
+    /// keeps AppKit's cached tiles.
+    func visibleRectDidScroll() {
+        guard (layoutManager as? DialLayoutManager)?.isDialEnabled == true else { return }
+        setNeedsDisplay(visibleRect)
     }
 
     /// Re-applies everything the accent colour reaches inside the editor.
@@ -732,6 +793,94 @@ final class BuoyTextView: NSTextView {
         if typed.count == 1 && completesConfetti() {
             ConfettiController.shared.celebrate()
         }
+        if typed == ">", let marker = typedNoteLinkMarker() {
+            // After the keystroke settles (and is saved), not inside it: the
+            // menu runs its own tracking loop.
+            DispatchQueue.main.async { [weak self] in
+                self?.presentNoteLinkMenu(replacing: marker)
+            }
+        }
+    }
+
+    // MARK: - Note links (>>)
+
+    /// The `>>` just typed, if it starts a word: at the start of a line or
+    /// after a space, so `a>>b` and `>>>` stay plain text.
+    private func typedNoteLinkMarker() -> NSRange? {
+        guard noteLinkSuggestions != nil, let storage = textStorage else { return nil }
+        let caret = selectedRange()
+        guard caret.length == 0, caret.location >= 2 else { return nil }
+        let marker = NSRange(location: caret.location - 2, length: 2)
+        let string = storage.string as NSString
+        guard string.substring(with: marker) == ">>" else { return nil }
+        if marker.location > 0 {
+            let before = string.character(at: marker.location - 1)
+            guard let scalar = UnicodeScalar(before),
+                  CharacterSet.whitespacesAndNewlines.contains(scalar) else { return nil }
+        }
+        return marker
+    }
+
+    /// The recent-notes menu, under the `>>`. Choosing a note replaces the
+    /// marker with a link titled after it; Escape leaves the `>>` as typed.
+    private func presentNoteLinkMenu(replacing marker: NSRange) {
+        guard let suggestions = noteLinkSuggestions?(), !suggestions.isEmpty,
+              let storage = textStorage, NSMaxRange(marker) <= storage.length,
+              (storage.string as NSString).substring(with: marker) == ">>",
+              let layoutManager, let textContainer
+        else { return }
+
+        let menu = NSMenu(title: "Link to Note")
+        menu.autoenablesItems = false
+        menu.addItem(.sectionHeader(title: "Link to a Recent Note"))
+        for suggestion in suggestions.prefix(NoteLink.suggestionLimit) {
+            menu.addItem(noteLinkMenuItem(for: suggestion, replacing: marker))
+        }
+
+        // The rest in a submenu, so the common case stays three rows. NSMenu
+        // scrolls a long list and type-selects by title, which is how you
+        // find one note among many without a search field.
+        let others = suggestions.dropFirst(NoteLink.suggestionLimit)
+        if !others.isEmpty {
+            menu.addItem(.separator())
+            let more = NSMenuItem(title: "More Notes", action: nil, keyEquivalent: "")
+            more.image = NSImage(systemSymbolName: "ellipsis.circle", accessibilityDescription: nil)
+            let submenu = NSMenu(title: "More Notes")
+            submenu.autoenablesItems = false
+            for suggestion in others {
+                submenu.addItem(noteLinkMenuItem(for: suggestion, replacing: marker))
+            }
+            more.submenu = submenu
+            menu.addItem(more)
+        }
+
+        let glyphs = layoutManager.glyphRange(forCharacterRange: marker, actualCharacterRange: nil)
+        let markerRect = layoutManager.boundingRect(forGlyphRange: glyphs, in: textContainer)
+            .offsetBy(dx: textContainerOrigin.x, dy: textContainerOrigin.y)
+        // The view is flipped: maxY is the line's visual bottom.
+        menu.popUp(positioning: nil, at: NSPoint(x: markerRect.minX, y: markerRect.maxY + 4), in: self)
+    }
+
+    private func noteLinkMenuItem(for suggestion: NoteLinkSuggestion, replacing marker: NSRange) -> NSMenuItem {
+        let item = NSMenuItem(
+            title: suggestion.title,
+            action: #selector(insertNoteLinkFromMenu(_:)),
+            keyEquivalent: ""
+        )
+        item.target = self
+        item.representedObject = NoteLinkMenuChoice(suggestion: suggestion, marker: marker)
+        item.image = NSImage(systemSymbolName: "doc.text", accessibilityDescription: nil)
+        return item
+    }
+
+    @objc private func insertNoteLinkFromMenu(_ sender: NSMenuItem) {
+        guard let choice = sender.representedObject as? NoteLinkMenuChoice,
+              let storage = textStorage, NSMaxRange(choice.marker) <= storage.length,
+              (storage.string as NSString).substring(with: choice.marker) == ">>",
+              let url = NoteLink.url(for: choice.suggestion.noteID)
+        else { return }
+        // `insertLink` ends in `didChangeText`, which saves.
+        insertLink(text: choice.suggestion.title, url: url.absoluteString, at: choice.marker)
     }
 
     /// Whether the character just typed finished the word "confetti", as a
@@ -902,7 +1051,7 @@ final class BuoyTextView: NSTextView {
     private func indentLevel(at lineStart: Int) -> Int {
         guard let storage = textStorage, lineStart < storage.length else { return 0 }
         let style = storage.attribute(.paragraphStyle, at: lineStart, effectiveRange: nil) as? NSParagraphStyle
-        return Int((style?.firstLineHeadIndent ?? 0) / ListIndent.width)
+        return ListIndent.level(for: style?.firstLineHeadIndent ?? 0)
     }
 
     // MARK: - List drag-to-reorder
@@ -1266,13 +1415,22 @@ final class BuoyTextView: NSTextView {
     // MARK: - Mouse Down (toggle checkboxes / drag-to-reorder list markers)
 
     override func mouseDown(with event: NSEvent) {
-        let point = convert(event.locationInWindow, from: nil)
+        let viewPoint = convert(event.locationInWindow, from: nil)
+        let point = NSPoint(x: viewPoint.x - textContainerOrigin.x, y: viewPoint.y - textContainerOrigin.y)
         if let layout = layoutManager, let container = textContainer, let storage = textStorage {
             let glyphIndex = layout.glyphIndex(for: point, in: container,
                                                fractionOfDistanceThroughGlyph: nil)
             if glyphIndex < layout.numberOfGlyphs {
                 let charIndex = layout.characterIndexForGlyph(at: glyphIndex)
-                if charIndex < storage.length {
+                // `glyphIndex(for:)` returns the *nearest* glyph, so a click in a
+                // nested line's indent margin resolved to its checkbox and
+                // toggled it. Users click there to put the caret at the line
+                // start before pressing Tab. Only a click on the marker counts.
+                let glyphRect = layout.boundingRect(
+                    forGlyphRange: NSRange(location: glyphIndex, length: 1), in: container
+                )
+                let isOnGlyph = point.x >= glyphRect.minX - 2 && point.x <= glyphRect.maxX + 2
+                if charIndex < storage.length, isOnGlyph {
                     let isTodo = storage.attributes(at: charIndex, effectiveRange: nil)[.attachment] is TodoAttachment
                     let isBullet = isBulletMarkerCharacter(at: charIndex)
                     if isTodo || isBullet {
@@ -1822,6 +1980,7 @@ final class BuoyTextView: NSTextView {
 
         storage.beginEditing()
         var offset = 0
+        var edits: [MarkerEdit] = []
         for lr in lineRanges {
             let origLineText = (string as NSString).substring(with: lr).trimmingCharacters(in: .whitespacesAndNewlines)
             guard !origLineText.isEmpty else { continue }
@@ -1835,16 +1994,21 @@ final class BuoyTextView: NSTextView {
             if lineText.hasPrefix("• ") {
                 storage.replaceCharacters(in: NSRange(location: adjStart, length: 2), with: "")
                 offset -= 2
+                edits.append(MarkerEdit(location: lr.location, removed: 2, inserted: 0))
             } else if adjStart < storage.length,
                       storage.attributes(at: adjStart, effectiveRange: nil)[.attachment] is TodoAttachment {
                 storage.replaceCharacters(in: NSRange(location: adjStart, length: previewLen), with: "• ")
+                offset += 2 - previewLen
+                edits.append(MarkerEdit(location: lr.location, removed: previewLen, inserted: 2))
             } else {
                 storage.replaceCharacters(in: NSRange(location: adjStart, length: 0), with: "• ")
                 offset += 2
+                edits.append(MarkerEdit(location: lr.location, removed: 0, inserted: 2))
             }
         }
         storage.endEditing()
         window?.makeFirstResponder(self)
+        restoreSelection(sel, after: edits)
         notifyChange()
     }
 
@@ -1865,6 +2029,7 @@ final class BuoyTextView: NSTextView {
 
         storage.beginEditing()
         var offset = 0
+        var edits: [MarkerEdit] = []
         for lr in lineRanges {
             let origLineText = (string as NSString).substring(with: lr).trimmingCharacters(in: .whitespacesAndNewlines)
             guard !origLineText.isEmpty else { continue }
@@ -1877,6 +2042,7 @@ final class BuoyTextView: NSTextView {
                 let removeLen = min(2, storage.length - adjStart)
                 storage.replaceCharacters(in: NSRange(location: adjStart, length: removeLen), with: "")
                 offset -= removeLen
+                edits.append(MarkerEdit(location: lr.location, removed: removeLen, inserted: 0))
             } else {
                 let previewLen = min(2, storage.length - adjStart)
                 let lineText = adjStart < storage.length
@@ -1886,15 +2052,52 @@ final class BuoyTextView: NSTextView {
                 if lineText.hasPrefix("• ") {
                     storage.replaceCharacters(in: NSRange(location: adjStart, length: 2), with: aStr)
                     offset += aStr.length - 2
+                    edits.append(MarkerEdit(location: lr.location, removed: 2, inserted: aStr.length))
                 } else {
                     storage.replaceCharacters(in: NSRange(location: adjStart, length: 0), with: aStr)
                     offset += aStr.length
+                    edits.append(MarkerEdit(location: lr.location, removed: 0, inserted: aStr.length))
                 }
             }
         }
         storage.endEditing()
         window?.makeFirstResponder(self)
+        restoreSelection(sel, after: edits)
         notifyChange()
+    }
+
+    /// A list marker added, swapped or removed at the start of a line, in
+    /// the text's coordinates from *before* the toggle.
+    private struct MarkerEdit {
+        let location: Int
+        let removed: Int
+        let inserted: Int
+    }
+
+    /// Moves the caret (or selection) with the text after a list toggle.
+    /// The toggles edit the storage directly, which leaves the selection at
+    /// its old index: toggling a to-do on and off on an empty line left the
+    /// caret two characters past the line's end, on the next line, and the
+    /// next formatting click showed it there.
+    private func restoreSelection(_ original: NSRange, after edits: [MarkerEdit]) {
+        guard let storage = textStorage else { return }
+        func map(_ location: Int) -> Int {
+            var shift = 0
+            for edit in edits {
+                if location >= edit.location + edit.removed {
+                    shift += edit.inserted - edit.removed
+                } else if location >= edit.location {
+                    // On or inside the old marker: just after the new one.
+                    return edit.location + shift + edit.inserted
+                } else {
+                    break
+                }
+            }
+            return location + shift
+        }
+        let start = min(max(map(original.location), 0), storage.length)
+        let end = original.length > 0 ? min(max(map(NSMaxRange(original)), start), storage.length) : start
+        setSelectedRange(NSRange(location: start, length: end - start))
     }
 
     /// Captures the current cursor/selection and, when it sits on one link,
@@ -2158,6 +2361,77 @@ final class BuoyTextView: NSTextView {
     private func notifyChange() {
         buoyDelegate?.textViewDidChange(self)
         needsDisplay = true
+        scheduleFormattingStateRefresh()
+    }
+
+    // MARK: - Toolbar state
+
+    /// Coalesced to one pass per runloop turn: a single keystroke can reset
+    /// the typing attributes, the selection and the storage in a row.
+    private func scheduleFormattingStateRefresh() {
+        guard formattingState != nil, !isFormattingStateRefreshScheduled else { return }
+        isFormattingStateRefreshScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.isFormattingStateRefreshScheduled = false
+            self.formattingState?.update(self.currentFormats())
+        }
+    }
+
+    /// What the toolbar should show pressed in. A caret reports what typing
+    /// would produce; a selection reports a format only when all of it has
+    /// one, matching the toggles (which add a format unless all of it has it).
+    private func currentFormats() -> Set<EditorFormattingState.Format> {
+        guard let storage = textStorage else { return [] }
+        let sel = selectedRange()
+        guard NSMaxRange(sel) <= storage.length else { return [] }
+
+        var runs: [[NSAttributedString.Key: Any]] = []
+        if sel.length > 0 {
+            storage.enumerateAttributes(in: sel) { attrs, _, _ in
+                if attrs[.attachment] is TodoAttachment { return }
+                runs.append(attrs)
+            }
+        }
+        if runs.isEmpty { runs = [typingAttributes] }
+
+        func every(_ test: ([NSAttributedString.Key: Any]) -> Bool) -> Bool { runs.allSatisfy(test) }
+        func hasTrait(_ trait: NSFontDescriptor.SymbolicTraits) -> Bool {
+            every { ($0[.font] as? NSFont)?.fontDescriptor.symbolicTraits.contains(trait) == true }
+        }
+
+        var formats: Set<EditorFormattingState.Format> = []
+        if hasTrait(.bold) { formats.insert(.bold) }
+        if hasTrait(.italic) { formats.insert(.italic) }
+        if every({ (($0[.underlineStyle] as? Int) ?? 0) != 0 }) { formats.insert(.underline) }
+        if every({ (($0[.strikethroughStyle] as? Int) ?? 0) != 0 }) { formats.insert(.strikethrough) }
+
+        // Typing attributes never carry a link, so a caret checks the text
+        // on both sides of it: inside a link, not just touching one.
+        if sel.length > 0 {
+            var linked = true
+            storage.enumerateAttribute(.link, in: sel) { value, _, stop in
+                if value == nil { linked = false; stop.pointee = true }
+            }
+            if linked { formats.insert(.link) }
+        } else if sel.location > 0, sel.location < storage.length,
+                  storage.attribute(.link, at: sel.location - 1, effectiveRange: nil) != nil,
+                  storage.attribute(.link, at: sel.location, effectiveRange: nil) != nil {
+            formats.insert(.link)
+        }
+
+        let lines = coveredLineRanges(for: sel).filter { $0.location < storage.length }
+        if !lines.isEmpty {
+            let todoLines = lines.filter {
+                storage.attribute(.attachment, at: $0.location, effectiveRange: nil) is TodoAttachment
+            }
+            if todoLines.count == lines.count {
+                formats.insert(.todo)
+            } else if todoLines.isEmpty, lines.allSatisfy({ isListParagraph(at: $0.location) }) {
+                formats.insert(.bullet)
+            }
+        }
+        return formats
     }
 
     /// `notifyChange` for the keystroke handlers (Return, Space, Backspace).
@@ -2178,6 +2452,7 @@ final class BuoyTextView: NSTextView {
         super.setSelectedRange(charRange, affinity: affinity, stillSelecting: stillSelecting)
         if !stillSelecting {
             buoyDelegate?.textViewSelectionDidChange(self)
+            scheduleFormattingStateRefresh()
         }
     }
 
@@ -2192,6 +2467,7 @@ final class BuoyTextView: NSTextView {
         }
         if !stillSelecting {
             buoyDelegate?.textViewSelectionDidChange(self)
+            scheduleFormattingStateRefresh()
         }
     }
 
@@ -2411,7 +2687,7 @@ final class BuoyTextView: NSTextView {
                 let found = (mutable.string as NSString).range(of: marker, options: [], range: searchRange)
                 if found.location == NSNotFound { break }
                 let markerParaStyle = mutable.attribute(.paragraphStyle, at: found.location, effectiveRange: nil) as? NSParagraphStyle
-                let nestLevel = Int((markerParaStyle?.firstLineHeadIndent ?? 0) / ListIndent.width)
+                let nestLevel = ListIndent.level(for: markerParaStyle?.firstLineHeadIndent ?? 0)
                 let atStr = todoAttachmentAttributedString(isChecked: isChecked, indentLevel: nestLevel)
                 let replacementRange = rangeByConsumingFollowingTodoSpacer(
                     in: mutable.string as NSString,
@@ -2610,4 +2886,15 @@ extension BuoyTextView: NSTextStorageDelegate {
 private final class FlippedOverlayView: NSView {
     override var isFlipped: Bool { true }
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
+/// What a `>>` menu item carries: which note, and which `>>` it replaces.
+private final class NoteLinkMenuChoice: NSObject {
+    let suggestion: NoteLinkSuggestion
+    let marker: NSRange
+
+    init(suggestion: NoteLinkSuggestion, marker: NSRange) {
+        self.suggestion = suggestion
+        self.marker = marker
+    }
 }

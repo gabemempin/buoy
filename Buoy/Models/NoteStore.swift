@@ -13,7 +13,19 @@ final class NoteStore {
     /// One-level note folders, ordered by `sortOrder`. Purely an All Notes
     /// panel concern — nothing else in the app reads this.
     var folders: [Folder] = []
-    var currentNote: Note?
+    var currentNote: Note? {
+        didSet {
+            guard let id = currentNote?.id, id != oldValue?.id else { return }
+            recentNoteIDs.removeAll { $0 == id }
+            recentNoteIDs.insert(id, at: 0)
+            if recentNoteIDs.count > Self.recentNoteLimit { recentNoteIDs.removeLast() }
+        }
+    }
+    /// Notes in the order they were last opened, newest first, for the `>>`
+    /// note-link menu. In memory only; `recentNotes` fills the gaps after a
+    /// relaunch from the most recently edited notes.
+    @ObservationIgnored private var recentNoteIDs: [String] = []
+    private static let recentNoteLimit = 20
     var lastNavigationDirection: NavigationDirection?
     /// Set the instant an auto-generated title lands on the current note, so
     /// the header can play the reveal animation. The header clears it back to
@@ -361,6 +373,20 @@ final class NoteStore {
         currentNote = (try? db.read { db in
             try Note.fetchOne(db, key: note.id)
         })
+    }
+
+    /// Up to `limit` notes to offer as link targets: the ones opened most
+    /// recently, then the most recently edited, never `excluding` itself.
+    func recentNotes(excluding excludedID: String?, limit: Int) -> [Note] {
+        let byID = Dictionary(notes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        var picked = recentNoteIDs.filter { $0 != excludedID }.compactMap { byID[$0] }
+        if picked.count < limit {
+            let seen = Set(picked.map(\.id))
+            picked += notes
+                .filter { $0.id != excludedID && !seen.contains($0.id) }
+                .sorted { $0.updatedAt > $1.updatedAt }
+        }
+        return Array(picked.prefix(limit))
     }
 
     func restoreSelection(noteID: String?) {

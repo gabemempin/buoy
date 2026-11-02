@@ -45,16 +45,15 @@ final class FocusFogController {
     /// Fully opaque. 0.99 was tried, to keep the desktop from counting as
     /// occluded, but compositing is in linear light, so 1% of white text over
     /// a dark fog comes out around 10% grey and the windows behind showed
-    /// through. The occlusion is handled by `fogFrame(for:)` instead.
+    /// through. The occlusion is handled by the `revealAlpha` hold instead.
     private let shownAlpha: CGFloat = 1
 
     /// The exit's first step. While the fog is fully opaque the windows behind
     /// it count as occluded, and apps that drop their content when occluded
-    /// (browsers, Electron, video) only redraw once they are uncovered. The
-    /// top-row gap in `fogFrame(for:)` only keeps windows that reach the menu
-    /// bar visible, so everything else came back black for the first part of
-    /// the fade. Dropping just under opaque first un-occludes them while the
-    /// fog still hides them, and they redraw during `revealLeadTime`.
+    /// (browsers, Electron, video), and the desktop's wallpaper, only redraw
+    /// once they are uncovered, so they came back black for the first part
+    /// of the fade. Dropping just under opaque first un-occludes them while
+    /// the fog still hides them, and they redraw during `revealLeadTime`.
     ///
     /// The worst case is an app activated while the fog was up: its windows
     /// came forward fully covered and were never drawn at all, and 0.05s was
@@ -64,14 +63,18 @@ final class FocusFogController {
     private let revealAlpha: CGFloat = 0.97
     private let revealLeadTime: TimeInterval = 0.15
 
-    /// The screen minus its top point, which sits behind the menu bar. A
-    /// window covering the *whole* screen occludes the desktop, macOS drops
-    /// the wallpaper underneath, and the first fade out showed black until it
-    /// redrew. One uncovered row keeps the desktop counted as visible.
+    /// The whole screen, under the menu bar too.
+    ///
+    /// This used to leave the top point row uncovered: a window over the
+    /// *whole* screen occludes the desktop, macOS drops the wallpaper, and
+    /// the first fade out showed black until it redrew. But that bare row
+    /// showed as a sharp line of wallpaper through the translucent menu bar,
+    /// and a second, 99%-opaque window over it (to fog the row without
+    /// occluding) drew a brighter line instead. The exit's `revealAlpha`
+    /// hold, added later for the other apps' windows, un-occludes the
+    /// desktop the same way, so the wallpaper redraws during it too.
     private static func fogFrame(for screen: NSScreen) -> NSRect {
-        var frame = screen.frame
-        frame.size.height -= 1
-        return frame
+        screen.frame
     }
 
     init() {

@@ -42,7 +42,10 @@ extension View {
     }
 
     /// More opaque glass for overlay panels (Settings, Shortcuts, AllNotes).
-    func buoyGlassPanel(cornerRadius: CGFloat = 14) -> some View {
+    /// Defaults to the window's own radius (macOS 27's 16pt), which every
+    /// floating card in the panel shares: All Notes, the delete dialog and
+    /// onboarding's demo panels.
+    func buoyGlassPanel(cornerRadius: CGFloat = PanelLayoutMetrics.windowCornerRadius) -> some View {
         modifier(BuoyPanelGlassModifier(cornerRadius: cornerRadius))
     }
 

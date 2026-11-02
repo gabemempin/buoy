@@ -79,6 +79,10 @@ struct AppearanceSettingsPage: View {
                 Text("Text scales down on its own while the panel is small enough for Compact Mode.")
                     .font(BuoyFont.secondary)
                     .foregroundStyle(.secondary)
+                Toggle(isOn: $settings.dialScrolling) {
+                    Text("Dial Scrolling")
+                    Text("Lines curve away at the top and bottom edges as you scroll, like the face of a watch dial.")
+                }
             }
         }
     }

@@ -34,6 +34,9 @@ struct AppSettings: Codable {
     var autoTitleEnabled: Bool = true
     /// Checking a to-do moves it to the bottom of its list. Off by default.
     var moveCheckedTodosToBottom: Bool = false
+    /// Lines tip away at the editor's top and bottom edges, like a watch
+    /// dial. Off by default.
+    var dialScrolling: Bool = false
     /// Hue washed over the panel's glass. `nil` is the untinted default.
     var windowTint: HSLColor? = nil
     /// How strongly `windowTint` shows through, 0...1. Half by default, so
@@ -77,6 +80,7 @@ struct AppSettings: Codable {
         hasSeenFocusFogTip = flag(.hasSeenFocusFogTip, fallback.hasSeenFocusFogTip)
         autoTitleEnabled = flag(.autoTitleEnabled, fallback.autoTitleEnabled)
         moveCheckedTodosToBottom = flag(.moveCheckedTodosToBottom, fallback.moveCheckedTodosToBottom)
+        dialScrolling = flag(.dialScrolling, fallback.dialScrolling)
 
         fontSize = (try? container.decodeIfPresent(CGFloat.self, forKey: .fontSize)) ?? nil ?? fallback.fontSize
         theme = (try? container.decodeIfPresent(AppTheme.self, forKey: .theme)) ?? nil ?? fallback.theme

@@ -77,9 +77,10 @@ struct DeleteConfirmDialog: View {
         .frame(maxWidth: 244)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Delete “\(displayTitle)”?")
-        // Concentric with the buttons: the card's radius is the capsule's
-        // (half its height) plus the 14pt it sits in from the edge.
-        .buoyGlassPanel(cornerRadius: AlertCapsuleButtonStyle.height / 2 + 14)
+        // The window's radius, like every other card in the panel. A radius
+        // concentric with the capsule buttons (28pt) read as a different,
+        // rounder family of surface sitting on top of the app.
+        .buoyGlassPanel()
         .shadow(color: .black.opacity(0.25), radius: 18, y: 6)
         .padding(.horizontal, 8)
         .transition(BuoyMotion.transition(.scale(scale: 0.9).combined(with: .opacity)))

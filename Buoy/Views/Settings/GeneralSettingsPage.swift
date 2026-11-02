@@ -87,6 +87,13 @@ struct GeneralSettingsPage: View {
                         .accessibilityValue(updateStatus ?? "")
 
                         SettingsCapsuleButton("Report a Bug", width: 120, action: onReportBug)
+                        if let tipURL = TipJar.url {
+                            SettingsCapsuleButton("Leave a Tip", width: 120) {
+                                NSWorkspace.shared.open(tipURL)
+                            }
+                            .overlay(TipShimmerBorder().allowsHitTesting(false))
+                            .accessibilityHint("Opens a page in your browser to tip the developer")
+                        }
                         SettingsCapsuleButton("Quit Buoy", isDestructive: true, width: 120, action: onQuit)
                     }
                 }
@@ -143,5 +150,50 @@ struct GeneralSettingsPage: View {
     /// Crossfades the button's label (see `SettingsCapsuleButton`).
     private func setUpdateStatus(_ status: String?) {
         withAnimation(.easeInOut(duration: 0.2)) { updateStatus = status }
+    }
+}
+
+/// A faint sheen that travels around the Leave a Tip button in the app
+/// icon's colours (`AnimatedBugTitle.appIconPalette`): one bright arc of
+/// blue running into yellow, the rest of the border clear. Under Reduce
+/// Motion the arc holds still.
+private struct TipShimmerBorder: View {
+    /// One lap. Slow enough to read as a glint, not a spinner.
+    private static let period: TimeInterval = 4
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        if reduceMotion {
+            border(at: .degrees(-90))
+        } else {
+            TimelineView(.animation) { context in
+                let progress = context.date.timeIntervalSinceReferenceDate
+                    .truncatingRemainder(dividingBy: Self.period) / Self.period
+                border(at: .degrees(progress * 360))
+            }
+        }
+    }
+
+    private func border(at angle: Angle) -> some View {
+        let palette = AnimatedBugTitle.appIconPalette
+        return Capsule()
+            .strokeBorder(
+                AngularGradient(
+                    stops: [
+                        .init(color: .clear, location: 0),
+                        .init(color: .clear, location: 0.55),
+                        .init(color: palette.base.opacity(0.75), location: 0.72),
+                        .init(color: palette.highlight, location: 0.84),
+                        .init(color: palette.base.opacity(0.75), location: 0.94),
+                        .init(color: .clear, location: 1)
+                    ],
+                    center: .center,
+                    angle: angle
+                ),
+                lineWidth: 1.25
+            )
+            .opacity(0.8)
+            .accessibilityHidden(true)
     }
 }

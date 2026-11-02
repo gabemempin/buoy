@@ -69,6 +69,9 @@ struct ContentView: View {
 
     // Toast
     @State private var toastState = ToastState()
+    /// A note switch normally clears the toast. Following a note link sets
+    /// this to the target first, so its Go Back toast survives the switch.
+    @State private var toastKeptForNoteID: String? = nil
 
     // Find in note (⌘F)
     @State private var findController = NoteFindController()
@@ -79,6 +82,9 @@ struct ContentView: View {
 
     // Text view reference for toolbar actions — @StateObject persists across all re-renders
     @State private var tvRef = TextViewRef()
+    /// What the toolbar draws pressed in. Lives here, not in the editor,
+    /// because the editor remounts on every note switch.
+    @State private var formattingState = EditorFormattingState()
 
     // Navigation slide state
     @State private var slideDirection: NavigationDirection? = nil
@@ -172,6 +178,7 @@ struct ContentView: View {
             .buoyToggleAllNotes:  { toggleAllNotes() },
             .buoyInsertLink:      { showLinkDialogFromToolbar() },
             .buoyFindInNote:      { presentFind() },
+            .buoyOpenNoteLink:    { openLinkedNote() },
             .openSettings:        { toggleSettings() },
             // Posted by AppDelegate once the restore's frame animation lands.
             .buoyHarborRestoreFinished: {
@@ -233,7 +240,8 @@ struct ContentView: View {
         }
         .onChange(of: noteStore.currentNote?.id) { _, noteID in
             persistCurrentNoteSelection(noteID)
-            toastState.dismiss()
+            if noteID != toastKeptForNoteID { toastState.dismiss() }
+            toastKeptForNoteID = nil
             findController.dismiss(focusingEditor: false)
             onMinimizedWidthChange?(minimizedWidth)
         }
@@ -409,11 +417,7 @@ struct ContentView: View {
                         onContentChange: { rtf in
                             noteStore.saveContent(rtf)
                         },
-                        textViewRef: { tv in
-                            tvRef.value = tv
-                            NoteIntentBridge.editor = tv
-                            tv.suppressesIBeamCursor = suppressesEditorCursor
-                        }
+                        textViewRef: { tv in configureEditor(tv) }
                     )
                     .frame(
                         maxWidth: .infinity,
@@ -542,7 +546,9 @@ struct ContentView: View {
                 content: {
                     AnyView(linkDialogContent)
                 }
-            )
+            ),
+            formattingState: formattingState,
+            isLinkDialogOpen: isLinkDialogPresented
         )
     }
 
@@ -736,6 +742,66 @@ struct ContentView: View {
             }
         }
         focusEditor()
+    }
+
+    /// Runs on every editor update, so everything here must be cheap and
+    /// idempotent. Kept out of `body`, which is at the type-checker limit.
+    private func configureEditor(_ tv: BuoyTextView) {
+        tvRef.value = tv
+        NoteIntentBridge.editor = tv
+        tv.formattingState = formattingState
+        tv.suppressesIBeamCursor = suppressesEditorCursor
+        if tv.noteLinkSuggestions == nil {
+            let store = noteStore
+            tv.noteLinkSuggestions = {
+                store.recentNotes(excluding: store.currentNote?.id, limit: .max).map {
+                    let title = $0.title.trimmingCharacters(in: .whitespacesAndNewlines)
+                    return NoteLinkSuggestion(noteID: $0.id, title: title.isEmpty ? "Untitled" : title)
+                }
+            }
+        }
+    }
+
+    /// A `>>` link was clicked: slide over to its note, the way the next
+    /// note slides in, and offer the way back in a toast.
+    private func openLinkedNote() {
+        guard !showWhatsNew, !showOnboarding, let id = NoteLink.takePendingNoteID() else { return }
+        guard let note = noteStore.notes.first(where: { $0.id == id }) else {
+            toastState.show("Couldn't find that note", style: .warning)
+            return
+        }
+        guard let source = noteStore.currentNote, note.id != source.id else { return }
+        toastKeptForNoteID = note.id
+        slideToNote(note, direction: .forward)
+        toastState.show(
+            "Linked from \(Self.toastTitle(source.title))",
+            style: .info,
+            actionTitle: "Go Back"
+        ) {
+            // The source may have been deleted while the toast was up.
+            guard let back = noteStore.notes.first(where: { $0.id == source.id }),
+                  back.id != noteStore.currentNote?.id else { return }
+            slideToNote(back, direction: .backward)
+        }
+    }
+
+    private func slideToNote(_ note: Note, direction: NavigationDirection) {
+        if showAllNotes {
+            withAnimation(BuoyMotion.easeOut(0.16)) { showAllNotes = false }
+        }
+        noteStore.switchNote(to: note)
+        slideDirection = direction
+        withAnimation(BuoyMotion.spring(response: 0.3, dampingFraction: 0.8)) {
+            slideID = UUID()
+        }
+        focusEditor()
+    }
+
+    /// A note title short enough to sit in a one-line toast beside its action.
+    private static func toastTitle(_ title: String) -> String {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "Untitled" }
+        return trimmed.count > 22 ? "\(trimmed.prefix(21))…" : trimmed
     }
 
     private func persistCurrentNoteSelection(_ noteID: String?) {
