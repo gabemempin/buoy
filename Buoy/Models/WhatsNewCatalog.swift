@@ -33,6 +33,48 @@ enum WhatsNewCatalog {
     /// Newest first.
     static let releases: [WhatsNewRelease] = [
         WhatsNewRelease(
+            version: "1.5.2",
+            features: [
+                WhatsNewItem(
+                    symbol: "link",
+                    title: "Link your notes",
+                    detail: "Type >> to link to another note, then use Go Back to return."
+                ),
+                WhatsNewItem(
+                    symbol: "dial.medium",
+                    title: "Dial Scrolling",
+                    detail: "Lines curve away at the editor's edges, in Settings ▸ Appearance."
+                ),
+                WhatsNewItem(
+                    symbol: "bold",
+                    title: "Format indicators",
+                    detail: "Toolbar keys now latch when bold, italic and more are on at your cursor."
+                ),
+                WhatsNewItem(
+                    symbol: "heart",
+                    title: "Support Buoy",
+                    detail: "Leave a tip toward Buoy's journey to the App Store, in Settings ▸ General ▸ About."
+                ),
+            ],
+            fixes: [
+                WhatsNewItem(
+                    symbol: "cloud.fog",
+                    title: "Fog Mode strip",
+                    detail: "The fog no longer leaves a strip above the menu bar."
+                ),
+                WhatsNewItem(
+                    symbol: "list.bullet.indent",
+                    title: "Nested lists stay nested",
+                    detail: "Indented to-dos and bullets keep their level when a note reloads."
+                ),
+                WhatsNewItem(
+                    symbol: "rectangle.roundedtop",
+                    title: "Consistent corners",
+                    detail: "Floating panels and the delete dialog match the window's corner radius."
+                ),
+            ]
+        ),
+        WhatsNewRelease(
             version: "1.5.1",
             features: [
                 WhatsNewItem(
